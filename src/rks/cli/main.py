@@ -14,6 +14,7 @@ from rks.extraction import (
     extract_text_with_llm,
 )
 from rks.ingestion import ingest_arxiv_reference, ingest_doi_reference, ingest_pdf
+from rks.llm import ALL_EXTRACTION_MODES
 from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, OpenAICompatibleLlmProvider
 from rks.query import QueryService
 from rks.storage import (
@@ -75,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     extract_text_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     extract_text_parser.add_argument(
         "--mode",
-        choices=("heuristic", "llm-api", "agent"),
+        choices=ALL_EXTRACTION_MODES,
         default="heuristic",
         help="Execution mode for text extraction.",
     )
@@ -85,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     extract_claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     extract_claims_parser.add_argument(
         "--mode",
-        choices=("heuristic", "llm-api", "agent"),
+        choices=ALL_EXTRACTION_MODES,
         default="heuristic",
         help="Execution mode for claim extraction.",
     )

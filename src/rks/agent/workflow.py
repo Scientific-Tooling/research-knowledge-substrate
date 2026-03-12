@@ -6,26 +6,27 @@ from pathlib import Path
 from rks.config import AppPaths
 from rks.extraction.claims import persist_claims_for_paper
 from rks.extraction.text import build_text_source_input, write_text_artifact
+from rks.llm import build_dual_track_request, validate_claims_result_payload, validate_text_result_payload
 from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
 from rks.utils import ensure_dir
 
 
 def create_text_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -> dict:
     paper = repo.get_paper(paper_id)
-    request = {
-        "task": "extract_text",
-        "paper_id": paper_id,
-        "instruction": (
+    request = build_dual_track_request(
+        task="extract_text",
+        paper_id=paper_id,
+        instruction=(
             "Extract readable research text from the input. Return JSON with keys: "
             "`text`, `paragraphs`, `warnings`."
         ),
-        "input": build_text_source_input(paper),
-        "expected_output_schema": {
+        input_payload=build_text_source_input(paper),
+        expected_output_schema={
             "text": "string",
             "paragraphs": ["string"],
             "warnings": ["string"],
         },
-    }
+    )
     return _write_request_artifact(repo, paths, paper_id, "agent_text_request", "agent_text_request.json", request)
 
 
@@ -35,16 +36,16 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
         raise ValueError(f"Paper {paper_id} does not have an extracted text artifact.")
     artifact = repo.get_artifact(paper.text_artifact_id)
     text_payload = json.loads(Path(artifact.path).read_text(encoding="utf-8"))
-    request = {
-        "task": "extract_claims",
-        "paper_id": paper_id,
-        "instruction": (
+    request = build_dual_track_request(
+        task="extract_claims",
+        paper_id=paper_id,
+        instruction=(
             "Extract structured research claims. Return JSON with top-level key `claims`. "
             "Each claim must contain `text`, `predicate`, `object_text`, `context`, "
             "`evidence`, and `confidence`. Put the claim subject in `context.subject_text`."
         ),
-        "input": text_payload,
-        "expected_output_schema": {
+        input_payload=text_payload,
+        expected_output_schema={
             "claims": [
                 {
                     "text": "string",
@@ -60,7 +61,7 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
                 }
             ]
         },
-    }
+    )
     return _write_request_artifact(
         repo,
         paths,
@@ -72,7 +73,7 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
 
 
 def import_text_result(repo: PaperRepository, paths: AppPaths, paper_id: str, json_path: Path):
-    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    payload = validate_text_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
     payload.setdefault("extractor", "agent")
     payload.setdefault("warnings", [])
     payload.setdefault("source_pdf", None)
@@ -89,8 +90,7 @@ def import_claims_result(
     paper_id: str,
     json_path: Path,
 ):
-    payload = json.loads(json_path.read_text(encoding="utf-8"))
-    claims = payload["claims"] if isinstance(payload, dict) and "claims" in payload else payload
+    claims = validate_claims_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
     return persist_claims_for_paper(
         paths=paths,
         paper_repo=paper_repo,
@@ -119,7 +119,7 @@ def _write_request_artifact(
         artifact_type=artifact_type,
         path=request_path,
         format_name="json",
-        metadata={"task": payload["task"]},
+        metadata={"task": payload["task"], "spec_version": payload["spec_version"]},
     )
     return {
         "paper_id": paper_id,

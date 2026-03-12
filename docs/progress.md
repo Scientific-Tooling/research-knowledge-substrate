@@ -10,6 +10,7 @@ The repository now has a working local MVP spine:
 - heuristic structured claim extraction
 - optional `llm-api` claim/text extraction when the user provides an API key
 - optional `agent` extraction workflow for Codex, Claude Code, or other external agents
+- a formal dual-track contract for all LLM-backed tasks
 - concept normalization and persistence
 - graph edge persistence for `contains`, `supported_by`, and `about`
 - deterministic CLI queries for `claims-about` and `papers-supporting`
@@ -35,3 +36,10 @@ The repository now has a working local MVP spine:
 The MVP remains intentionally local and inspectable.
 
 Every ingestion flow should create filesystem artifacts first, then persist structured rows and graph edges. This keeps the debugging surface visible and avoids hiding extraction failures inside opaque database state.
+
+All LLM-backed capabilities now also follow a mandatory dual-track rule:
+
+- direct provider execution through `llm-api`
+- external agent execution through `agent`
+
+See [dual-track-llm-contract.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/dual-track-llm-contract.md).

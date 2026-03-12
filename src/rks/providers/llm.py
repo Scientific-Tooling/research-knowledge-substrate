@@ -4,6 +4,7 @@ import json
 import urllib.request
 
 from rks.config import LlmConfig
+from rks.llm import validate_claims_result_payload, validate_text_result_payload
 
 
 class OpenAICompatibleLlmProvider:
@@ -21,7 +22,7 @@ class OpenAICompatibleLlmProvider:
             ],
             "input": input_payload,
         }
-        response = self._chat_json(prompt)
+        response = validate_text_result_payload(self._chat_json(prompt))
         return {
             "created_at": None,
             "extractor": "llm_api",
@@ -43,8 +44,7 @@ class OpenAICompatibleLlmProvider:
             "input": text_payload,
         }
         response = self._chat_json(prompt)
-        claims = response.get("claims", [])
-        return claims if isinstance(claims, list) else []
+        return validate_claims_result_payload(response)
 
     def _chat_json(self, payload: dict) -> dict:
         request_payload = {
