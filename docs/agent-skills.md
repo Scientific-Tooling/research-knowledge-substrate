@@ -53,6 +53,22 @@ Purpose:
 - validate ingest, query, review, and HTTP product behavior
 - enforce ID capture, artifact inspection, and CLI/HTTP cross-checks
 
+### `rks-user-demo`
+
+Purpose:
+
+- let an agent demonstrate RKS capabilities to a human user in a clear sequence
+- show ingest, graph inspection, query, and review with explicit narration
+- optimize for understandable product walkthroughs rather than exhaustive verification
+
+### `rks-autotest`
+
+Purpose:
+
+- let an agent automatically validate the RKS product surface end-to-end
+- verify persisted artifacts, IDs, review mutations, and CLI/HTTP consistency
+- produce concrete failure reports and reproduction steps
+
 ## Why These Skills Exist
 
 Without explicit repository-specific skills, a general agent has to rediscover:
