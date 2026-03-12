@@ -45,6 +45,103 @@ rks config show
 - `data_dir` 指向当前工作目录下的数据目录
 - `reference_pdf_acquisition` 默认是 `auto`
 
+## 2.1 使用 Codex 作为外部 agent 操作 RKS
+
+如果你打算让 Codex 直接驱动测试，建议让它遵循下面的工作方式：
+
+- 在仓库根目录执行，且虚拟环境已激活
+- 优先通过 `rks` CLI 操作，必要时再调用 HTTP 接口
+- 每完成一步都记录返回的 `paper_id`、`claim_id`、`task_id`
+- 不要凭空猜测对象 ID，必须从命令输出中读取
+- 在 promote / retract relation 前，先用 `query claim-relations` 读取当前候选关系
+- 在调用 HTTP 接口后，再用 CLI 做一次交叉核对
+
+### 推荐给 Codex 的总提示词
+
+你可以直接把下面这段发给 Codex：
+
+```text
+你现在在 RKS 仓库根目录，请直接通过终端操作 rks，完成一次端到端验证。
+
+要求：
+1. 先检查并初始化环境。
+2. 通过 rks CLI 完成 ingest、extract、query、review。
+3. 对 DOI/arXiv ingestion，检查 source_pdf acquisition 状态。
+4. 构造 claim relation 的 inferred -> reviewed -> retracted 闭环。
+5. 启动本地服务后，用 HTTP 接口验证 CLI 与 API 的一致性。
+6. 每一步都记录关键 ID，并在最后输出一份简短测试结果摘要。
+7. 不要假设任何 ID，必须从命令返回中提取。
+8. 如果某一步失败，先定位原因，再继续推进。
+```
+
+### 推荐给 Codex 的单项任务提示词
+
+如果你不想让 Codex 一次跑完整套，可以拆成下面几类。
+
+#### A. 输入完整性验证
+
+```text
+请在当前 RKS 仓库里验证参考文献 ingest 链路。
+使用 rks ingest doi 或 rks ingest arxiv 创建 paper。
+然后检查 show paper 和 status paper，确认 metadata、source_pdf_acquisition，以及 source_pdf 状态。
+如果下载到 PDF，请同时检查 data/papers/<paper_id>/source.pdf 是否存在。
+最后输出 acquisition 的状态和值得注意的异常。
+```
+
+#### B. claim relation 审阅闭环验证
+
+```text
+请构造三篇最小 paper，并导入三组 claims：
+一组是 improves on WMT14，
+一组是 improves on IWSLT，
+一组是 does not improve on WMT14。
+
+然后：
+1. 运行 rks query claim-relations
+2. 找到一个 contradicts 候选
+3. 用 rks review promote-claim-relation 持久化
+4. 再次查询并验证 reviewed_relations
+5. 用 rks review retract-claim-relation 删除
+6. 再次验证 inferred 和 reviewed 的区别
+
+输出过程中记录所有相关 claim_id。
+```
+
+#### C. HTTP 接口一致性验证
+
+```text
+请在当前 RKS 仓库里启动 rks serve，然后验证下面几个接口：
+/health
+/api/status/<paper_id>
+/api/claims/<claim_id>/relations
+/api/review/claim-relations/promote
+/api/review/claim-relations/retract
+
+要求把 HTTP 结果与对应 CLI 结果做对比，确认它们的语义一致。
+```
+
+### 建议让 Codex 输出的结果格式
+
+为了便于你审阅，可以要求 Codex 最后按这个结构汇报：
+
+```text
+1. 环境初始化结果
+2. 生成/使用的关键对象 ID
+3. 输入完整性结果
+4. claim relation 审阅闭环结果
+5. CLI / HTTP 一致性结果
+6. 失败项与原因
+7. 建议后续修复点
+```
+
+### 使用 Codex 时最值得盯住的风险
+
+- agent 直接假设 `paper_id` 或 `claim_id`
+- agent 只看 CLI，不核对文件系统工件
+- agent 只调用 promote，不验证 retract
+- agent 验证了 HTTP 读接口，但没验证 HTTP 写接口
+- agent 没有区分 `inferred_relations` 和 `reviewed_relations`
+
 ## 3. 场景一：本地 PDF ingest 与基础抽取
 
 先准备一个最小 PDF 文件，例如：
