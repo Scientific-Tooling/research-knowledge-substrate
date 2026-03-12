@@ -4,7 +4,7 @@ import json
 import urllib.request
 
 from rks.config import LlmConfig
-from rks.llm import validate_claims_result_payload, validate_text_result_payload
+from rks.llm import validate_claims_result_payload, validate_summary_result_payload, validate_text_result_payload
 
 
 class OpenAICompatibleLlmProvider:
@@ -45,6 +45,18 @@ class OpenAICompatibleLlmProvider:
         }
         response = self._chat_json(prompt)
         return validate_claims_result_payload(response)
+
+    def summarize_paper(self, summary_input: dict) -> dict:
+        prompt = {
+            "task": "summarize_paper",
+            "instructions": [
+                "Return only JSON.",
+                "Return keys: summary, evidence_claim_ids, open_questions.",
+                "The summary should be concise and grounded in the input evidence.",
+            ],
+            "input": summary_input,
+        }
+        return validate_summary_result_payload(self._chat_json(prompt))
 
     def _chat_json(self, payload: dict) -> dict:
         request_payload = {

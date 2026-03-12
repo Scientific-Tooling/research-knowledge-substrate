@@ -6,7 +6,13 @@ from pathlib import Path
 from rks.config import AppPaths
 from rks.extraction.claims import persist_claims_for_paper
 from rks.extraction.text import build_text_source_input, write_text_artifact
-from rks.llm import build_dual_track_request, validate_claims_result_payload, validate_text_result_payload
+from rks.llm import (
+    build_dual_track_request,
+    validate_claims_result_payload,
+    validate_summary_result_payload,
+    validate_text_result_payload,
+)
+from rks.reasoning.summary import build_summary_input, persist_summary_artifact
 from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
 from rks.utils import ensure_dir
 
@@ -72,6 +78,37 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
     )
 
 
+def create_summary_request(
+    repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    concept_repo: ConceptRepository,
+    paths: AppPaths,
+    paper_id: str,
+) -> dict:
+    request = build_dual_track_request(
+        task="summarize_paper",
+        paper_id=paper_id,
+        instruction=(
+            "Write a concise research summary grounded in the input claims and concepts. "
+            "Return JSON with keys `summary`, `evidence_claim_ids`, and `open_questions`."
+        ),
+        input_payload=build_summary_input(repo, claim_repo, concept_repo, paper_id),
+        expected_output_schema={
+            "summary": "string",
+            "evidence_claim_ids": ["string"],
+            "open_questions": ["string"],
+        },
+    )
+    return _write_request_artifact(
+        repo,
+        paths,
+        paper_id,
+        "agent_summary_request",
+        "agent_summary_request.json",
+        request,
+    )
+
+
 def import_text_result(repo: PaperRepository, paths: AppPaths, paper_id: str, json_path: Path):
     payload = validate_text_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
     payload.setdefault("extractor", "agent")
@@ -100,6 +137,19 @@ def import_claims_result(
         paper_id=paper_id,
         claims=claims,
         extractor="agent",
+    )
+
+
+def import_summary_result(repo: PaperRepository, paths: AppPaths, paper_id: str, json_path: Path):
+    payload = validate_summary_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
+    payload.setdefault("mode", "agent")
+    return persist_summary_artifact(
+        paper_repo=repo,
+        paths=paths,
+        paper_id=paper_id,
+        payload=payload,
+        artifact_type="paper_summary",
+        filename="paper_summary.json",
     )
 
 

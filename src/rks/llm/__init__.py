@@ -3,6 +3,7 @@ from rks.llm.contract import (
     DUAL_TRACK_SPEC_VERSION,
     build_dual_track_request,
     validate_claims_result_payload,
+    validate_summary_result_payload,
     validate_text_result_payload,
 )
 
@@ -11,5 +12,6 @@ __all__ = [
     "DUAL_TRACK_SPEC_VERSION",
     "build_dual_track_request",
     "validate_claims_result_payload",
+    "validate_summary_result_payload",
     "validate_text_result_payload",
 ]

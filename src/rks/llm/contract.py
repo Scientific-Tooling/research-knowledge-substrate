@@ -57,3 +57,17 @@ def validate_claims_result_payload(payload) -> list[dict]:
         if not isinstance(claim["evidence"], dict):
             raise ValueError(f"Claim at index {index} has a non-object `evidence`.")
     return claims
+
+
+def validate_summary_result_payload(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Summary result must be a JSON object.")
+    if "summary" not in payload:
+        raise ValueError("Summary result is missing required key: summary")
+    if not isinstance(payload["summary"], str):
+        raise ValueError("Summary result `summary` must be a string.")
+    if "evidence_claim_ids" in payload and not isinstance(payload["evidence_claim_ids"], list):
+        raise ValueError("Summary result `evidence_claim_ids` must be a list when present.")
+    if "open_questions" in payload and not isinstance(payload["open_questions"], list):
+        raise ValueError("Summary result `open_questions` must be a list when present.")
+    return payload

@@ -15,6 +15,7 @@ The current MVP supports:
 - querying claims about a concept and papers supporting a claim
 - two LLM integration modes for text extraction and claim parsing:
   API mode and agent-assisted mode
+- the same dual-track pattern for paper summarization
 
 Progress is tracked in [docs/progress.md](docs/progress.md).
 
@@ -78,6 +79,15 @@ Run deterministic queries:
 ```bash
 rks query claims-about Transformer
 rks query papers-supporting c_000001
+```
+
+Generate a paper summary:
+
+```bash
+rks summarize paper p_000001
+rks summarize paper p_000001 --mode llm-api
+rks summarize paper p_000001 --mode agent
+rks import summary p_000001 path/to/agent_summary.json
 ```
 
 ## Reference Ingestion

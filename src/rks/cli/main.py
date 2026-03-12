@@ -4,7 +4,14 @@ import argparse
 import json
 from pathlib import Path
 
-from rks.agent import create_claims_request, create_text_request, import_claims_result, import_text_result
+from rks.agent import (
+    create_claims_request,
+    create_summary_request,
+    create_text_request,
+    import_claims_result,
+    import_summary_result,
+    import_text_result,
+)
 from rks.config import load_paths
 from rks.config import load_llm_config
 from rks.extraction import (
@@ -17,6 +24,8 @@ from rks.ingestion import ingest_arxiv_reference, ingest_doi_reference, ingest_p
 from rks.llm import ALL_EXTRACTION_MODES
 from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, OpenAICompatibleLlmProvider
 from rks.query import QueryService
+from rks.reasoning import summarize_paper_heuristic
+from rks.reasoning.summary import build_summary_input, persist_summary_artifact
 from rks.storage import (
     ClaimRepository,
     ConceptRepository,
@@ -69,6 +78,19 @@ def build_parser() -> argparse.ArgumentParser:
     concepts_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     concepts_parser.set_defaults(handler=handle_concepts)
 
+    summarize_parser = subparsers.add_parser("summarize", help="Generate or request reasoning outputs.")
+    summarize_subparsers = summarize_parser.add_subparsers(dest="summarize_command", required=True)
+
+    summarize_paper_parser = summarize_subparsers.add_parser("paper", help="Summarize a paper.")
+    summarize_paper_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    summarize_paper_parser.add_argument(
+        "--mode",
+        choices=ALL_EXTRACTION_MODES,
+        default="heuristic",
+        help="Execution mode for paper summarization.",
+    )
+    summarize_paper_parser.set_defaults(handler=handle_summarize_paper)
+
     extract_parser = subparsers.add_parser("extract", help="Run extraction steps for a stored paper.")
     extract_subparsers = extract_parser.add_subparsers(dest="extract_command", required=True)
 
@@ -104,6 +126,11 @@ def build_parser() -> argparse.ArgumentParser:
     import_claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     import_claims_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
     import_claims_parser.set_defaults(handler=handle_import_claims)
+
+    import_summary_parser = import_subparsers.add_parser("summary", help="Import a paper summary JSON for a paper.")
+    import_summary_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    import_summary_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
+    import_summary_parser.set_defaults(handler=handle_import_summary)
 
     query_parser = subparsers.add_parser("query", help="Run deterministic research graph queries.")
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
@@ -216,6 +243,44 @@ def handle_concepts(args: argparse.Namespace) -> int:
             edges=session.edges,
         )
         payload = query.concepts_for_paper(args.paper_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_summarize_paper(args: argparse.Namespace) -> int:
+    if args.mode == "heuristic":
+        with _open_session() as session:
+            payload = summarize_paper_heuristic(
+                paths=load_paths(),
+                paper_repo=session.papers,
+                claim_repo=session.claims,
+                concept_repo=session.concepts,
+                paper_id=args.paper_id,
+            )
+    elif args.mode == "llm-api":
+        with _open_session() as session:
+            provider = OpenAICompatibleLlmProvider(load_llm_config())
+            summary_input = build_summary_input(session.papers, session.claims, session.concepts, args.paper_id)
+            summary_payload = provider.summarize_paper(summary_input)
+            summary_payload["mode"] = "llm-api"
+            payload = persist_summary_artifact(
+                paper_repo=session.papers,
+                paths=load_paths(),
+                paper_id=args.paper_id,
+                payload=summary_payload,
+                artifact_type="paper_summary",
+                filename="paper_summary.json",
+            )
+    else:
+        with _open_session() as session:
+            payload = create_summary_request(
+                repo=session.papers,
+                claim_repo=session.claims,
+                concept_repo=session.concepts,
+                paths=load_paths(),
+                paper_id=args.paper_id,
+            )
+            payload["mode"] = "agent"
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -358,6 +423,13 @@ def handle_import_claims(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
+    return 0
+
+
+def handle_import_summary(args: argparse.Namespace) -> int:
+    with _open_repository() as repo:
+        payload = import_summary_result(repo=repo, paths=load_paths(), paper_id=args.paper_id, json_path=args.json_path)
+    print(json.dumps(payload, indent=2))
     return 0
 
 

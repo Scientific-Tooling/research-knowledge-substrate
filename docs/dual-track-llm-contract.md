@@ -73,5 +73,6 @@ The contract is currently implemented for:
 
 - text extraction
 - claim parsing
+- paper summarization
 
 Future LLM-backed tasks must adopt the same interface pattern instead of inventing task-specific one-off flows.

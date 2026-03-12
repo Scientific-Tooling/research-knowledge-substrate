@@ -81,6 +81,36 @@ class LlmProviderTest(unittest.TestCase):
         self.assertEqual(len(claims), 1)
         self.assertEqual(claims[0]["context"]["subject_text"], "Transformers")
 
+    def test_summarize_paper(self) -> None:
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "summary": "The paper argues that transformers improve translation accuracy.",
+                                "evidence_claim_ids": ["c_000001"],
+                                "open_questions": [],
+                            }
+                        )
+                    }
+                }
+            ]
+        }
+
+        def fake_urlopen(request):
+            self.assertIn("/chat/completions", request.full_url)
+            return _FakeResponse(response)
+
+        provider = OpenAICompatibleLlmProvider(
+            config=LlmConfig(base_url="https://example.test/v1", api_key="test-key", model="test-model"),
+            urlopen=fake_urlopen,
+        )
+
+        payload = provider.summarize_paper({"paper": {"id": "p_000001"}})
+        self.assertIn("summary", payload)
+        self.assertEqual(payload["evidence_claim_ids"], ["c_000001"])
+
 
 if __name__ == "__main__":
     unittest.main()
