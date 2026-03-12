@@ -58,7 +58,7 @@ A normal agent workflow is:
 2. ingest data
 3. inspect artifacts and status
 4. extract claims or import agent-produced results
-5. run search, query, or summarize
+5. run search, query, output generation, or summarize
 6. review claim relations
 7. cross-check through HTTP
 8. return a structured report
@@ -165,7 +165,36 @@ Recommended order when answering user questions:
 2. `rks query claims-about`
 3. `rks show claim`
 4. `rks query claim-relations`
-5. `rks summarize paper`
+5. `rks output answer`
+6. `rks summarize paper`
+
+### 7.3 Direct output surfaces
+
+Answer a question:
+
+```bash
+rks output answer "What does the graph say about Sparse Attention?"
+```
+
+Topic briefing:
+
+```bash
+rks output brief "Sparse Attention"
+```
+
+Disagreements:
+
+```bash
+rks output disagreements "Sparse Attention"
+```
+
+Opportunities:
+
+```bash
+rks output opportunities "Sparse Attention"
+```
+
+These commands are the preferred product-facing output layer when the user expects synthesis, disagreement surfacing, or inspiration rather than raw graph inspection.
 
 ## 8. Claim Relation Review Loop
 
@@ -245,6 +274,10 @@ rks serve --host 127.0.0.1 --port 8765
 curl -s http://127.0.0.1:8765/health
 curl -s http://127.0.0.1:8765/api/status/<paper_id>
 curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
+curl -s "http://127.0.0.1:8765/api/output/answer?q=Sparse%20Attention%20outlook"
+curl -s "http://127.0.0.1:8765/api/output/brief?topic=Sparse%20Attention"
+curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=Sparse%20Attention"
+curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=Sparse%20Attention"
 ```
 
 ### 10.3 Write endpoints

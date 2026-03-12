@@ -52,7 +52,7 @@ A normal RKS usage loop is:
 1. ingest material
 2. extract text, claims, methods, or datasets
 3. inspect papers and graph objects
-4. run search, query, or summarization
+4. run search, query, output generation, or summarization
 5. review and persist important claim relations
 
 ## 4. Ingest Sources
@@ -235,7 +235,37 @@ The key distinction is:
 
 Do not treat `inferred_relations` as durable truth.
 
-## 8. Manually Review Claim Relations
+## 8. Direct Research Outputs
+
+RKS now also exposes output-oriented commands for users who want content back from the graph rather than only raw objects.
+
+Answer a research question:
+
+```bash
+rks output answer "What does the graph say about Sparse Attention?"
+```
+
+Generate a topic briefing:
+
+```bash
+rks output brief "Sparse Attention"
+```
+
+Inspect disagreements:
+
+```bash
+rks output disagreements "Sparse Attention"
+```
+
+Generate opportunities and next-step guidance:
+
+```bash
+rks output opportunities "Sparse Attention"
+```
+
+These outputs are grounded in claims, papers, methods, datasets, and reviewed or inferred relation structure. They are intended to be more directly consumable than lower-level query outputs.
+
+## 9. Manually Review Claim Relations
 
 First inspect candidates:
 
@@ -268,7 +298,7 @@ rks query claim-relations <source_claim_id>
 rks show claim <source_claim_id>
 ```
 
-## 9. Agent Mode From a User Perspective
+## 10. Agent Mode From a User Perspective
 
 If you want an external agent to perform a task instead of letting RKS call a provider directly, use `--mode agent`.
 
@@ -299,7 +329,7 @@ This pattern means:
 - the external agent produces the result
 - RKS validates and persists the imported result
 
-## 10. Tasks and Status
+## 11. Tasks and Status
 
 List tasks:
 
@@ -338,7 +368,7 @@ rks status paper <paper_id>
 - source PDF state
 - task state
 
-## 11. Batch Operations
+## 12. Batch Operations
 
 ### 11.1 Batch ingest
 
@@ -371,7 +401,7 @@ Example extract manifest:
 ]
 ```
 
-## 12. Export, Import, and Service
+## 13. Export, Import, and Service
 
 Export a graph snapshot:
 
@@ -391,7 +421,7 @@ Start the local service:
 rks serve --host 127.0.0.1 --port 8765
 ```
 
-## 13. Basic HTTP Usage
+## 14. Basic HTTP Usage
 
 Health check:
 
@@ -437,7 +467,7 @@ curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/retract \
   }'
 ```
 
-## 14. Minimal Daily Command Set
+## 15. Minimal Daily Command Set
 
 If you only want the smallest practical command set, remember:
 
@@ -446,6 +476,7 @@ rks ingest pdf <path>
 rks show paper <paper_id>
 rks extract claims <paper_id>
 rks claims <paper_id>
+rks output answer "What does the graph say about this topic?"
 rks query claim-relations <claim_id>
 rks review promote-claim-relation <source_claim_id> supports <target_claim_id>
 rks status paper <paper_id>
@@ -455,6 +486,30 @@ This already covers:
 
 - ingest
 - graph construction
+- answer generation
 - query
 - review
 - status inspection
+Output answer:
+
+```bash
+curl -s "http://127.0.0.1:8765/api/output/answer?q=Sparse%20Attention%20outlook"
+```
+
+Output brief:
+
+```bash
+curl -s "http://127.0.0.1:8765/api/output/brief?topic=Sparse%20Attention"
+```
+
+Output disagreements:
+
+```bash
+curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=Sparse%20Attention"
+```
+
+Output opportunities:
+
+```bash
+curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=Sparse%20Attention"
+```

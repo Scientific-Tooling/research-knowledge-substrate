@@ -37,6 +37,7 @@ The repository now has a hardened post-MVP base for extraction quality:
 - durable reviewed claim-to-claim relations alongside non-durable inferred candidates
 - a dedicated operations layer for paper status and claim-relation review flows
 - HTTP review endpoints for claim-relation promotion and retraction
+- direct research output surfaces for grounded answers, topic briefs, disagreements, and opportunities
 
 ## Implemented Milestones
 

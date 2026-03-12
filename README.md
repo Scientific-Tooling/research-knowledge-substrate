@@ -16,6 +16,7 @@ The current implementation supports:
 - creating graph edges for `contains`, `supported_by`, `about`, `proposes`, `uses`, `evaluated_on`, and `cites`
 - querying claims, methods, datasets, evidence views, and claim relations
 - promoting reviewed claim relations into durable graph edges while keeping inferred relations separate
+- generating direct research outputs for answers, topic briefs, disagreements, and opportunities
 - indexing local embeddings and running hybrid lexical/semantic search
 - two LLM integration modes for text extraction and claim parsing:
   API mode and agent-assisted mode
@@ -99,6 +100,15 @@ rks review promote-claim-relation c_000001 supports c_000014 --reviewed-by agent
 rks review retract-claim-relation c_000001 supports c_000014
 ```
 
+Generate direct research outputs:
+
+```bash
+rks output answer "What does the graph say about Sparse Attention?"
+rks output brief "Sparse Attention"
+rks output disagreements "Sparse Attention"
+rks output opportunities "Sparse Attention"
+```
+
 Generate a paper summary:
 
 ```bash
@@ -141,6 +151,7 @@ When a provider exposes PDF candidates, RKS also attempts to persist a local `so
 
 - [docs/README.md](docs/README.md)
 - [docs/design-implementation-comparison.md](docs/design-implementation-comparison.md)
+- [docs/research-output-roadmap.md](docs/research-output-roadmap.md)
 - [docs/installation-guide.md](docs/installation-guide.md)
 - [docs/installation-guide-zh.md](docs/installation-guide-zh.md)
 - [docs/user-usage-guide.md](docs/user-usage-guide.md)

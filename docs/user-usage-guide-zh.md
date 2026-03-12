@@ -52,7 +52,7 @@ RKS 的基本使用顺序通常是：
 1. ingest 文献
 2. 抽取 text / claims / methods / datasets
 3. 查看 paper 和 graph 对象
-4. 运行 query / search / summarize
+4. 运行 query / search / output / summarize
 5. 审阅并持久化关键 relation
 
 ## 4. 导入文献
@@ -235,7 +235,37 @@ rks query claim-relations <claim_id>
 
 不要把 `inferred_relations` 直接当成 durable truth。
 
-## 8. 手动审阅 claim relation
+## 8. 直接研究输出
+
+RKS 现在还提供更直接面向用户的输出命令，用来“从图里拿内容”，而不只是查看底层对象。
+
+回答研究问题：
+
+```bash
+rks output answer "Sparse Attention 目前有什么结论？"
+```
+
+生成主题 briefing：
+
+```bash
+rks output brief "Sparse Attention"
+```
+
+查看分歧与矛盾：
+
+```bash
+rks output disagreements "Sparse Attention"
+```
+
+生成研究机会与下一步建议：
+
+```bash
+rks output opportunities "Sparse Attention"
+```
+
+这些输出会把 claims、papers、methods、datasets 以及 reviewed / inferred relation 一起组织成更容易消费的结果。
+
+## 9. 手动审阅 claim relation
 
 先查看候选：
 
@@ -268,7 +298,7 @@ rks query claim-relations <source_claim_id>
 rks show claim <source_claim_id>
 ```
 
-## 9. Agent 模式工作流
+## 10. Agent 模式工作流
 
 如果你想把某一步交给外部 agent，而不是让 RKS 直接调用 provider，可以用 `--mode agent`。
 
@@ -299,7 +329,7 @@ rks import summary <paper_id> path/to/agent_summary.json
 - 外部 agent 负责生成结果
 - RKS 负责 import、校验和持久化
 
-## 10. 任务与状态
+## 11. 任务与状态
 
 查看全部任务：
 
@@ -338,7 +368,7 @@ rks status paper <paper_id>
 - source PDF 状态
 - 任务状态
 
-## 11. 批量操作
+## 12. 批量操作
 
 ### 11.1 批量 ingest
 
@@ -371,7 +401,7 @@ extract manifest 示例：
 ]
 ```
 
-## 12. 导出、导入和服务
+## 13. 导出、导入和服务
 
 导出 graph snapshot：
 
@@ -391,7 +421,7 @@ rks import graph snapshot.json
 rks serve --host 127.0.0.1 --port 8765
 ```
 
-## 13. HTTP 接口的基本使用
+## 14. HTTP 接口的基本使用
 
 健康检查：
 
@@ -437,7 +467,7 @@ curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/retract \
   }'
 ```
 
-## 14. 推荐的最小日常使用集
+## 15. 推荐的最小日常使用集
 
 如果你只想掌握最常用的一组命令，优先记住这些：
 
@@ -446,6 +476,7 @@ rks ingest pdf <path>
 rks show paper <paper_id>
 rks extract claims <paper_id>
 rks claims <paper_id>
+rks output answer "这个主题目前有什么结论？"
 rks query claim-relations <claim_id>
 rks review promote-claim-relation <source_claim_id> supports <target_claim_id>
 rks status paper <paper_id>
@@ -455,6 +486,30 @@ rks status paper <paper_id>
 
 - ingest
 - graph construction
+- 内容输出
 - query
 - review
 - status inspection
+问答输出：
+
+```bash
+curl -s "http://127.0.0.1:8765/api/output/answer?q=Sparse%20Attention%20outlook"
+```
+
+brief 输出：
+
+```bash
+curl -s "http://127.0.0.1:8765/api/output/brief?topic=Sparse%20Attention"
+```
+
+分歧输出：
+
+```bash
+curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=Sparse%20Attention"
+```
+
+研究机会输出：
+
+```bash
+curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=Sparse%20Attention"
+```

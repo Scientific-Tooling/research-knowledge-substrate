@@ -193,6 +193,30 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_query_service() as query_service:
             payload = query_service.search(query, mode=mode)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/output/answer":
+        params = parse_qs(parsed.query)
+        question = params.get("q", [""])[0]
+        with _open_operations() as operations:
+            payload = operations.answer_question(question)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/output/brief":
+        params = parse_qs(parsed.query)
+        topic = params.get("topic", [""])[0]
+        with _open_operations() as operations:
+            payload = operations.topic_brief(topic)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/output/disagreements":
+        params = parse_qs(parsed.query)
+        topic = params.get("topic", [""])[0]
+        with _open_operations() as operations:
+            payload = operations.topic_disagreements(topic)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/output/opportunities":
+        params = parse_qs(parsed.query)
+        topic = params.get("topic", [""])[0]
+        with _open_operations() as operations:
+            payload = operations.research_opportunities(topic)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/claims/") and parsed.path.endswith("/relations"):
         claim_id = parsed.path.split("/")[3]
         with _open_operations() as operations:

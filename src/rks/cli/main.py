@@ -310,6 +310,31 @@ def build_parser() -> argparse.ArgumentParser:
     query_datasets_for_parser.add_argument("target", help="Paper ID or method ID.")
     query_datasets_for_parser.set_defaults(handler=handle_query_datasets_for)
 
+    output_parser = subparsers.add_parser("output", help="Generate direct research outputs from the local graph.")
+    output_subparsers = output_parser.add_subparsers(dest="output_command", required=True)
+
+    output_answer_parser = output_subparsers.add_parser("answer", help="Answer a research question from the local graph.")
+    output_answer_parser.add_argument("question", help="Research question text.")
+    output_answer_parser.set_defaults(handler=handle_output_answer)
+
+    output_brief_parser = output_subparsers.add_parser("brief", help="Generate a structured topic briefing.")
+    output_brief_parser.add_argument("topic", help="Topic text.")
+    output_brief_parser.set_defaults(handler=handle_output_brief)
+
+    output_disagreements_parser = output_subparsers.add_parser(
+        "disagreements",
+        help="Surface contradictions and refinements around a topic.",
+    )
+    output_disagreements_parser.add_argument("topic", help="Topic text.")
+    output_disagreements_parser.set_defaults(handler=handle_output_disagreements)
+
+    output_opportunities_parser = output_subparsers.add_parser(
+        "opportunities",
+        help="Generate research opportunities and next-step guidance for a topic.",
+    )
+    output_opportunities_parser.add_argument("topic", help="Topic text.")
+    output_opportunities_parser.set_defaults(handler=handle_output_opportunities)
+
     return parser
 
 
@@ -1048,6 +1073,34 @@ def handle_query_datasets_for(args: argparse.Namespace) -> int:
             embedding_provider=LocalHashEmbeddingProvider(),
         )
         payload = query.datasets_for(args.target)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_answer(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).answer_question(args.question)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_brief(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).topic_brief(args.topic)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_disagreements(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).topic_disagreements(args.topic)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_opportunities(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).research_opportunities(args.topic)
     print(json.dumps(payload, indent=2))
     return 0
 

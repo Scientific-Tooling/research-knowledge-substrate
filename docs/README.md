@@ -9,6 +9,7 @@ These documents describe the current product, architecture direction, operations
 - `progress.md`
 - `product-priorities.md`
 - `design-implementation-comparison.md`
+- `research-output-roadmap.md`
 - `dual-track-llm-contract.md`
 - `agent-skills.md`
 - `installation-guide.md`

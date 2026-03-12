@@ -58,7 +58,7 @@ agent 需要特别关注：
 2. ingest 数据
 3. 检查 artifacts 和 status
 4. 抽取 claims 或导入 agent 结果
-5. 执行 query / search / summarize
+5. 执行 query / search / output / summarize
 6. 审阅 claim relations
 7. 使用 HTTP 接口交叉验证
 8. 输出结构化结果
@@ -170,7 +170,36 @@ agent 在回答用户问题时，推荐顺序是：
 2. `rks query claims-about`
 3. `rks show claim`
 4. `rks query claim-relations`
-5. `rks summarize paper`
+5. `rks output answer`
+6. `rks summarize paper`
+
+### 7.3 直接输出层
+
+回答研究问题：
+
+```bash
+rks output answer "Sparse Attention 目前有什么结论？"
+```
+
+生成主题 briefing：
+
+```bash
+rks output brief "Sparse Attention"
+```
+
+查看分歧：
+
+```bash
+rks output disagreements "Sparse Attention"
+```
+
+生成研究机会：
+
+```bash
+rks output opportunities "Sparse Attention"
+```
+
+当用户真正想要“内容、综合、灵感、下一步建议”时，这组命令应优先于只返回底层 graph 对象的命令。
 
 ## 8. claim relation 审阅闭环
 
@@ -250,6 +279,10 @@ rks serve --host 127.0.0.1 --port 8765
 curl -s http://127.0.0.1:8765/health
 curl -s http://127.0.0.1:8765/api/status/<paper_id>
 curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
+curl -s "http://127.0.0.1:8765/api/output/answer?q=Sparse%20Attention%20outlook"
+curl -s "http://127.0.0.1:8765/api/output/brief?topic=Sparse%20Attention"
+curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=Sparse%20Attention"
+curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=Sparse%20Attention"
 ```
 
 ### 10.3 写接口

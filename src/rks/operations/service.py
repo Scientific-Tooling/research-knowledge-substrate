@@ -4,6 +4,12 @@ import json
 
 from rks.providers import LocalHashEmbeddingProvider
 from rks.query import QueryService
+from rks.reasoning import (
+    build_research_answer,
+    build_research_opportunities,
+    build_topic_brief,
+    build_topic_disagreements,
+)
 
 
 class ResearchOperations:
@@ -64,6 +70,18 @@ class ResearchOperations:
 
     def claim_relations(self, claim_id: str) -> dict:
         return self.query.claim_relations(claim_id)
+
+    def answer_question(self, question: str) -> dict:
+        return build_research_answer(self.query, question)
+
+    def topic_brief(self, topic: str) -> dict:
+        return build_topic_brief(self.query, topic)
+
+    def topic_disagreements(self, topic: str) -> dict:
+        return build_topic_disagreements(self.query, topic)
+
+    def research_opportunities(self, topic: str) -> dict:
+        return build_research_opportunities(self.query, topic)
 
     def promote_claim_relation(
         self,
