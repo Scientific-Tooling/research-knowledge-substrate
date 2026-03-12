@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
+from rks import __version__
 from rks.utils import ensure_dir
+
+SKILL_BUNDLE_VERSION = f"{__version__}.skillbundle.1"
 
 
 @dataclass(frozen=True)
@@ -58,18 +61,31 @@ def export_bundled_skills(destination: Path) -> dict:
         )
 
     (destination / "skills-index.json").write_text(json.dumps(index_entries, indent=2), encoding="utf-8")
+    (destination / "bundle-metadata.json").write_text(
+        json.dumps(
+            {
+                "bundle_version": SKILL_BUNDLE_VERSION,
+                "skill_count": len(index_entries),
+                "skills_index": "skills-index.json",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     (destination / "AGENTS.md").write_text(_agents_md(index_entries), encoding="utf-8")
     (destination / "CLAUDE.md").write_text(_claude_md(index_entries), encoding="utf-8")
     (destination / "README.md").write_text(_bundle_readme(index_entries), encoding="utf-8")
 
     return {
         "destination": str(destination),
+        "bundle_version": SKILL_BUNDLE_VERSION,
         "skill_count": len(index_entries),
         "skills": index_entries,
         "exported_files": [
             "AGENTS.md",
             "CLAUDE.md",
             "README.md",
+            "bundle-metadata.json",
             "skills-index.json",
             *[entry["path"] for entry in index_entries],
         ],
@@ -98,11 +114,13 @@ def _bundle_readme(entries: list[dict]) -> str:
         "# RKS Agent Skill Bundle",
         "",
         "This directory was exported by `rks skills export`.",
+        f"Bundle version: `{SKILL_BUNDLE_VERSION}`.",
         "",
         "Contents:",
         "",
         "- `skills/`: raw skill markdown files",
         "- `skills-index.json`: machine-readable index",
+        "- `bundle-metadata.json`: bundle version and export metadata",
         "- `AGENTS.md`: project instructions file for Codex-style agent tools",
         "- `CLAUDE.md`: project instructions file for Claude Code-style agent tools",
         "",

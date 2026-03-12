@@ -106,6 +106,7 @@ The export directory contains:
 
 - `skills/<skill-name>/SKILL.md`
 - `skills-index.json`
+- `bundle-metadata.json`
 - `AGENTS.md`
 - `CLAUDE.md`
 - `README.md`

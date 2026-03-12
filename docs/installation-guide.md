@@ -167,9 +167,11 @@ If the installed environment should also pass repository-specific skills to an e
 ```bash
 rks skills list
 rks skills export ./rks-agent-kit
+rks doctor
 ```
 
 The exported bundle is intended for Codex, Claude Code, or any other agent tool that can consume project instructions and markdown runbooks.
+It now also includes `bundle-metadata.json` with a stable `bundle_version`.
 
 ## 8. Recommended Install Shapes
 

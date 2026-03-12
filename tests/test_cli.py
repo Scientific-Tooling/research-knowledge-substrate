@@ -8,6 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from rks import __version__
+from rks.agent_skills import SKILL_BUNDLE_VERSION
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,12 +44,38 @@ class CliSmokeTest(unittest.TestCase):
             export_result = run_cli("skills", "export", str(export_dir), cwd=tmp_path)
             self.assertEqual(export_result.returncode, 0, export_result.stderr)
             export_payload = json.loads(export_result.stdout)
+            self.assertEqual(export_payload["bundle_version"], SKILL_BUNDLE_VERSION)
             self.assertEqual(export_payload["skill_count"], len(list_payload))
             self.assertTrue((export_dir / "skills-index.json").exists())
+            self.assertTrue((export_dir / "bundle-metadata.json").exists())
             self.assertTrue((export_dir / "AGENTS.md").exists())
             self.assertTrue((export_dir / "CLAUDE.md").exists())
             self.assertTrue((export_dir / "README.md").exists())
             self.assertTrue((export_dir / "skills" / "rks-codex-operator" / "SKILL.md").exists())
+            bundle_metadata = json.loads((export_dir / "bundle-metadata.json").read_text(encoding="utf-8"))
+            self.assertEqual(bundle_metadata["bundle_version"], SKILL_BUNDLE_VERSION)
+            self.assertEqual(bundle_metadata["skill_count"], len(list_payload))
+
+    def test_doctor_reports_installation_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            before_result = run_cli("doctor", cwd=tmp_path)
+            self.assertEqual(before_result.returncode, 0, before_result.stderr)
+            before_payload = json.loads(before_result.stdout)
+            self.assertEqual(before_payload["version"], __version__)
+            self.assertEqual(before_payload["overall_status"], "action_required")
+            self.assertIn("rks config init", before_payload["recommended_actions"])
+            self.assertIn("rks init-db", before_payload["recommended_actions"])
+
+            self.assertEqual(run_cli("config", "init", cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("init-db", cwd=tmp_path).returncode, 0)
+
+            after_result = run_cli("doctor", cwd=tmp_path)
+            self.assertEqual(after_result.returncode, 0, after_result.stderr)
+            after_payload = json.loads(after_result.stdout)
+            self.assertEqual(after_payload["overall_status"], "ok")
+            self.assertEqual(after_payload["checks"]["bundled_skills"]["bundle_version"], SKILL_BUNDLE_VERSION)
 
     def test_init_db_and_ingest_pdf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

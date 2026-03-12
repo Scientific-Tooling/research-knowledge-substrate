@@ -167,9 +167,11 @@ rks summarize paper <paper_id> --mode agent
 ```bash
 rks skills list
 rks skills export ./rks-agent-kit
+rks doctor
 ```
 
 这个导出目录就是给 Codex、Claude Code 或其他能够读取项目说明和 markdown runbook 的 agent 工具准备的。
+现在导出目录里还会带一个 `bundle-metadata.json`，用于标记稳定的 `bundle_version`。
 
 ## 8. 推荐安装形态
 

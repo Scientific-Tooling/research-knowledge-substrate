@@ -58,6 +58,7 @@ python -m twine check dist/*
 - `dist/` 下出现 source distribution
 - `dist/` 下出现 wheel
 - `twine check` 通过，没有元数据或渲染错误
+- 安装后的 wheel 可以通过 `rks --help`、`rks skills list`、`rks init-db`、`rks doctor` 这组 smoke check
 
 ## 4. 版本管理
 

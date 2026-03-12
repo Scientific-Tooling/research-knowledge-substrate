@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from rks import __version__
 from rks.agent import (
     create_claims_request,
     create_summary_request,
@@ -12,7 +13,7 @@ from rks.agent import (
     import_summary_result,
     import_text_result,
 )
-from rks.agent_skills import export_bundled_skills, list_bundled_skills
+from rks.agent_skills import SKILL_BUNDLE_VERSION, export_bundled_skills, list_bundled_skills
 from rks.config import config_path, load_app_config, load_llm_config, load_paths, write_default_config
 from rks.extraction import (
     extract_claims_for_paper,
@@ -44,7 +45,7 @@ from rks.storage import (
     import_graph_snapshot,
     initialize_db,
 )
-from rks.storage.db import apply_migrations, current_schema_version
+from rks.storage.db import apply_migrations, current_schema_version, list_migration_files
 from rks.service import serve_http
 
 
@@ -54,6 +55,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_parser = subparsers.add_parser("init-db", help="Initialize the local RKS SQLite database.")
     init_parser.set_defaults(handler=handle_init_db)
+
+    doctor_parser = subparsers.add_parser("doctor", help="Run installation and environment self-checks.")
+    doctor_parser.set_defaults(handler=handle_doctor)
 
     config_parser = subparsers.add_parser("config", help="Manage RKS configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
@@ -454,6 +458,52 @@ def handle_skills_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_doctor(args: argparse.Namespace) -> int:
+    del args
+    app_config = load_app_config()
+    paths = load_paths()
+    config_exists = config_path(app_config.root).exists()
+    data_dir_exists = paths.data_dir.exists()
+    db_exists = paths.db_path.exists()
+    checks = {
+        "config_file": {
+            "ok": config_exists,
+            "path": str(config_path(app_config.root)),
+        },
+        "data_dir": {
+            "ok": data_dir_exists,
+            "path": str(paths.data_dir),
+        },
+        "database": {
+            "ok": db_exists,
+            "path": str(paths.db_path),
+        },
+        "migrations": {
+            "ok": True,
+            "count": len(list_migration_files()),
+        },
+        "bundled_skills": {
+            "ok": True,
+            "bundle_version": SKILL_BUNDLE_VERSION,
+            "skill_count": len(list_bundled_skills()),
+        },
+    }
+    overall_status = "ok" if all(item["ok"] for item in checks.values()) else "action_required"
+    payload = {
+        "version": __version__,
+        "overall_status": overall_status,
+        "paths": {
+            "root": str(app_config.root),
+            "data_dir": str(paths.data_dir),
+            "db_path": str(paths.db_path),
+        },
+        "checks": checks,
+        "recommended_actions": _doctor_recommended_actions(checks),
+    }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def handle_migrate(args: argparse.Namespace) -> int:
     del args
     paths = load_paths()
@@ -466,6 +516,19 @@ def handle_migrate(args: argparse.Namespace) -> int:
     finally:
         conn.close()
     return 0
+
+
+def _doctor_recommended_actions(checks: dict) -> list[str]:
+    actions = []
+    if not checks["config_file"]["ok"]:
+        actions.append("rks config init")
+    if not checks["database"]["ok"]:
+        actions.append("rks init-db")
+    if not checks["data_dir"]["ok"] and "rks init-db" not in actions:
+        actions.append("rks init-db")
+    if not actions:
+        actions.append("rks --help")
+    return actions
 
 
 def handle_ingest_pdf(args: argparse.Namespace) -> int:

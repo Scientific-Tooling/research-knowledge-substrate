@@ -41,6 +41,7 @@ The repository now has a hardened post-MVP base for extraction quality:
 - richer research-output contracts with explicit conclusion, confidence, evidence assessment, reading guidance, disagreement causes, and validation plans
 - readiness-aware paper status with missing-step, blocker, review, and suggested-command guidance for agents
 - direct reading-list, compare, open-question, and review-priority output surfaces for user-facing research workflows
+- install-time skill bundle metadata plus `rks doctor` self-checks and package smoke validation in CI
 - package metadata, packaged migrations, and CI workflows for formal PyPI distribution readiness
 - installed CLI export of bundled repository skills for Codex, Claude Code, and other agent runtimes
 
