@@ -31,9 +31,9 @@ class ClaimRepository:
                     claim_id,
                     paper_id,
                     claim["text"],
-                    None,
+                    claim.get("subject_concept_id"),
                     claim["predicate"],
-                    None,
+                    claim.get("object_concept_id"),
                     claim.get("object_text"),
                     json.dumps(claim.get("context", {}), sort_keys=True),
                     json.dumps(claim.get("evidence", {}), sort_keys=True),
@@ -49,10 +49,39 @@ class ClaimRepository:
         self.conn.commit()
         return created
 
+    def update_claim_links(
+        self,
+        claim_id: str,
+        subject_concept_id: str | None,
+        object_concept_id: str | None,
+    ) -> None:
+        timestamp = utc_now()
+        self.conn.execute(
+            """
+            UPDATE claims
+            SET subject_concept_id = ?, object_concept_id = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (subject_concept_id, object_concept_id, timestamp, claim_id),
+        )
+        self.conn.commit()
+
     def list_claims_for_paper(self, paper_id: str) -> list[ClaimRecord]:
         rows = self.conn.execute(
             "SELECT * FROM claims WHERE paper_id = ? ORDER BY created_at ASC, id ASC",
             (paper_id,),
+        ).fetchall()
+        return [ClaimRecord(**dict(row)) for row in rows]
+
+    def list_claims_for_concept(self, concept_id: str) -> list[ClaimRecord]:
+        rows = self.conn.execute(
+            """
+            SELECT DISTINCT *
+            FROM claims
+            WHERE subject_concept_id = ? OR object_concept_id = ?
+            ORDER BY created_at ASC, id ASC
+            """,
+            (concept_id, concept_id),
         ).fetchall()
         return [ClaimRecord(**dict(row)) for row in rows]
 

@@ -32,8 +32,8 @@ class CliSmokeTest(unittest.TestCase):
             pdf_path = tmp_path / "example-paper.pdf"
             pdf_path.write_bytes(
                 b"%PDF-1.4\n"
-                b"Our results show the method improves translation accuracy.\n"
-                b"The system reduces training cost in our evaluation.\n"
+                b"Transformers improve translation accuracy on WMT14.\n"
+                b"Diffusion models reduce image artifacts in generation.\n"
             )
 
             init_result = run_cli("init-db", cwd=tmp_path)
@@ -64,8 +64,34 @@ class CliSmokeTest(unittest.TestCase):
             claims_result = run_cli("claims", payload["id"], cwd=tmp_path)
             self.assertEqual(claims_result.returncode, 0, claims_result.stderr)
             claims_payload = json.loads(claims_result.stdout)
-            self.assertGreaterEqual(len(claims_payload), 1)
+            self.assertEqual(len(claims_payload), 2)
+            self.assertEqual(claims_payload[0]["subject"], "Transformer")
             self.assertIn(claims_payload[0]["predicate"], {"supports", "improves"})
+
+            concepts_result = run_cli("concepts", payload["id"], cwd=tmp_path)
+            self.assertEqual(concepts_result.returncode, 0, concepts_result.stderr)
+            concepts_payload = json.loads(concepts_result.stdout)
+            concept_names = [concept["name"] for concept in concepts_payload]
+            self.assertIn("Transformer", concept_names)
+            self.assertIn("Diffusion Model", concept_names)
+
+            query_result = run_cli("query", "claims-about", "Transformer", cwd=tmp_path)
+            self.assertEqual(query_result.returncode, 0, query_result.stderr)
+            query_payload = json.loads(query_result.stdout)
+            self.assertEqual(query_payload["concept"]["name"], "Transformer")
+            self.assertEqual(len(query_payload["claims"]), 1)
+
+            claim_id = claims_payload[0]["id"]
+            supporting_result = run_cli("query", "papers-supporting", claim_id, cwd=tmp_path)
+            self.assertEqual(supporting_result.returncode, 0, supporting_result.stderr)
+            supporting_payload = json.loads(supporting_result.stdout)
+            self.assertEqual(supporting_payload["papers"][0]["id"], payload["id"])
+
+            show_claim_result = run_cli("show", "claim", claim_id, cwd=tmp_path)
+            self.assertEqual(show_claim_result.returncode, 0, show_claim_result.stderr)
+            show_claim_payload = json.loads(show_claim_result.stdout)
+            self.assertEqual(show_claim_payload["subject"], "Transformer")
+            self.assertGreaterEqual(len(show_claim_payload["edges"]), 2)
 
 
 if __name__ == "__main__":

@@ -17,4 +17,9 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
 
 def initialize_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
+    _ensure_indexes(conn)
     conn.commit()
+
+
+def _ensure_indexes(conn: sqlite3.Connection) -> None:
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_name ON concepts(name)")

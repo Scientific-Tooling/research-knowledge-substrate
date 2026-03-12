@@ -642,3 +642,18 @@ The next concrete engineering step should be to implement Milestone 0 and Milest
 - `rks show paper`
 
 That is the smallest useful slice that turns the project from a document set into an executable system plan.
+
+## Progress Snapshot
+
+The implementation has now moved beyond the initial Milestone 0 and 1 skeleton.
+
+Current code status:
+
+- local SQLite schema and repositories are in place
+- `rks ingest pdf` persists papers and source artifacts
+- text artifacts are generated and stored on disk
+- heuristic claim extraction persists claims plus intermediate artifacts
+- concepts and graph edges are now materialized for extracted claims
+- deterministic query commands are available through the CLI
+
+See [progress.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/progress.md) for the rolling implementation status.

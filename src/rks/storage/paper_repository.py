@@ -68,6 +68,48 @@ class PaperRepository:
         self.conn.commit()
         return self.get_paper(paper_id)
 
+    def create_paper_from_reference(
+        self,
+        title: str,
+        abstract: str | None,
+        authors: list[str],
+        year: int | None,
+        venue: str | None,
+        doi: str | None,
+        arxiv_id: str | None,
+        source_type: str,
+        source_ref: str,
+        pdf_path: str | None,
+    ) -> PaperRecord:
+        timestamp = utc_now()
+        paper_id = next_id(self.conn, "paper")
+        self.conn.execute(
+            """
+            INSERT INTO papers(
+                id, title, abstract, authors_json, year, venue, doi, arxiv_id,
+                source_type, source_ref, pdf_path, text_artifact_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                paper_id,
+                title,
+                abstract,
+                json.dumps(authors, sort_keys=True),
+                year,
+                venue,
+                doi,
+                arxiv_id,
+                source_type,
+                source_ref,
+                pdf_path,
+                None,
+                timestamp,
+                timestamp,
+            ),
+        )
+        self.conn.commit()
+        return self.get_paper(paper_id)
+
     def create_artifact(
         self,
         paper_id: str,
@@ -102,6 +144,13 @@ class PaperRepository:
         self.conn.execute(
             "UPDATE papers SET text_artifact_id = ?, updated_at = ? WHERE id = ?",
             (artifact_id, timestamp, paper_id),
+        )
+        self.conn.commit()
+
+    def touch_paper(self, paper_id: str) -> None:
+        self.conn.execute(
+            "UPDATE papers SET updated_at = ? WHERE id = ?",
+            (utc_now(), paper_id),
         )
         self.conn.commit()
 

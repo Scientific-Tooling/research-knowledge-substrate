@@ -49,3 +49,31 @@ class ClaimRecord:
     created_by: str
     created_at: str
     updated_at: str
+
+
+@dataclass(frozen=True)
+class ConceptRecord:
+    id: str
+    name: str
+    aliases_json: str
+    domain: Optional[str]
+    parent_concept_id: Optional[str]
+    description: Optional[str]
+    status: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class EdgeRecord:
+    id: str
+    source_id: str
+    source_type: str
+    relation_type: str
+    target_id: str
+    target_type: str
+    evidence_paper_id: Optional[str]
+    confidence: Optional[float]
+    metadata_json: Optional[str]
+    created_by: str
+    created_at: str

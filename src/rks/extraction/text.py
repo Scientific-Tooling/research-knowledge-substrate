@@ -11,22 +11,36 @@ from rks.utils import ensure_dir, utc_now
 
 
 def extract_text_for_paper(repo: PaperRepository, paths: AppPaths, paper: PaperRecord) -> ArtifactRecord:
-    paper_dir = ensure_dir(paths.papers_dir / paper.id)
-    output_path = paper_dir / "extracted_text.json"
     payload = _build_text_payload(Path(paper.pdf_path) if paper.pdf_path else None)
-    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return write_text_artifact(repo=repo, paths=paths, paper_id=paper.id, payload=payload)
+
+
+def write_text_artifact(
+    repo: PaperRepository,
+    paths: AppPaths,
+    paper_id: str,
+    payload: dict,
+) -> ArtifactRecord:
+    paper_dir = ensure_dir(paths.papers_dir / paper_id)
+    output_path = paper_dir / "extracted_text.json"
+    normalized_payload = dict(payload)
+    normalized_payload["created_at"] = normalized_payload.get("created_at") or utc_now()
+    normalized_payload["paragraphs"] = [
+        paragraph for paragraph in normalized_payload.get("paragraphs", []) if paragraph
+    ]
+    output_path.write_text(json.dumps(normalized_payload, indent=2), encoding="utf-8")
     artifact = repo.create_artifact(
-        paper_id=paper.id,
+        paper_id=paper_id,
         artifact_type="extracted_text",
         path=output_path,
         format_name="json",
         metadata={
-            "extractor": payload["extractor"],
-            "paragraph_count": len(payload["paragraphs"]),
-            "warnings": payload["warnings"],
+            "extractor": normalized_payload["extractor"],
+            "paragraph_count": len(normalized_payload["paragraphs"]),
+            "warnings": normalized_payload["warnings"],
         },
     )
-    repo.set_text_artifact(paper.id, artifact.id)
+    repo.set_text_artifact(paper_id, artifact.id)
     return artifact
 
 
@@ -56,7 +70,12 @@ def _build_text_payload(pdf_path: Path | None) -> dict:
             extractor = "unavailable"
             warnings.append(f"Text extraction failed with exit code {exc.returncode}.")
 
-    paragraphs = [line.strip() for line in extracted_text.splitlines() if line.strip()]
+    paragraphs = [
+        line.strip()
+        for line in extracted_text.splitlines()
+        if line.strip() and not _looks_like_pdf_scaffolding(line.strip())
+    ]
+    extracted_text = "\n".join(paragraphs)
     return {
         "created_at": utc_now(),
         "extractor": extractor,
@@ -64,4 +83,16 @@ def _build_text_payload(pdf_path: Path | None) -> dict:
         "text": extracted_text,
         "paragraphs": paragraphs,
         "warnings": warnings,
+    }
+
+
+def _looks_like_pdf_scaffolding(line: str) -> bool:
+    lowered = line.lower()
+    return lowered.startswith("%pdf-") or lowered in {
+        "endobj",
+        "stream",
+        "endstream",
+        "xref",
+        "trailer",
+        "%%eof",
     }
