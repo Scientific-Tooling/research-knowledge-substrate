@@ -364,6 +364,35 @@ def build_parser() -> argparse.ArgumentParser:
     output_opportunities_parser.add_argument("topic", help="Topic text.")
     output_opportunities_parser.set_defaults(handler=handle_output_opportunities)
 
+    output_reading_list_parser = output_subparsers.add_parser(
+        "reading-list",
+        help="Generate a prioritized reading path for a topic.",
+    )
+    output_reading_list_parser.add_argument("topic", help="Topic text.")
+    output_reading_list_parser.set_defaults(handler=handle_output_reading_list)
+
+    output_compare_parser = output_subparsers.add_parser(
+        "compare",
+        help="Compare two claims, papers, methods, datasets, or concepts.",
+    )
+    output_compare_parser.add_argument("left", help="Left target text or object ID.")
+    output_compare_parser.add_argument("right", help="Right target text or object ID.")
+    output_compare_parser.set_defaults(handler=handle_output_compare)
+
+    output_open_questions_parser = output_subparsers.add_parser(
+        "open-questions",
+        help="Surface grounded open questions for a topic.",
+    )
+    output_open_questions_parser.add_argument("topic", help="Topic text.")
+    output_open_questions_parser.set_defaults(handler=handle_output_open_questions)
+
+    output_review_priorities_parser = output_subparsers.add_parser(
+        "review-priorities",
+        help="Surface review priorities and replication risks for a topic.",
+    )
+    output_review_priorities_parser.add_argument("topic", help="Topic text.")
+    output_review_priorities_parser.set_defaults(handler=handle_output_review_priorities)
+
     return parser
 
 
@@ -1166,6 +1195,34 @@ def handle_output_disagreements(args: argparse.Namespace) -> int:
 def handle_output_opportunities(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = _operations(session).research_opportunities(args.topic)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_reading_list(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).topic_reading_list(args.topic)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_compare(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).compare_targets(args.left, args.right)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_open_questions(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).topic_open_questions(args.topic)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_review_priorities(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).topic_review_priorities(args.topic)
     print(json.dumps(payload, indent=2))
     return 0
 

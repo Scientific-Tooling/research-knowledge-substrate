@@ -220,6 +220,31 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_operations() as operations:
             payload = operations.research_opportunities(topic)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/output/reading-list":
+        params = parse_qs(parsed.query)
+        topic = params.get("topic", [""])[0]
+        with _open_operations() as operations:
+            payload = operations.topic_reading_list(topic)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/output/compare":
+        params = parse_qs(parsed.query)
+        left = params.get("left", [""])[0]
+        right = params.get("right", [""])[0]
+        with _open_operations() as operations:
+            payload = operations.compare_targets(left, right)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/output/open-questions":
+        params = parse_qs(parsed.query)
+        topic = params.get("topic", [""])[0]
+        with _open_operations() as operations:
+            payload = operations.topic_open_questions(topic)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/output/review-priorities":
+        params = parse_qs(parsed.query)
+        topic = params.get("topic", [""])[0]
+        with _open_operations() as operations:
+            payload = operations.topic_review_priorities(topic)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/claims/") and parsed.path.endswith("/relations"):
         claim_id = parsed.path.split("/")[3]
         with _open_operations() as operations:

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from rks.concepts.normalize import canonicalize_term
+
+
 def build_research_answer(query_service, question: str) -> dict:
     context = _topic_context(query_service, question)
     disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=3)
@@ -63,12 +66,32 @@ def build_topic_brief(query_service, topic: str) -> dict:
         },
         "representative_papers": context["papers"][:5],
         "reading_list": _reading_list(context, disagreements),
+        "reading_navigation": _reading_navigation(context, disagreements),
         "key_claims": context["claims"][:6],
         "methods": context["methods"][:6],
         "datasets": context["datasets"][:6],
         "disagreements": disagreements,
         "evidence_gaps": _evidence_gaps(context, disagreements),
         "open_questions": open_questions,
+    }
+
+
+def build_topic_reading_list(query_service, topic: str) -> dict:
+    context = _topic_context(query_service, topic)
+    disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=4)
+    navigation = _reading_navigation(context, disagreements)
+    summary = (
+        f"{topic} has {len(navigation['reading_sequence'])} prioritized reading step(s) in the current graph."
+        if navigation["reading_sequence"]
+        else f"No grounded reading path could be assembled for {topic} yet."
+    )
+    return {
+        "topic": topic,
+        "summary": summary,
+        "entry_papers": navigation["entry_papers"],
+        "representative_papers": navigation["representative_papers"],
+        "contradiction_papers": navigation["contradiction_papers"],
+        "reading_sequence": navigation["reading_sequence"],
     }
 
 
@@ -86,6 +109,93 @@ def build_topic_disagreements(query_service, topic: str) -> dict:
         "disagreements": disagreements,
         "claim_count_considered": len(context["claim_ids"]),
         "review_priorities": _review_priorities(disagreements),
+    }
+
+
+def build_topic_open_questions(query_service, topic: str) -> dict:
+    context = _topic_context(query_service, topic)
+    disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=6)
+    questions = []
+    if disagreements:
+        first = disagreements[0]
+        questions.append(
+            {
+                "kind": "disagreement_resolution",
+                "question": f"Why does {first['related_claim']['text']} conflict with {first['anchor_claim']['text']}?",
+                "why_it_matters": "A resolved contradiction changes whether the topic supports a stable conclusion or a replication target.",
+                "grounding": {
+                    "claim_ids": [first["anchor_claim"]["id"], first["related_claim"]["id"]],
+                    "paper_ids": sorted({first["anchor_claim"]["paper_id"], first["related_claim"]["paper_id"]}),
+                },
+                "next_step": first["recommended_review"],
+            }
+        )
+    if context["methods"] and not context["datasets"]:
+        questions.append(
+            {
+                "kind": "evaluation_gap",
+                "question": f"Which datasets should the visible {topic} methods be evaluated on next?",
+                "why_it_matters": "Method coverage without evaluation coverage makes it hard to compare results or plan experiments.",
+                "grounding": {
+                    "method_ids": [method["id"] for method in context["methods"][:3]],
+                    "paper_ids": [method["paper_id"] for method in context["methods"][:3]],
+                },
+                "next_step": "Run dataset extraction or inspect evaluation evidence for the leading method papers.",
+            }
+        )
+    if len(context["papers"]) < 3:
+        questions.append(
+            {
+                "kind": "coverage_gap",
+                "question": f"Which additional papers should be ingested to broaden the evidence base for {topic}?",
+                "why_it_matters": "A narrow paper set weakens synthesis and often hides counterexamples or alternative methods.",
+                "grounding": {
+                    "paper_ids": [paper["id"] for paper in context["papers"][:3]],
+                },
+                "next_step": "Search for more papers on the topic and ingest the strongest missing anchors.",
+            }
+        )
+    if context["claims"] and not context["methods"]:
+        questions.append(
+            {
+                "kind": "structure_gap",
+                "question": f"Which method entities still need to be extracted or normalized for {topic}?",
+                "why_it_matters": "Claims without method structure are hard to compare and reason about experimentally.",
+                "grounding": {
+                    "claim_ids": [claim["id"] for claim in context["claims"][:3]],
+                    "paper_ids": [claim["paper_id"] for claim in context["claims"][:3]],
+                },
+                "next_step": "Run method extraction on the lead papers and review the resulting entities.",
+            }
+        )
+    summary = (
+        f"{topic} currently has {len(questions)} grounded open question(s)."
+        if questions
+        else f"No grounded open questions were surfaced for {topic}."
+    )
+    return {
+        "topic": topic,
+        "summary": summary,
+        "open_questions": questions[:6],
+        "evidence_gaps": _evidence_gaps(context, disagreements),
+    }
+
+
+def build_topic_review_priorities(query_service, topic: str) -> dict:
+    context = _topic_context(query_service, topic)
+    disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=6)
+    review_priorities = _review_priorities(disagreements)
+    replication_risks = _replication_risks(disagreements)
+    summary = (
+        f"{topic} currently has {len(review_priorities)} review priority item(s) and {len(replication_risks)} replication risk(s)."
+        if review_priorities or replication_risks
+        else f"No review-priority signals were surfaced for {topic}."
+    )
+    return {
+        "topic": topic,
+        "summary": summary,
+        "review_priorities": review_priorities,
+        "replication_risks": replication_risks,
     }
 
 
@@ -262,6 +372,23 @@ def build_research_opportunities(query_service, topic: str) -> dict:
         "opportunities": opportunities[:8],
         "disagreements": disagreements,
         "opportunity_count": len(opportunities[:8]),
+    }
+
+
+def build_comparison(query_service, left: str, right: str) -> dict:
+    left_target = _resolve_target(query_service, left)
+    right_target = _resolve_target(query_service, right)
+    shared_points = _shared_points(left_target, right_target)
+    differences = _differences(left_target, right_target)
+    recommendations = _comparison_recommendations(left_target, right_target, differences)
+    return {
+        "left": left_target,
+        "right": right_target,
+        "comparison_type": f"{left_target['type']}_vs_{right_target['type']}",
+        "summary": _comparison_summary(left_target, right_target, shared_points, differences),
+        "shared_points": shared_points,
+        "differences": differences,
+        "recommendations": recommendations,
     }
 
 
@@ -509,6 +636,70 @@ def _reading_list(context: dict, disagreements: list[dict]) -> list[dict]:
     return recommendations[:5]
 
 
+def _reading_navigation(context: dict, disagreements: list[dict]) -> dict:
+    entry_papers = []
+    representative_papers = []
+    contradiction_papers = []
+    seen_entry = set()
+    seen_representative = set()
+    seen_contradiction = set()
+
+    for paper in context["papers"][:2]:
+        if paper["id"] in seen_entry:
+            continue
+        seen_entry.add(paper["id"])
+        entry_papers.append(
+            {
+                "paper_id": paper["id"],
+                "title": paper["title"],
+                "reason": "entry_anchor",
+            }
+        )
+
+    for paper in context["papers"][:5]:
+        if paper["id"] in seen_representative:
+            continue
+        seen_representative.add(paper["id"])
+        representative_papers.append(
+            {
+                "paper_id": paper["id"],
+                "title": paper["title"],
+                "reason": "representative_evidence",
+            }
+        )
+
+    for disagreement in disagreements:
+        if disagreement["relation_type"] != "contradicts":
+            continue
+        anchor_paper = next(
+            (paper for paper in context["papers"] if paper["id"] == disagreement["anchor_claim"]["paper_id"]),
+            None,
+        )
+        for paper in (disagreement["paper"], anchor_paper):
+            if paper is None:
+                continue
+            if paper["id"] in seen_contradiction:
+                continue
+            seen_contradiction.add(paper["id"])
+            contradiction_papers.append(
+                {
+                    "paper_id": paper["id"],
+                    "title": paper["title"],
+                    "reason": "contradiction_check",
+                }
+            )
+
+    reading_sequence = entry_papers + [
+        paper for paper in representative_papers if paper["paper_id"] not in seen_entry
+    ] + [paper for paper in contradiction_papers if paper["paper_id"] not in seen_entry]
+    return {
+        "entry_papers": entry_papers[:3],
+        "representative_papers": representative_papers[:5],
+        "contradiction_papers": contradiction_papers[:4],
+        "reading_sequence": reading_sequence[:8],
+    }
+
+
 def _evidence_gaps(context: dict, disagreements: list[dict]) -> list[str]:
     gaps = []
     if len(context["papers"]) < 3:
@@ -529,12 +720,31 @@ def _review_priorities(disagreements: list[dict]) -> list[dict]:
     for item in disagreements[:4]:
         priorities.append(
             {
+                "title": f"Review {item['relation_type']} between {item['anchor_claim']['id']} and {item['related_claim']['id']}",
                 "claim_ids": [item["anchor_claim"]["id"], item["related_claim"]["id"]],
+                "paper_ids": sorted({item["anchor_claim"]["paper_id"], item["related_claim"]["paper_id"]}),
                 "priority": "high" if item["relation_source"] == "reviewed" else "medium",
                 "reason": item["recommended_review"],
             }
         )
     return priorities
+
+
+def _replication_risks(disagreements: list[dict]) -> list[dict]:
+    risks = []
+    for item in disagreements[:4]:
+        if item["relation_type"] != "contradicts":
+            continue
+        risks.append(
+            {
+                "risk_level": "high" if item["relation_source"] == "reviewed" else "medium",
+                "summary": item["summary"],
+                "claim_ids": [item["anchor_claim"]["id"], item["related_claim"]["id"]],
+                "paper_ids": sorted({item["anchor_claim"]["paper_id"], item["related_claim"]["paper_id"]}),
+                "recommended_action": item["recommended_review"],
+            }
+        )
+    return risks
 
 
 def _disagreement_kind(anchor_claim: dict, related_claim: dict, relation: dict) -> str:
@@ -590,3 +800,214 @@ def _dedupe_objects(items: list[dict]) -> list[dict]:
         seen.add(item_id)
         deduped.append(item)
     return deduped
+
+
+def _resolve_target(query_service, target: str) -> dict:
+    if target.startswith("p_"):
+        paper = query_service.papers.get_paper(target)
+        claims = [query_service._claim_payload(claim) for claim in query_service.claims.list_claims_for_paper(target)]
+        methods = query_service.methods_for(target).get("methods", [])
+        datasets = query_service.datasets_for(target).get("datasets", [])
+        return {
+            "type": "paper",
+            "id": paper.id,
+            "label": paper.title,
+            "paper": query_service._paper_payload(paper),
+            "claim_count": len(claims),
+            "method_count": len(methods),
+            "dataset_count": len(datasets),
+            "claims": claims[:5],
+            "methods": methods[:5],
+            "datasets": datasets[:5],
+        }
+    if target.startswith("c_"):
+        claim = query_service.claims.get_claim(target)
+        claim_payload = query_service._claim_payload(claim)
+        relations = query_service.claim_relations(target)
+        return {
+            "type": "claim",
+            "id": claim.id,
+            "label": claim.text,
+            "claim": claim_payload,
+            "paper": query_service._paper_payload(query_service.papers.get_paper(claim.paper_id)),
+            "reviewed_relation_count": len(relations["reviewed_relations"]),
+            "inferred_relation_count": len(relations["inferred_relations"]),
+        }
+    if target.startswith("m_") and query_service.methods is not None:
+        method = query_service.methods.get_method(target)
+        datasets = query_service.datasets_for(target).get("datasets", [])
+        return {
+            "type": "method",
+            "id": method.id,
+            "label": method.name,
+            "method": {
+                "id": method.id,
+                "paper_id": method.paper_id,
+                "name": method.name,
+                "description": method.description,
+            },
+            "paper": query_service._paper_payload(query_service.papers.get_paper(method.paper_id)),
+            "datasets": datasets[:5],
+        }
+    if target.startswith("d_") and query_service.datasets is not None:
+        dataset = query_service.datasets.get_dataset(target)
+        return {
+            "type": "dataset",
+            "id": dataset.id,
+            "label": dataset.name,
+            "dataset": {
+                "id": dataset.id,
+                "paper_id": dataset.paper_id,
+                "name": dataset.name,
+                "description": dataset.description,
+                "source": dataset.source,
+            },
+            "paper": query_service._paper_payload(query_service.papers.get_paper(dataset.paper_id)),
+        }
+    if target.startswith("k_"):
+        concept = query_service.concepts.get_concept(target)
+        claims = query_service.claims_about(target).get("claims", [])
+        methods = query_service.methods_for(target).get("methods", [])
+        return {
+            "type": "concept",
+            "id": concept.id,
+            "label": concept.name,
+            "concept": {"id": concept.id, "name": concept.name},
+            "claim_count": len(claims),
+            "method_count": len(methods),
+        }
+
+    search = query_service.search(target, mode="hybrid")
+    candidates = (
+        [("method", item) for item in search.get("methods", [])]
+        + [("paper", item) for item in search.get("papers", [])]
+        + [("claim", item) for item in search.get("claims", [])]
+        + [("dataset", item) for item in search.get("datasets", [])]
+        + [("concept", item) for item in search.get("concepts", [])]
+    )
+    normalized_target = canonicalize_term(target)
+    chosen_type = None
+    chosen_id = None
+    for candidate_type, candidate in candidates:
+        label = _candidate_label(candidate_type, candidate)
+        if canonicalize_term(label) == normalized_target:
+            chosen_type = candidate_type
+            chosen_id = candidate["id"]
+            break
+    if chosen_type is None and candidates:
+        chosen_type, candidate = candidates[0]
+        chosen_id = candidate["id"]
+    if chosen_type is None or chosen_id is None:
+        return {
+            "type": "unresolved",
+            "id": None,
+            "label": target,
+            "query": target,
+        }
+    return _resolve_target(query_service, chosen_id)
+
+
+def _candidate_label(candidate_type: str, candidate: dict) -> str:
+    if candidate_type == "paper":
+        return candidate["title"]
+    if candidate_type == "claim":
+        return candidate["text"]
+    return candidate["name"]
+
+
+def _shared_points(left: dict, right: dict) -> list[str]:
+    if left["type"] == "claim" and right["type"] == "claim":
+        shared = []
+        if left["claim"]["subject"] == right["claim"]["subject"]:
+            shared.append(f"Both claims are about {left['claim']['subject']}.")
+        if left["claim"]["predicate"] == right["claim"]["predicate"]:
+            shared.append(f"Both claims use the predicate {left['claim']['predicate']}.")
+        if _claim_dataset(left["claim"]) and _claim_dataset(left["claim"]) == _claim_dataset(right["claim"]):
+            shared.append(f"Both claims reference the dataset {_claim_dataset(left['claim'])}.")
+        return shared
+    if left["type"] == "paper" and right["type"] == "paper":
+        shared = []
+        if left["method_count"] and right["method_count"]:
+            shared.append("Both papers have extracted method structure.")
+        if left["dataset_count"] and right["dataset_count"]:
+            shared.append("Both papers have extracted dataset structure.")
+        return shared
+    if left["type"] == "method" and right["type"] == "method":
+        left_datasets = {dataset["name"] for dataset in left.get("datasets", [])}
+        right_datasets = {dataset["name"] for dataset in right.get("datasets", [])}
+        return [f"Both methods are evaluated on {name}." for name in sorted(left_datasets & right_datasets)]
+    return []
+
+
+def _differences(left: dict, right: dict) -> list[str]:
+    if left["type"] == "claim" and right["type"] == "claim":
+        differences = []
+        if _claim_dataset(left["claim"]) != _claim_dataset(right["claim"]):
+            differences.append(
+                f"Dataset context differs: {_claim_dataset(left['claim']) or 'unspecified'} vs {_claim_dataset(right['claim']) or 'unspecified'}."
+            )
+        if _claim_polarity(left["claim"]["text"]) != _claim_polarity(right["claim"]["text"]):
+            differences.append("The claims have different polarity and may directly conflict.")
+        if left["claim"]["paper_id"] != right["claim"]["paper_id"]:
+            differences.append("The claims come from different source papers.")
+        return differences
+    if left["type"] == "paper" and right["type"] == "paper":
+        differences = []
+        if left["claim_count"] != right["claim_count"]:
+            differences.append(f"Claim coverage differs: {left['claim_count']} vs {right['claim_count']}.")
+        if left["method_count"] != right["method_count"]:
+            differences.append(f"Method coverage differs: {left['method_count']} vs {right['method_count']}.")
+        if left["dataset_count"] != right["dataset_count"]:
+            differences.append(f"Dataset coverage differs: {left['dataset_count']} vs {right['dataset_count']}.")
+        return differences
+    if left["type"] == "method" and right["type"] == "method":
+        left_datasets = {dataset["name"] for dataset in left.get("datasets", [])}
+        right_datasets = {dataset["name"] for dataset in right.get("datasets", [])}
+        differences = []
+        if left_datasets - right_datasets:
+            differences.append("The left method covers datasets not seen on the right method.")
+        if right_datasets - left_datasets:
+            differences.append("The right method covers datasets not seen on the left method.")
+        return differences
+    return [f"Comparing {left['type']} against {right['type']} requires inspecting different evidence surfaces."]
+
+
+def _comparison_recommendations(left: dict, right: dict, differences: list[str]) -> list[str]:
+    recommendations = []
+    if left["type"] == "claim" and right["type"] == "claim":
+        recommendations.append("Inspect the evidence and context for both claims before merging them into one conclusion.")
+        if any("polarity" in item for item in differences):
+            recommendations.append("Review whether the claim relation should be promoted as a reviewed contradiction.")
+        return recommendations
+    if left["type"] == "paper" and right["type"] == "paper":
+        recommendations.append("Read the higher-coverage paper first, then inspect the weaker paper for missing structure.")
+        return recommendations
+    if left["type"] == "method" and right["type"] == "method":
+        recommendations.append("Compare the dataset coverage and run a side-by-side evaluation on one uncovered dataset.")
+        return recommendations
+    recommendations.append("Use the comparison output as a routing step, then inspect the underlying paper or claim records directly.")
+    return recommendations
+
+
+def _comparison_summary(left: dict, right: dict, shared_points: list[str], differences: list[str]) -> str:
+    parts = [f"Comparing {left['label']} against {right['label']}."]
+    if shared_points:
+        parts.append("Shared points: " + "; ".join(shared_points[:3]) + ".")
+    if differences:
+        parts.append("Key differences: " + "; ".join(differences[:3]) + ".")
+    else:
+        parts.append("No strong differences were surfaced from the current local graph.")
+    return " ".join(parts)
+
+
+def _claim_polarity(text: str) -> int:
+    lowered = text.lower()
+    if "not improve" in lowered or "does not improve" in lowered or "did not improve" in lowered:
+        return -1
+    positive = any(token in lowered for token in ("improv", "outperform", "increase", "support"))
+    negative = any(token in lowered for token in ("fail", "hurt", "degrade", "worse", "not"))
+    if positive and not negative:
+        return 1
+    if negative and not positive:
+        return -1
+    return 0

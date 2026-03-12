@@ -64,12 +64,12 @@ Goal:
 
 Work items:
 
-- [ ] add a `reading-list` output surface
-- [ ] add a `compare` surface for methods, claims, or papers
-- [ ] add `open-questions` or unresolved-topic outputs
-- [ ] add replication-risk and review-priority outputs
-- [ ] improve topic brief reading navigation: entry papers, representative papers, contradiction papers
-- [ ] improve opportunity outputs with experiment-oriented validation suggestions
+- [x] add a `reading-list` output surface
+- [x] add a `compare` surface for methods, claims, or papers
+- [x] add `open-questions` or unresolved-topic outputs
+- [x] add replication-risk and review-priority outputs
+- [x] improve topic brief reading navigation: entry papers, representative papers, contradiction papers
+- [x] improve opportunity outputs with experiment-oriented validation suggestions
 
 Exit criteria:
 

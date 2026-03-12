@@ -272,6 +272,15 @@ rks output disagreements "Sparse Attention"
 rks output opportunities "Sparse Attention"
 ```
 
+生成阅读路线、对比结果和审阅优先级：
+
+```bash
+rks output reading-list "Sparse Attention"
+rks output compare p_000001 p_000002
+rks output open-questions "Sparse Attention"
+rks output review-priorities "Sparse Attention"
+```
+
 这些输出会把 claims、papers、methods、datasets 以及 reviewed / inferred relation 一起组织成更容易消费的结果。
 
 ## 9. 手动审阅 claim relation

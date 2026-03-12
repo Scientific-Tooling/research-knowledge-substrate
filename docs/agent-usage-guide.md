@@ -228,6 +228,15 @@ Opportunities:
 rks output opportunities "Sparse Attention"
 ```
 
+Reading and comparison guidance:
+
+```bash
+rks output reading-list "Sparse Attention"
+rks output compare c_000001 c_000002
+rks output open-questions "Sparse Attention"
+rks output review-priorities "Sparse Attention"
+```
+
 These commands are the preferred product-facing output layer when the user expects synthesis, disagreement surfacing, or inspiration rather than raw graph inspection.
 
 ## 8. Claim Relation Review Loop

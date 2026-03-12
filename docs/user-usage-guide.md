@@ -272,6 +272,15 @@ Generate opportunities and next-step guidance:
 rks output opportunities "Sparse Attention"
 ```
 
+Generate reading, comparison, and review guidance:
+
+```bash
+rks output reading-list "Sparse Attention"
+rks output compare p_000001 p_000002
+rks output open-questions "Sparse Attention"
+rks output review-priorities "Sparse Attention"
+```
+
 These outputs are grounded in claims, papers, methods, datasets, and reviewed or inferred relation structure. They are intended to be more directly consumable than lower-level query outputs.
 
 ## 9. Manually Review Claim Relations

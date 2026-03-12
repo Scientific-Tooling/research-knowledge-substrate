@@ -167,6 +167,33 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertIn("validation_plan", first_opportunity)
             self.assertIn("grounding_strength", first_opportunity)
 
+            reading_list_result = run_cli("output", "reading-list", "Sparse Attention", cwd=tmp_path)
+            self.assertEqual(reading_list_result.returncode, 0, reading_list_result.stderr)
+            reading_list_payload = json.loads(reading_list_result.stdout)
+            self.assertGreaterEqual(len(reading_list_payload["reading_sequence"]), 1)
+            self.assertIn("entry_papers", reading_list_payload)
+            self.assertIn("contradiction_papers", reading_list_payload)
+
+            compare_result = run_cli("output", "compare", claims_1[0]["id"], claims_3[0]["id"], cwd=tmp_path)
+            self.assertEqual(compare_result.returncode, 0, compare_result.stderr)
+            compare_payload = json.loads(compare_result.stdout)
+            self.assertEqual(compare_payload["left"]["type"], "claim")
+            self.assertEqual(compare_payload["right"]["type"], "claim")
+            self.assertGreaterEqual(len(compare_payload["differences"]), 1)
+            self.assertGreaterEqual(len(compare_payload["recommendations"]), 1)
+
+            open_questions_result = run_cli("output", "open-questions", "Sparse Attention", cwd=tmp_path)
+            self.assertEqual(open_questions_result.returncode, 0, open_questions_result.stderr)
+            open_questions_payload = json.loads(open_questions_result.stdout)
+            self.assertGreaterEqual(len(open_questions_payload["open_questions"]), 1)
+            self.assertIn("evidence_gaps", open_questions_payload)
+
+            review_priorities_result = run_cli("output", "review-priorities", "Sparse Attention", cwd=tmp_path)
+            self.assertEqual(review_priorities_result.returncode, 0, review_priorities_result.stderr)
+            review_priorities_payload = json.loads(review_priorities_result.stdout)
+            self.assertGreaterEqual(len(review_priorities_payload["review_priorities"]), 1)
+            self.assertGreaterEqual(len(review_priorities_payload["replication_risks"]), 1)
+
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
             try:
@@ -174,6 +201,14 @@ class ResearchOutputTest(unittest.TestCase):
                 _, _, brief_body = dispatch_get_request("/api/output/brief?topic=Sparse%20Attention")
                 _, _, disagreements_body = dispatch_get_request("/api/output/disagreements?topic=Sparse%20Attention")
                 _, _, opportunities_body = dispatch_get_request("/api/output/opportunities?topic=Sparse%20Attention")
+                _, _, reading_list_body = dispatch_get_request("/api/output/reading-list?topic=Sparse%20Attention")
+                _, _, compare_body = dispatch_get_request(
+                    f"/api/output/compare?left={claims_1[0]['id']}&right={claims_3[0]['id']}"
+                )
+                _, _, open_questions_body = dispatch_get_request("/api/output/open-questions?topic=Sparse%20Attention")
+                _, _, review_priorities_body = dispatch_get_request(
+                    "/api/output/review-priorities?topic=Sparse%20Attention"
+                )
             finally:
                 os.chdir(previous_cwd)
 
@@ -181,6 +216,10 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertIn("overview", json.loads(brief_body.decode("utf-8")))
             self.assertGreaterEqual(len(json.loads(disagreements_body.decode("utf-8"))["disagreements"]), 1)
             self.assertGreaterEqual(len(json.loads(opportunities_body.decode("utf-8"))["opportunities"]), 1)
+            self.assertGreaterEqual(len(json.loads(reading_list_body.decode("utf-8"))["reading_sequence"]), 1)
+            self.assertGreaterEqual(len(json.loads(compare_body.decode("utf-8"))["differences"]), 1)
+            self.assertGreaterEqual(len(json.loads(open_questions_body.decode("utf-8"))["open_questions"]), 1)
+            self.assertGreaterEqual(len(json.loads(review_priorities_body.decode("utf-8"))["review_priorities"]), 1)
 
 
 if __name__ == "__main__":

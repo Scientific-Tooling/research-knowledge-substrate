@@ -233,6 +233,15 @@ rks output disagreements "Sparse Attention"
 rks output opportunities "Sparse Attention"
 ```
 
+生成阅读路线、对比结果和审阅优先级：
+
+```bash
+rks output reading-list "Sparse Attention"
+rks output compare c_000001 c_000002
+rks output open-questions "Sparse Attention"
+rks output review-priorities "Sparse Attention"
+```
+
 当用户真正想要“内容、综合、灵感、下一步建议”时，这组命令应优先于只返回底层 graph 对象的命令。
 
 ## 8. claim relation 审阅闭环

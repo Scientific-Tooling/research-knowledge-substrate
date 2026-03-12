@@ -117,6 +117,10 @@ Generate direct research outputs:
 ```bash
 rks output answer "What does the graph say about Sparse Attention?"
 rks output brief "Sparse Attention"
+rks output reading-list "Sparse Attention"
+rks output compare p_000001 p_000002
+rks output open-questions "Sparse Attention"
+rks output review-priorities "Sparse Attention"
 rks output disagreements "Sparse Attention"
 rks output opportunities "Sparse Attention"
 ```

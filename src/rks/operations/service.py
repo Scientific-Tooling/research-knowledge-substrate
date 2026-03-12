@@ -5,10 +5,14 @@ import json
 from rks.providers import LocalHashEmbeddingProvider
 from rks.query import QueryService
 from rks.reasoning import (
+    build_comparison,
     build_research_answer,
     build_research_opportunities,
     build_topic_brief,
     build_topic_disagreements,
+    build_topic_open_questions,
+    build_topic_reading_list,
+    build_topic_review_priorities,
 )
 
 
@@ -122,6 +126,18 @@ class ResearchOperations:
 
     def research_opportunities(self, topic: str) -> dict:
         return build_research_opportunities(self.query, topic)
+
+    def topic_reading_list(self, topic: str) -> dict:
+        return build_topic_reading_list(self.query, topic)
+
+    def topic_open_questions(self, topic: str) -> dict:
+        return build_topic_open_questions(self.query, topic)
+
+    def topic_review_priorities(self, topic: str) -> dict:
+        return build_topic_review_priorities(self.query, topic)
+
+    def compare_targets(self, left: str, right: str) -> dict:
+        return build_comparison(self.query, left, right)
 
     def promote_claim_relation(
         self,

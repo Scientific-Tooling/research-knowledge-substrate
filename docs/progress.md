@@ -40,6 +40,7 @@ The repository now has a hardened post-MVP base for extraction quality:
 - direct research output surfaces for grounded answers, topic briefs, disagreements, and opportunities
 - richer research-output contracts with explicit conclusion, confidence, evidence assessment, reading guidance, disagreement causes, and validation plans
 - readiness-aware paper status with missing-step, blocker, review, and suggested-command guidance for agents
+- direct reading-list, compare, open-question, and review-priority output surfaces for user-facing research workflows
 - package metadata, packaged migrations, and CI workflows for formal PyPI distribution readiness
 - installed CLI export of bundled repository skills for Codex, Claude Code, and other agent runtimes
 
