@@ -16,6 +16,7 @@ Use this skill for requests such as:
 - validate the CLI and HTTP surfaces
 - check that review flows and artifacts still behave correctly
 - regress the current agent-facing operations
+- regress the new research output layer
 
 ## Test Principles
 
@@ -141,6 +142,28 @@ Verify:
 - HTTP read surfaces match CLI semantics
 - HTTP write surfaces mutate state as expected
 
+### 6. Research output layer
+
+Check:
+
+```bash
+rks output answer "<question>"
+rks output brief "<topic>"
+rks output disagreements "<topic>"
+rks output opportunities "<topic>"
+curl -s "http://127.0.0.1:8765/api/output/answer?q=<encoded-question>"
+curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
+curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=<encoded-topic>"
+curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=<encoded-topic>"
+```
+
+Verify:
+
+- outputs include grounded evidence objects rather than only prose
+- answer and brief surfaces are not empty for a grounded topic
+- disagreement and opportunity outputs remain auditable from claims, papers, methods, or datasets
+- CLI and HTTP output semantics match
+
 ## Required Report Format
 
 At the end, report:
@@ -152,7 +175,7 @@ At the end, report:
 5. failed checks
 6. exact reproduction commands for failures
 7. likely fault domain:
-   CLI shape, storage/artifact persistence, query logic, review mutation, or HTTP surface
+   CLI shape, storage/artifact persistence, query logic, output generation, review mutation, or HTTP surface
 
 ## Important Constraints
 

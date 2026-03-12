@@ -18,6 +18,7 @@ Use this skill for requests such as:
 - inspect extraction status for a paper
 - verify CLI and HTTP product operations agree
 - promote or retract reviewed claim relations
+- operate the research output layer repeatedly across topics
 
 ## Core Commands
 
@@ -78,8 +79,19 @@ HTTP inspection and review endpoints:
 ```bash
 curl -s http://127.0.0.1:8765/api/status/<paper_id>
 curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
+curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
+curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=<encoded-topic>"
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/promote -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/retract -H 'Content-Type: application/json' -d '{...}'
+```
+
+Generate direct output surfaces:
+
+```bash
+rks output answer "<question>"
+rks output brief "<topic>"
+rks output disagreements "<topic>"
+rks output opportunities "<topic>"
 ```
 
 ## Agent Mode Discipline
@@ -96,6 +108,13 @@ When operating claim relations:
 2. record the exact `source_claim_id` and `target_claim_id` from command output
 3. after promote or retract, re-run both CLI and HTTP inspection to confirm consistency
 4. do not treat `inferred_relations` as durable truth
+
+When operating the output layer:
+
+1. preserve the topic or question used to generate the output
+2. verify that supporting claims and papers are present for grounded topics
+3. treat opportunities as evidence-backed suggestions, not free-form invention
+4. cross-check important output surfaces through both CLI and HTTP when consistency matters
 
 When operating reference ingestion:
 

@@ -86,6 +86,8 @@ Explain:
 
 ```bash
 rks search <query>
+rks output answer "<question>"
+rks output brief "<topic>"
 rks query claims-about <concept>
 rks query claim-relations <claim_id>
 ```
@@ -99,6 +101,7 @@ rks summarize paper <paper_id>
 Explain:
 
 - lexical versus semantic or deterministic query surfaces
+- direct output surfaces versus low-level graph inspection
 - inferred versus reviewed claim relations
 
 ### 5. Show one review action
@@ -121,6 +124,7 @@ This demonstrates that RKS distinguishes:
 rks serve --host 127.0.0.1 --port 8765
 curl -s http://127.0.0.1:8765/api/status/<paper_id>
 curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
+curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
 ```
 
 Use this only if it adds clarity for the user.
@@ -137,6 +141,7 @@ When presenting the demo:
 Prefer statements like:
 
 - "This shows the ingest path created durable artifacts."
+- "This shows how RKS turns stored graph structure into a user-facing answer."
 - "This shows the relation is still inferred, not reviewed."
 - "This promote step turns a candidate relation into a persisted graph fact."
 
@@ -147,6 +152,7 @@ A good demo should leave the user with a clear understanding of:
 - how RKS ingests and stores research material
 - how claims and concepts become queryable
 - how review changes the durable graph
+- how RKS produces answers, summaries, and inspiration from the graph
 - how agents can drive the product through stable operations
 
 ## When To Switch Skills

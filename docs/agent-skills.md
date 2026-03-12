@@ -20,6 +20,7 @@ Purpose:
 - run local search and deterministic graph queries
 - produce summaries from already-ingested graph data
 - distinguish inferred claim relations from reviewed durable relations
+- generate direct output-layer answers and topic syntheses from the local graph
 
 ### `rks-dual-track-llm`
 
@@ -44,6 +45,7 @@ Purpose:
 - audit paper-level workflow status and failure states
 - promote or retract reviewed claim relations
 - verify CLI and HTTP operations remain consistent
+- operate output-layer commands repeatedly across topics
 
 ### `rks-codex-operator`
 
@@ -53,12 +55,20 @@ Purpose:
 - validate ingest, query, review, and HTTP product behavior
 - enforce ID capture, artifact inspection, and CLI/HTTP cross-checks
 
+### `rks-research-output`
+
+Purpose:
+
+- produce directly consumable research outputs from the graph
+- answer questions, brief topics, surface disagreements, and suggest opportunities
+- keep outputs grounded in claims, papers, methods, datasets, and uncertainties
+
 ### `rks-user-demo`
 
 Purpose:
 
 - let an agent demonstrate RKS capabilities to a human user in a clear sequence
-- show ingest, graph inspection, query, and review with explicit narration
+- show ingest, graph inspection, output generation, query, and review with explicit narration
 - optimize for understandable product walkthroughs rather than exhaustive verification
 
 ### `rks-autotest`
@@ -67,6 +77,7 @@ Purpose:
 
 - let an agent automatically validate the RKS product surface end-to-end
 - verify persisted artifacts, IDs, review mutations, and CLI/HTTP consistency
+- regress answer, brief, disagreement, and opportunity outputs
 - produce concrete failure reports and reproduction steps
 
 ## Why These Skills Exist

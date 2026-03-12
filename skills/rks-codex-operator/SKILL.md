@@ -84,6 +84,10 @@ Inspect graph state:
 
 ```bash
 rks search <query>
+rks output answer "<question>"
+rks output brief "<topic>"
+rks output disagreements "<topic>"
+rks output opportunities "<topic>"
 rks claims <paper_id>
 rks show claim <claim_id>
 rks query claim-relations <claim_id>
@@ -115,6 +119,10 @@ Then inspect:
 curl -s http://127.0.0.1:8765/health
 curl -s http://127.0.0.1:8765/api/status/<paper_id>
 curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
+curl -s "http://127.0.0.1:8765/api/output/answer?q=<encoded-question>"
+curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
+curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=<encoded-topic>"
+curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=<encoded-topic>"
 ```
 
 For relation writes:
@@ -131,9 +139,10 @@ When reporting back, include:
 1. environment and config state
 2. all key IDs used
 3. artifact and status findings
-4. inferred versus reviewed relation findings
-5. CLI versus HTTP consistency findings
-6. failures, anomalies, and likely causes
+4. answer or brief findings
+5. inferred versus reviewed relation findings
+6. CLI versus HTTP consistency findings
+7. failures, anomalies, and likely causes
 
 ## Failure Handling
 
