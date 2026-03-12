@@ -12,8 +12,7 @@ from rks.agent import (
     import_summary_result,
     import_text_result,
 )
-from rks.config import load_paths
-from rks.config import load_llm_config
+from rks.config import config_path, load_app_config, load_llm_config, load_paths, write_default_config
 from rks.extraction import (
     extract_claims_for_paper,
     extract_claims_with_llm,
@@ -38,8 +37,12 @@ from rks.storage import (
     PaperRepository,
     TaskRepository,
     connect_db,
+    export_graph_snapshot,
+    import_graph_snapshot,
     initialize_db,
 )
+from rks.storage.db import apply_migrations, current_schema_version
+from rks.service import serve_http
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,6 +51,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_parser = subparsers.add_parser("init-db", help="Initialize the local RKS SQLite database.")
     init_parser.set_defaults(handler=handle_init_db)
+
+    config_parser = subparsers.add_parser("config", help="Manage RKS configuration.")
+    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
+
+    config_init_parser = config_subparsers.add_parser("init", help="Write a default config file into the workspace root.")
+    config_init_parser.set_defaults(handler=handle_config_init)
+
+    config_show_parser = config_subparsers.add_parser("show", help="Show the effective merged config.")
+    config_show_parser.set_defaults(handler=handle_config_show)
+
+    migrate_parser = subparsers.add_parser("migrate", help="Apply schema migrations and report the current version.")
+    migrate_parser.set_defaults(handler=handle_migrate)
 
     ingest_parser = subparsers.add_parser("ingest", help="Ingest research sources.")
     ingest_subparsers = ingest_parser.add_subparsers(dest="ingest_command", required=True)
@@ -204,6 +219,22 @@ def build_parser() -> argparse.ArgumentParser:
     import_summary_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
     import_summary_parser.set_defaults(handler=handle_import_summary)
 
+    import_graph_parser = import_subparsers.add_parser("graph", help="Import a graph snapshot JSON file.")
+    import_graph_parser.add_argument("json_path", type=Path, help="Path to a graph snapshot JSON file.")
+    import_graph_parser.set_defaults(handler=handle_import_graph)
+
+    export_parser = subparsers.add_parser("export", help="Export graph data.")
+    export_subparsers = export_parser.add_subparsers(dest="export_command", required=True)
+
+    export_graph_parser = export_subparsers.add_parser("graph", help="Export a graph snapshot JSON file.")
+    export_graph_parser.add_argument("json_path", type=Path, help="Destination path for the graph snapshot.")
+    export_graph_parser.set_defaults(handler=handle_export_graph)
+
+    serve_parser = subparsers.add_parser("serve", help="Run the local RKS API and lightweight UI.")
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8765)
+    serve_parser.set_defaults(handler=handle_serve)
+
     tasks_parser = subparsers.add_parser("tasks", help="Inspect or update queued agent tasks.")
     tasks_subparsers = tasks_parser.add_subparsers(dest="tasks_command", required=True)
 
@@ -267,6 +298,48 @@ def handle_init_db(args: argparse.Namespace) -> int:
     del args
     with _open_repository() as repo:
         print(json.dumps({"status": "ok", "db_initialized": True}, indent=2))
+    return 0
+
+
+def handle_config_init(args: argparse.Namespace) -> int:
+    del args
+    destination = write_default_config(config_path())
+    print(json.dumps({"config_path": str(destination)}, indent=2))
+    return 0
+
+
+def handle_config_show(args: argparse.Namespace) -> int:
+    del args
+    app_config = load_app_config()
+    print(
+        json.dumps(
+            {
+                "root": str(app_config.root),
+                "data_dir": str(app_config.data_dir),
+                "llm": {
+                    "base_url": app_config.llm_base_url,
+                    "model": app_config.llm_model,
+                    "api_key_env": app_config.llm_api_key_env,
+                },
+                "config_path": str(config_path(app_config.root)),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def handle_migrate(args: argparse.Namespace) -> int:
+    del args
+    paths = load_paths()
+    conn = connect_db(paths.db_path)
+    try:
+        payload = apply_migrations(conn)
+        initialize_db(conn)
+        payload["current_version"] = current_schema_version(conn)
+        print(json.dumps(payload, indent=2))
+    finally:
+        conn.close()
     return 0
 
 
@@ -797,6 +870,25 @@ def handle_import_summary(args: argparse.Namespace) -> int:
         )
         session.tasks.complete_latest_task(args.paper_id, "summarize_paper", payload["artifact_id"])
     print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_import_graph(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = import_graph_snapshot(session.papers.conn, args.json_path)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_export_graph(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = export_graph_snapshot(session.papers.conn, args.json_path)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_serve(args: argparse.Namespace) -> int:
+    serve_http(args.host, args.port)
     return 0
 
 

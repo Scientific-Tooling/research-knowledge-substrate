@@ -6,6 +6,7 @@ from rks.storage.embedding_repository import EmbeddingRepository
 from rks.storage.edge_repository import EdgeRepository
 from rks.storage.method_repository import MethodRepository
 from rks.storage.paper_repository import PaperRepository
+from rks.storage.snapshot import export_graph_snapshot, import_graph_snapshot
 from rks.storage.task_repository import TaskRepository
 
 __all__ = [
@@ -19,4 +20,6 @@ __all__ = [
     "initialize_db",
     "PaperRepository",
     "TaskRepository",
+    "export_graph_snapshot",
+    "import_graph_snapshot",
 ]

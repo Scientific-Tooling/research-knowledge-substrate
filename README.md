@@ -1,22 +1,27 @@
 # Research Knowledge Substrate
 
-Research Knowledge Substrate (RKS) is an agent-first local research graph system for ingesting papers, extracting structured claims, linking concepts, and querying evidence through a CLI.
+Research Knowledge Substrate (RKS) is an agent-first local research graph system for ingesting papers, extracting research objects, querying evidence, and serving a local research workspace.
 
-## Current MVP
+## Current Capabilities
 
-The current MVP supports:
+The current implementation supports:
 
 - ingesting local PDFs
 - ingesting DOI and arXiv references
 - persisting papers and extraction artifacts to SQLite plus local disk
 - generating inspectable pipeline artifacts such as extracted text, sections, and structured claims
-- extracting heuristic structured claims
+- extracting heuristic structured claims, methods, and datasets
 - normalizing and linking concepts
-- creating graph edges for `contains`, `supported_by`, and `about`
-- querying claims about a concept and papers supporting a claim
+- creating graph edges for `contains`, `supported_by`, `about`, `proposes`, `uses`, `evaluated_on`, and `cites`
+- querying claims, methods, datasets, evidence views, and claim relations
+- indexing local embeddings and running hybrid lexical/semantic search
 - two LLM integration modes for text extraction and claim parsing:
   API mode and agent-assisted mode
 - the same dual-track pattern for paper summarization
+- batch ingest and extraction workflows
+- task queue and paper status inspection for agent-mode operations
+- config initialization, migration/version reporting, and graph snapshot export/import
+- a local HTTP service and lightweight UI
 
 Progress is tracked in [docs/progress.md](docs/progress.md).
 
@@ -33,7 +38,9 @@ python -m pip install -e .
 Initialize the local database:
 
 ```bash
+rks config init
 rks init-db
+rks migrate
 ```
 
 Ingest a PDF:
@@ -78,9 +85,13 @@ rks show claim c_000001
 Run deterministic queries:
 
 ```bash
+rks index embeddings
 rks search Transformer
+rks search "translation quality benchmark" --mode semantic
 rks query claims-about Transformer
 rks query papers-supporting c_000001
+rks query evidence-for Transformer
+rks query claim-relations c_000001
 ```
 
 Generate a paper summary:
@@ -90,6 +101,23 @@ rks summarize paper p_000001
 rks summarize paper p_000001 --mode llm-api
 rks summarize paper p_000001 --mode agent
 rks import summary p_000001 path/to/agent_summary.json
+```
+
+Run batch workflows:
+
+```bash
+rks batch ingest manifest.json
+rks batch extract claims manifest.json
+rks tasks list
+rks status paper p_000001
+```
+
+Export, import, and serve the workspace:
+
+```bash
+rks export graph snapshot.json
+rks import graph snapshot.json
+rks serve --host 127.0.0.1 --port 8765
 ```
 
 ## Reference Ingestion

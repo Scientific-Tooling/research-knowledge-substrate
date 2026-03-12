@@ -29,6 +29,10 @@ The repository now has a hardened post-MVP base for extraction quality:
 - task queue tracking for all agent-mode request/result loops
 - paper-level status reporting with failure visibility
 - dual-track request and result schema/version tracking
+- config-file based storage and model configuration
+- migration/version tracking for the local database schema
+- graph snapshot export and import
+- local API plus lightweight web UI service surface
 
 ## Implemented Milestones
 
@@ -41,10 +45,11 @@ The repository now has a hardened post-MVP base for extraction quality:
 - Phase 2: Research Graph Expansion
 - Phase 3: Retrieval and Reasoning Upgrade
 - Phase 4: Agent Workflow Maturity
+- Phase 5: Productization Layer
 
 ## Remaining Work
 
-- add config, migrations, export/import, and service surfaces
+- continue hardening real-world fixtures and provider integrations
 
 ## Latest Architectural Direction
 

@@ -8,7 +8,7 @@ Status as of 2026-03-12:
 - [x] Phase 2: Research Graph Expansion
 - [x] Phase 3: Retrieval and Reasoning Upgrade
 - [x] Phase 4: Agent Workflow Maturity
-- [ ] Phase 5: Productization Layer
+- [x] Phase 5: Productization Layer
 
 ## Goal
 
@@ -117,16 +117,16 @@ Prepare RKS for broader use beyond a single local repo.
 
 Priority work:
 
-- [ ] define a stable config story for models, providers, and storage paths
-- [ ] add migration/version management for stored data
-- [ ] add export/import paths for graph snapshots
-- [ ] add optional API or service layer above the local CLI
-- [ ] add a lightweight UI only after the data and workflows are stable
+- [x] define a stable config story for models, providers, and storage paths
+- [x] add migration/version management for stored data
+- [x] add export/import paths for graph snapshots
+- [x] add optional API or service layer above the local CLI
+- [x] add a lightweight UI only after the data and workflows are stable
 
 Exit criteria:
 
-- [ ] the system can be installed, configured, migrated, and operated with less manual setup
-- [ ] the local substrate can evolve into a reusable research platform
+- [x] the system can be installed, configured, migrated, and operated with less manual setup
+- [x] the local substrate can evolve into a reusable research platform
 
 ## Near-Term Priority Order
 

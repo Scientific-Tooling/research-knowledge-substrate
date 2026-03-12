@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from rks.storage.schema import SCHEMA_SQL
-from rks.utils import ensure_dir
+from rks.utils import ensure_dir, utc_now
 
 
 def connect_db(db_path: Path) -> sqlite3.Connection:
@@ -15,10 +15,62 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def initialize_db(conn: sqlite3.Connection) -> None:
+def initialize_db(conn: sqlite3.Connection, migrations_dir: Path | None = None) -> None:
+    apply_migrations(conn, migrations_dir=migrations_dir)
     conn.executescript(SCHEMA_SQL)
     _ensure_indexes(conn)
     conn.commit()
+
+
+def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path | None = None) -> dict:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        )
+        """
+    )
+    applied = {row["version"] for row in conn.execute("SELECT version FROM schema_migrations").fetchall()}
+    available = list_migration_files(migrations_dir)
+
+    executed = []
+    for migration_path in available:
+        if migration_path.name in applied:
+            continue
+        conn.executescript(migration_path.read_text(encoding="utf-8"))
+        conn.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)",
+            (migration_path.name, utc_now()),
+        )
+        executed.append(migration_path.name)
+    conn.commit()
+    return {
+        "applied_migrations": sorted(
+            row["version"] for row in conn.execute("SELECT version FROM schema_migrations ORDER BY version ASC").fetchall()
+        ),
+        "executed": executed,
+    }
+
+
+def list_migration_files(migrations_dir: Path | None = None) -> list[Path]:
+    directory = migrations_dir or Path(__file__).resolve().parents[3] / "migrations"
+    if not directory.exists():
+        return []
+    return sorted(path for path in directory.glob("*.sql") if path.is_file())
+
+
+def current_schema_version(conn: sqlite3.Connection) -> str | None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        )
+        """
+    )
+    row = conn.execute("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").fetchone()
+    return row["version"] if row is not None else None
 
 
 def _ensure_indexes(conn: sqlite3.Connection) -> None:
