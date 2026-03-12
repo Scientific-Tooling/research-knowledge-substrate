@@ -1,3 +1,3 @@
-from rks.domain.models import ArtifactRecord, PaperRecord
+from rks.domain.models import ArtifactRecord, ClaimRecord, PaperRecord
 
-__all__ = ["ArtifactRecord", "PaperRecord"]
+__all__ = ["ArtifactRecord", "ClaimRecord", "PaperRecord"]

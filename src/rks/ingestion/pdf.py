@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from rks.config import AppPaths
+from rks.extraction import extract_text_for_paper
 from rks.storage import PaperRepository
 from rks.utils import ensure_dir
 
@@ -27,7 +28,9 @@ def ingest_pdf(
     paper_dir = ensure_dir(paths.papers_dir / paper_preview_id)
     stored_pdf = paper_dir / "source.pdf"
     shutil.copy2(source_pdf, stored_pdf)
-    return repo.create_paper_from_pdf(source_pdf=source_pdf, stored_pdf=stored_pdf, title=title)
+    paper = repo.create_paper_from_pdf(source_pdf=source_pdf, stored_pdf=stored_pdf, title=title)
+    extract_text_for_paper(repo=repo, paths=paths, paper=paper)
+    return repo.get_paper(paper.id)
 
 
 def _peek_next_paper_id(repo: PaperRepository) -> str:

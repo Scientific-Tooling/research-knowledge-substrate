@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 
 from rks.config import load_paths
+from rks.extraction import extract_claims_for_paper, extract_text_for_paper
 from rks.ingestion import ingest_pdf
-from rks.storage import PaperRepository, connect_db, initialize_db
+from rks.storage import ClaimRepository, PaperRepository, connect_db, initialize_db
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +31,21 @@ def build_parser() -> argparse.ArgumentParser:
     show_paper_parser = show_subparsers.add_parser("paper", help="Show a stored paper.")
     show_paper_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     show_paper_parser.set_defaults(handler=handle_show_paper)
+
+    claims_parser = subparsers.add_parser("claims", help="List extracted claims for a paper.")
+    claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    claims_parser.set_defaults(handler=handle_claims)
+
+    extract_parser = subparsers.add_parser("extract", help="Run extraction steps for a stored paper.")
+    extract_subparsers = extract_parser.add_subparsers(dest="extract_command", required=True)
+
+    extract_text_parser = extract_subparsers.add_parser("text", help="Extract text artifacts for a paper.")
+    extract_text_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_text_parser.set_defaults(handler=handle_extract_text)
+
+    extract_claims_parser = extract_subparsers.add_parser("claims", help="Extract heuristic claims for a paper.")
+    extract_claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_claims_parser.set_defaults(handler=handle_extract_claims)
 
     return parser
 
@@ -74,6 +90,67 @@ def handle_show_paper(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_claims(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        claims = session.claims.list_claims_for_paper(args.paper_id)
+    print(
+        json.dumps(
+            [
+                {
+                    "id": claim.id,
+                    "paper_id": claim.paper_id,
+                    "text": claim.text,
+                    "predicate": claim.predicate,
+                    "confidence": claim.confidence,
+                    "created_at": claim.created_at,
+                }
+                for claim in claims
+            ],
+            indent=2,
+        )
+    )
+    return 0
+
+
+def handle_extract_text(args: argparse.Namespace) -> int:
+    paths = load_paths()
+    with _open_repository() as repo:
+        paper = repo.get_paper(args.paper_id)
+        artifact = extract_text_for_paper(repo=repo, paths=paths, paper=paper)
+    print(
+        json.dumps(
+            {
+                "paper_id": args.paper_id,
+                "artifact_id": artifact.id,
+                "artifact_type": artifact.artifact_type,
+                "path": artifact.path,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def handle_extract_claims(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        claims = extract_claims_for_paper(
+            paper_repo=session.papers,
+            claim_repo=session.claims,
+            paper_id=args.paper_id,
+        )
+    print(
+        json.dumps(
+            {
+                "paper_id": args.paper_id,
+                "claim_count": len(claims),
+                "claim_ids": [claim.id for claim in claims],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 class _RepositoryContext:
     def __enter__(self) -> PaperRepository:
         paths = load_paths()
@@ -89,6 +166,32 @@ class _RepositoryContext:
 
 def _open_repository() -> _RepositoryContext:
     return _RepositoryContext()
+
+
+class _Session:
+    def __init__(self, papers: PaperRepository, claims: ClaimRepository):
+        self.papers = papers
+        self.claims = claims
+
+
+class _SessionContext:
+    def __enter__(self) -> _Session:
+        paths = load_paths()
+        self.conn = connect_db(paths.db_path)
+        initialize_db(self.conn)
+        return _Session(
+            papers=PaperRepository(self.conn),
+            claims=ClaimRepository(self.conn),
+        )
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if exc_type is not None:
+            self.conn.rollback()
+        self.conn.close()
+
+
+def _open_session() -> _SessionContext:
+    return _SessionContext()
 
 
 def _paper_to_payload(paper) -> dict:

@@ -68,6 +68,43 @@ class PaperRepository:
         self.conn.commit()
         return self.get_paper(paper_id)
 
+    def create_artifact(
+        self,
+        paper_id: str,
+        artifact_type: str,
+        path: Path,
+        format_name: str,
+        metadata: dict,
+    ) -> ArtifactRecord:
+        artifact_id = next_id(self.conn, "artifact")
+        timestamp = utc_now()
+        self.conn.execute(
+            """
+            INSERT INTO artifacts(
+                id, paper_id, artifact_type, path, format, metadata_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                artifact_id,
+                paper_id,
+                artifact_type,
+                str(path),
+                format_name,
+                json.dumps(metadata, sort_keys=True),
+                timestamp,
+            ),
+        )
+        self.conn.commit()
+        return self.get_artifact(artifact_id)
+
+    def set_text_artifact(self, paper_id: str, artifact_id: str) -> None:
+        timestamp = utc_now()
+        self.conn.execute(
+            "UPDATE papers SET text_artifact_id = ?, updated_at = ? WHERE id = ?",
+            (artifact_id, timestamp, paper_id),
+        )
+        self.conn.commit()
+
     def get_paper(self, paper_id: str) -> PaperRecord:
         row = self.conn.execute(
             "SELECT * FROM papers WHERE id = ?",
@@ -83,3 +120,12 @@ class PaperRepository:
             (paper_id,),
         ).fetchall()
         return [ArtifactRecord(**dict(row)) for row in rows]
+
+    def get_artifact(self, artifact_id: str) -> ArtifactRecord:
+        row = self.conn.execute(
+            "SELECT * FROM artifacts WHERE id = ?",
+            (artifact_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Artifact not found: {artifact_id}")
+        return ArtifactRecord(**dict(row))

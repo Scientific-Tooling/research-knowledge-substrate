@@ -31,3 +31,21 @@ class ArtifactRecord:
     format: str
     metadata_json: str
     created_at: str
+
+
+@dataclass(frozen=True)
+class ClaimRecord:
+    id: str
+    paper_id: str
+    text: str
+    subject_concept_id: Optional[str]
+    predicate: str
+    object_concept_id: Optional[str]
+    object_text: Optional[str]
+    context_json: Optional[str]
+    evidence_json: Optional[str]
+    confidence: Optional[float]
+    status: str
+    created_by: str
+    created_at: str
+    updated_at: str
