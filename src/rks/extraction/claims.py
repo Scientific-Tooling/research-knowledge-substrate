@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -9,23 +10,19 @@ from rks.concepts import link_claims_for_paper
 from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
 
 
+CLAIM_EXTRACTOR_VERSION = "1.0"
+
 PREDICATE_PATTERNS = [
-    ("outperform", "outperforms"),
-    ("outperforms", "outperforms"),
-    ("improve", "improves"),
-    ("improves", "improves"),
-    ("reduce", "reduces"),
-    ("reduces", "reduces"),
-    ("increase", "increases"),
-    ("increases", "increases"),
-    ("enable", "enables"),
-    ("enables", "enables"),
-    ("require", "requires"),
-    ("requires", "requires"),
-    ("support", "supports"),
-    ("supports", "supports"),
-    ("replace", "replaces"),
-    ("replaces", "replaces"),
+    (r"\boutperform(?:s|ed|ing)?\b", "outperforms"),
+    (r"\bimprov(?:e|es|ed|ing)\b", "improves"),
+    (r"\breduc(?:e|es|ed|ing)\b", "reduces"),
+    (r"\bincreas(?:e|es|ed|ing)\b", "increases"),
+    (r"\benabl(?:e|es|ed|ing)\b", "enables"),
+    (r"\brequir(?:e|es|ed|ing)\b", "requires"),
+    (r"\bsupport(?:s|ed|ing)?\b", "supports"),
+    (r"\breplac(?:e|es|ed|ing)\b", "replaces"),
+    (r"\brefin(?:e|es|ed|ing)\b", "refines"),
+    (r"\bextend(?:s|ed|ing)?\b", "extends"),
 ]
 
 
@@ -111,10 +108,14 @@ def persist_claims_for_paper(
         artifact_type="structured_claims",
         path=structured_claims_path,
         format_name="json",
-        metadata={"count": len(claims), "extractor": extractor},
+        metadata={"count": len(claims), "extractor": extractor, "extractor_version": CLAIM_EXTRACTOR_VERSION},
     )
 
-    stored_claims = claim_repo.replace_claims_for_paper(paper_id, claims)
+    stored_claims = claim_repo.replace_claims_for_paper(
+        paper_id,
+        claims,
+        created_by=f"system:{extractor}",
+    )
     if stored_claims:
         link_claims_for_paper(
             paper_repo=paper_repo,
@@ -146,11 +147,14 @@ def _extract_claim_dicts(claim_candidates: list[dict], paper_id: str) -> list[di
         if len(candidate) < 20:
             continue
 
-        predicate, keyword = _detect_predicate(candidate.lower())
+        predicate, keyword = _detect_predicate(candidate)
         if predicate is None:
             continue
 
         subject_text, object_text, context = _parse_claim_parts(candidate, keyword)
+        if subject_text is None and object_text is None:
+            continue
+        evidence = _normalized_evidence(candidate_entry, paper_id)
         claims.append(
             {
                 "text": candidate,
@@ -162,41 +166,77 @@ def _extract_claim_dicts(claim_candidates: list[dict], paper_id: str) -> list[di
                     "paper_id": paper_id,
                     "subject_text": subject_text,
                     "section": candidate_entry["section"],
+                    "claim_key": _claim_key(candidate),
                     **context,
                 },
-                "evidence": {
-                    "paper_id": paper_id,
-                    "extraction": "heuristic",
-                    "section": candidate_entry["section"],
-                },
-                "confidence": 0.55,
+                "evidence": evidence,
+                "confidence": 0.62 if subject_text and object_text else 0.55,
             }
         )
 
     return claims
 
 
-def _extract_candidate_sentences(text: str) -> list[str]:
-    normalized_text = " ".join(text.split())
-    if not normalized_text:
-        return []
-    return [sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", normalized_text) if sentence.strip()]
+def _extract_candidate_sentences(text: str, base_offset: int) -> list[dict]:
+    entries: list[dict] = []
+    for sentence_index, match in enumerate(re.finditer(r"[^.!?]+[.!?]?", text, flags=re.DOTALL)):
+        sentence = match.group(0).strip()
+        if not sentence:
+            continue
+        leading_space = len(match.group(0)) - len(match.group(0).lstrip())
+        sentence_start = base_offset + match.start() + leading_space
+        entries.append(
+            {
+                "text": sentence,
+                "char_start": sentence_start,
+                "char_end": sentence_start + len(sentence),
+                "sentence_index": sentence_index,
+            }
+        )
+    return entries
 
 
 def _extract_candidate_entries(payload: dict, sections_payload: dict | None) -> list[dict]:
+    paragraph_records = {
+        int(record["index"]): record for record in payload.get("paragraph_records", [])
+    }
     if sections_payload and sections_payload.get("sections"):
         entries = []
         for section in sections_payload["sections"]:
             section_name = section.get("name", "unknown")
             if section_name not in {"abstract", "introduction", "method", "experiments", "results", "conclusion"}:
                 continue
-            for paragraph in section.get("paragraphs", []):
-                for sentence in _extract_candidate_sentences(paragraph):
-                    entries.append({"text": sentence, "section": section_name})
+            paragraph_indexes = section.get("paragraph_indexes", [])
+            for paragraph_index in paragraph_indexes:
+                record = paragraph_records.get(int(paragraph_index))
+                if record is None:
+                    continue
+                for sentence in _extract_candidate_sentences(record["text"], int(record["char_start"])):
+                    entries.append(
+                        {
+                            **sentence,
+                            "section": section_name,
+                            "paragraph_index": record["index"],
+                        }
+                    )
         if entries:
             return entries
 
-    return [{"text": sentence, "section": "abstract"} for sentence in _extract_candidate_sentences(payload.get("text", ""))]
+    if payload.get("paragraph_records"):
+        entries = []
+        for record in payload["paragraph_records"]:
+            for sentence in _extract_candidate_sentences(record["text"], int(record["char_start"])):
+                entries.append({**sentence, "section": "abstract", "paragraph_index": record["index"]})
+        return entries
+
+    return [
+        {
+            **sentence,
+            "section": "abstract",
+            "paragraph_index": 0,
+        }
+        for sentence in _extract_candidate_sentences(payload.get("text", ""), 0)
+    ]
 
 
 def _load_sections_payload(text_artifact_path: Path) -> dict | None:
@@ -219,10 +259,12 @@ def _normalize_sentence(sentence: str) -> str:
 
 
 def _detect_predicate(sentence: str) -> tuple[str | None, str | None]:
-    for keyword, predicate in PREDICATE_PATTERNS:
-        if keyword in sentence:
-            return predicate, keyword
-    if "show" in sentence or "demonstrate" in sentence:
+    for pattern, predicate in PREDICATE_PATTERNS:
+        match = re.search(pattern, sentence, flags=re.IGNORECASE)
+        if match:
+            return predicate, match.group(0)
+    lowered = sentence.lower()
+    if "show" in lowered or "demonstrate" in lowered:
         return "supports", "show"
     return None, None
 
@@ -232,7 +274,7 @@ def _parse_claim_parts(sentence: str, keyword: str | None) -> tuple[str | None, 
         return None, None, {}
 
     before, after = sentence, ""
-    if keyword in sentence.lower():
+    if keyword.lower() in sentence.lower():
         match = re.search(re.escape(keyword), sentence, flags=re.IGNORECASE)
         if match:
             before = sentence[: match.start()]
@@ -243,14 +285,27 @@ def _parse_claim_parts(sentence: str, keyword: str | None) -> tuple[str | None, 
     context = {}
 
     for label, pattern in (
-        ("dataset", r"\bon\s+([A-Z][A-Za-z0-9\-]+)\b"),
-        ("task", r"\bfor\s+([a-z][a-z0-9\- ]+)$"),
-        ("domain", r"\bin\s+([a-z][a-z0-9\- ]+)$"),
+        ("dataset", r"\bon\s+([A-Z][A-Za-z0-9.\-]*(?:\s+[A-Z0-9][A-Za-z0-9.\-]*)*)"),
+        ("task", r"\bfor\s+([a-z][a-z0-9\- ]+?)(?:\s+(?:on|in|with)\b|$)"),
+        ("domain", r"\bin\s+([a-z][a-z0-9\- ]+?)(?:\s+(?:with|using)\b|$)"),
     ):
         match = re.search(pattern, object_text or "", flags=re.IGNORECASE)
         if match:
             context[label] = match.group(1).strip()
             object_text = _clean_phrase((object_text or "").replace(match.group(0), ""))
+
+    if subject_text is None:
+        leading_subject = re.match(r"^([A-Z][A-Za-z0-9\-]*(?:\s+[A-Za-z0-9\-]+){0,4})", sentence)
+        if leading_subject:
+            subject_text = _clean_phrase(leading_subject.group(1))
+
+    if object_text is None and subject_text:
+        tail = sentence.replace(subject_text, "", 1)
+        if keyword:
+            keyword_match = re.search(re.escape(keyword), tail, flags=re.IGNORECASE)
+            if keyword_match:
+                tail = tail[keyword_match.end() :]
+        object_text = _clean_phrase(tail)
 
     return subject_text, object_text, context
 
@@ -264,4 +319,23 @@ def _clean_phrase(value: str) -> str | None:
         flags=re.IGNORECASE,
     )
     cleaned = re.sub(r"^(show|shows|demonstrate|demonstrates)\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(better|more|less)\s+than\b.*$", "", cleaned, flags=re.IGNORECASE)
     return cleaned or None
+
+
+def _normalized_evidence(candidate_entry: dict, paper_id: str) -> dict:
+    return {
+        "paper_id": paper_id,
+        "extraction": "heuristic",
+        "extractor_version": CLAIM_EXTRACTOR_VERSION,
+        "section": candidate_entry["section"],
+        "paragraph_index": candidate_entry.get("paragraph_index"),
+        "sentence_index": candidate_entry.get("sentence_index"),
+        "char_start": candidate_entry.get("char_start"),
+        "char_end": candidate_entry.get("char_end"),
+        "snippet": candidate_entry["text"],
+    }
+
+
+def _claim_key(sentence: str) -> str:
+    return hashlib.sha1(sentence.encode("utf-8")).hexdigest()[:12]

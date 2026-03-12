@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 
@@ -12,13 +13,23 @@ class ClaimRepository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def replace_claims_for_paper(self, paper_id: str, claims: list[dict]) -> list[ClaimRecord]:
+    def replace_claims_for_paper(
+        self,
+        paper_id: str,
+        claims: list[dict],
+        created_by: str = "system:heuristic",
+    ) -> list[ClaimRecord]:
         timestamp = utc_now()
+        existing_by_fingerprint = self._existing_claims_by_fingerprint(paper_id)
         self.conn.execute("DELETE FROM claims WHERE paper_id = ?", (paper_id,))
         created: list[ClaimRecord] = []
 
         for claim in claims:
-            claim_id = next_id(self.conn, "claim")
+            fingerprint = self._claim_fingerprint(claim)
+            existing = existing_by_fingerprint.get(fingerprint, [])
+            prior = existing.pop(0) if existing else None
+            claim_id = prior.id if prior is not None else next_id(self.conn, "claim")
+            created_at = prior.created_at if prior is not None else timestamp
             self.conn.execute(
                 """
                 INSERT INTO claims(
@@ -39,8 +50,8 @@ class ClaimRepository:
                     json.dumps(claim.get("evidence", {}), sort_keys=True),
                     claim.get("confidence"),
                     "extracted",
-                    "system:heuristic",
-                    timestamp,
+                    created_by,
+                    created_at,
                     timestamp,
                 ),
             )
@@ -72,6 +83,31 @@ class ClaimRepository:
             (paper_id,),
         ).fetchall()
         return [ClaimRecord(**dict(row)) for row in rows]
+
+    def _existing_claims_by_fingerprint(self, paper_id: str) -> dict[str, list[ClaimRecord]]:
+        records: dict[str, list[ClaimRecord]] = {}
+        for claim in self.list_claims_for_paper(paper_id):
+            fingerprint = self._claim_fingerprint(
+                {
+                    "text": claim.text,
+                    "predicate": claim.predicate,
+                    "object_text": claim.object_text,
+                    "context": json.loads(claim.context_json or "{}"),
+                    "evidence": json.loads(claim.evidence_json or "{}"),
+                }
+            )
+            records.setdefault(fingerprint, []).append(claim)
+        return records
+
+    def _claim_fingerprint(self, claim: dict) -> str:
+        payload = {
+            "text": claim.get("text"),
+            "predicate": claim.get("predicate"),
+            "object_text": claim.get("object_text"),
+            "context": claim.get("context", {}),
+            "evidence": claim.get("evidence", {}),
+        }
+        return hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
     def list_claims_for_concept(self, concept_id: str) -> list[ClaimRecord]:
         rows = self.conn.execute(

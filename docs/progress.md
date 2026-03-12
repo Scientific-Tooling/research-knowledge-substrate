@@ -1,14 +1,15 @@
-# MVP Progress
+# Progress
 
 ## Current Status
 
-The repository now has a working local MVP spine:
+The repository now has a hardened post-MVP base for extraction quality:
 
 - local SQLite initialization
 - PDF ingestion into stable paper IDs
 - metadata and extracted text artifacts on disk
-- section detection artifacts on disk
-- heuristic structured claim extraction
+- stronger local PDF text recovery through a stream-aware backend
+- section detection artifacts with paragraph offsets on disk
+- heuristic structured claim extraction with more stable subject/object parsing
 - optional `llm-api` claim/text extraction when the user provides an API key
 - optional `agent` extraction workflow for Codex, Claude Code, or other external agents
 - a formal dual-track contract for all LLM-backed tasks
@@ -16,6 +17,9 @@ The repository now has a working local MVP spine:
 - graph edge persistence for `contains`, `supported_by`, and `about`
 - deterministic CLI queries for `claims-about` and `papers-supporting`
 - local search across papers, claims, and concepts
+- normalized evidence payloads with section and character offsets
+- replay-stable claim IDs when extraction output is unchanged
+- artifact lineage metadata including extractor version and mode
 
 ## Implemented Milestones
 
@@ -24,18 +28,19 @@ The repository now has a working local MVP spine:
 - Milestone 2: extracted text artifacts and claim persistence
 - Milestone 3: concept linking and edge persistence
 - Milestone 4: first deterministic query templates
+- Phase 1: Quality Hardening
 
 ## Remaining Work
 
-- improve PDF text extraction beyond the current fallback chain
-- harden DOI and arXiv ingestion against network and metadata edge cases
-- improve claim parsing quality and context extraction
-- add more query templates and evidence summaries
-- add better fixtures for realistic paper text
+- add first-class method and dataset extraction
+- expand graph edges beyond claims and concepts
+- add semantic retrieval and claim-relation reasoning
+- add batch and queue-based agent workflows
+- add config, migrations, export/import, and service surfaces
 
 ## Latest Architectural Direction
 
-The MVP remains intentionally local and inspectable.
+RKS remains intentionally local and inspectable.
 
 Every ingestion flow should create filesystem artifacts first, then persist structured rows and graph edges. This keeps the debugging surface visible and avoids hiding extraction failures inside opaque database state.
 

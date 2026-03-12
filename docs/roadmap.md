@@ -1,5 +1,15 @@
 # Post-MVP Roadmap
 
+## Delivery Status
+
+Status as of 2026-03-12:
+
+- [x] Phase 1: Quality Hardening
+- [ ] Phase 2: Research Graph Expansion
+- [ ] Phase 3: Retrieval and Reasoning Upgrade
+- [ ] Phase 4: Agent Workflow Maturity
+- [ ] Phase 5: Productization Layer
+
 ## Goal
 
 The MVP established the core local substrate:
@@ -27,18 +37,18 @@ Turn the MVP from "works on good inputs" into "works predictably on real papers.
 
 Priority work:
 
-- replace the current lightweight PDF fallback with a stronger extraction backend
-- improve section detection quality and preserve paragraph offsets
-- improve claim parsing quality, especially subject/object extraction
-- normalize evidence fields more consistently
-- add replay-safe artifact lineage metadata such as extractor version and mode
-- expand fixture coverage with more realistic paper text and edge cases
+- [x] replace the current lightweight PDF fallback with a stronger extraction backend
+- [x] improve section detection quality and preserve paragraph offsets
+- [x] improve claim parsing quality, especially subject/object extraction
+- [x] normalize evidence fields more consistently
+- [x] add replay-safe artifact lineage metadata such as extractor version and mode
+- [x] expand fixture coverage with more realistic paper text and edge cases
 
 Exit criteria:
 
-- extraction produces stable artifacts on a representative fixture set
-- claim quality is acceptable without hand-tuning prompts per paper
-- rerunning extraction is deterministic enough to compare outputs across versions
+- [x] extraction produces stable artifacts on a representative fixture set
+- [x] claim quality is acceptable without hand-tuning prompts per paper
+- [x] rerunning extraction is deterministic enough to compare outputs across versions
 
 ## Phase 2: Research Graph Expansion
 
@@ -48,16 +58,16 @@ Move from a claim-centric MVP to a fuller minimal research graph.
 
 Priority work:
 
-- add first-class `Method` extraction and persistence
-- add first-class `Dataset` extraction and persistence
-- add graph edges such as `proposes`, `uses`, and `evaluated_on`
-- improve concept hierarchy support with optional parent concepts
-- add basic citation ingestion and `cites` edges when metadata is available
+- [ ] add first-class `Method` extraction and persistence
+- [ ] add first-class `Dataset` extraction and persistence
+- [ ] add graph edges such as `proposes`, `uses`, and `evaluated_on`
+- [ ] improve concept hierarchy support with optional parent concepts
+- [ ] add basic citation ingestion and `cites` edges when metadata is available
 
 Exit criteria:
 
-- a paper can produce claims, methods, datasets, and linked graph edges
-- the stored graph more closely matches the intended minimal research graph design
+- [ ] a paper can produce claims, methods, datasets, and linked graph edges
+- [ ] the stored graph more closely matches the intended minimal research graph design
 
 ## Phase 3: Retrieval and Reasoning Upgrade
 
@@ -67,18 +77,18 @@ Make the substrate genuinely useful for research questions rather than only insp
 
 Priority work:
 
-- add embeddings for papers, claims, and concepts
-- add semantic retrieval alongside lexical search
-- implement more deterministic query templates
-- add contradiction, refinement, and support patterns between claims
-- improve summary and synthesis artifacts to cite specific claims and papers
-- add evidence aggregation views for concept- or claim-level questions
+- [ ] add embeddings for papers, claims, and concepts
+- [ ] add semantic retrieval alongside lexical search
+- [ ] implement more deterministic query templates
+- [ ] add contradiction, refinement, and support patterns between claims
+- [ ] improve summary and synthesis artifacts to cite specific claims and papers
+- [ ] add evidence aggregation views for concept- or claim-level questions
 
 Exit criteria:
 
-- local search combines lexical and semantic retrieval
-- users can answer more research-shaped questions without manual graph inspection
-- reasoning outputs are traceable back to stored objects
+- [ ] local search combines lexical and semantic retrieval
+- [ ] users can answer more research-shaped questions without manual graph inspection
+- [ ] reasoning outputs are traceable back to stored objects
 
 ## Phase 4: Agent Workflow Maturity
 
@@ -88,16 +98,16 @@ Make RKS a better substrate for long-running agent work.
 
 Priority work:
 
-- formalize more agent-facing skills for ingestion, query, and maintenance workflows
-- add batch operations for repeated paper ingestion and extraction
-- add queue-like request/result management for agent-mode tasks
-- add extraction status reporting and failure visibility
-- add schema/version tracking for all dual-track LLM tasks
+- [ ] formalize more agent-facing skills for ingestion, query, and maintenance workflows
+- [ ] add batch operations for repeated paper ingestion and extraction
+- [ ] add queue-like request/result management for agent-mode tasks
+- [ ] add extraction status reporting and failure visibility
+- [ ] add schema/version tracking for all dual-track LLM tasks
 
 Exit criteria:
 
-- an external agent can operate RKS repeatedly without repository-specific improvisation
-- failures and replays are explicit and auditable
+- [ ] an external agent can operate RKS repeatedly without repository-specific improvisation
+- [ ] failures and replays are explicit and auditable
 
 ## Phase 5: Productization Layer
 
@@ -107,16 +117,16 @@ Prepare RKS for broader use beyond a single local repo.
 
 Priority work:
 
-- define a stable config story for models, providers, and storage paths
-- add migration/version management for stored data
-- add export/import paths for graph snapshots
-- add optional API or service layer above the local CLI
-- add a lightweight UI only after the data and workflows are stable
+- [ ] define a stable config story for models, providers, and storage paths
+- [ ] add migration/version management for stored data
+- [ ] add export/import paths for graph snapshots
+- [ ] add optional API or service layer above the local CLI
+- [ ] add a lightweight UI only after the data and workflows are stable
 
 Exit criteria:
 
-- the system can be installed, configured, migrated, and operated with less manual setup
-- the local substrate can evolve into a reusable research platform
+- [ ] the system can be installed, configured, migrated, and operated with less manual setup
+- [ ] the local substrate can evolve into a reusable research platform
 
 ## Near-Term Priority Order
 
