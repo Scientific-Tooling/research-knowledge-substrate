@@ -108,3 +108,5 @@ These flows create paper records and metadata artifacts and, when an abstract is
 - [docs/project-positioning.md](docs/project-positioning.md)
 - [docs/implementation-plan.md](docs/implementation-plan.md)
 - [docs/progress.md](docs/progress.md)
+- [docs/mvp-status.md](docs/mvp-status.md)
+- [docs/agent-skills.md](docs/agent-skills.md)
