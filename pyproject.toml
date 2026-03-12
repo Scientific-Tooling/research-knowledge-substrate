@@ -1,14 +1,43 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "research-knowledge-substrate"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Agent-first research knowledge substrate for structured paper ingestion and research graph construction."
-readme = "README.md"
+readme = {file = "README-PYPI.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
 dependencies = []
+authors = [
+  {name = "Scientific Tooling"}
+]
+keywords = ["research", "knowledge-graph", "papers", "agent", "cli", "sqlite"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+release = [
+  "build>=1.2.2",
+  "twine>=6.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Scientific-Tooling/research-knowledge-substrate"
+Repository = "https://github.com/Scientific-Tooling/research-knowledge-substrate"
+Documentation = "https://github.com/Scientific-Tooling/research-knowledge-substrate/blob/main/docs/README.md"
+Issues = "https://github.com/Scientific-Tooling/research-knowledge-substrate/issues"
 
 [project.scripts]
 rks = "rks.cli.main:main"
@@ -16,5 +45,11 @@ rks = "rks.cli.main:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.setuptools.dynamic]
+version = {attr = "rks.__version__"}
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"rks.migrations" = ["*.sql"]

@@ -4,7 +4,7 @@ This document explains how to install RKS and which installation path is recomme
 
 ## 1. Installation Overview
 
-The primary installation path today is a local source install.
+The repository is now prepared for formal PyPI distribution, but until a release is actually uploaded, the safest default remains a local source install.
 
 This is suitable for:
 
@@ -12,7 +12,13 @@ This is suitable for:
 - development and debugging
 - agent-driven operation through Codex, Claude Code, or similar tools
 
-The repository does not currently present itself as a PyPI, Homebrew, or standalone installer distribution, so source installation is the recommended default.
+After a PyPI release is uploaded, users will also be able to install with:
+
+```bash
+python -m pip install research-knowledge-substrate
+```
+
+Homebrew and standalone desktop installers are still out of scope.
 
 ## 2. Requirements
 
@@ -57,7 +63,17 @@ This uses an editable install, which fits the current stage of the project:
 - the `rks` command becomes available immediately
 - repository changes are reflected in the active environment
 
-## 4. Initialize the Workspace
+## 4. Install From PyPI After a Release Is Published
+
+Once a release has been uploaded to PyPI, the standard install path becomes:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install research-knowledge-substrate
+```
+
+## 5. Initialize the Workspace
 
 After installation, initialize the local workspace:
 
@@ -73,7 +89,7 @@ Inspect the effective configuration:
 rks config show
 ```
 
-## 5. Verify the Installation
+## 6. Verify the Installation
 
 At minimum, run:
 
@@ -92,7 +108,7 @@ printf '%s\n' '%PDF-1.4' 'Hello RKS.' > sample.pdf
 rks ingest pdf sample.pdf
 ```
 
-## 6. LLM and Agent Preparation
+## 7. LLM and Agent Preparation
 
 ### 6.1 Using `llm-api` mode
 
@@ -123,7 +139,7 @@ rks summarize paper <paper_id> --mode agent
 
 Then import the agent-produced results through the documented `import` flows.
 
-## 7. Recommended Install Shapes
+## 8. Recommended Install Shapes
 
 ### 7.1 Regular users
 
@@ -149,7 +165,7 @@ If Codex or Claude Code will operate directly inside the repository, also prefer
 - the `rks` command is available in the current shell
 - the workspace has write access to the data directory
 
-## 8. Rebuild or Reset
+## 9. Rebuild or Reset
 
 If you want to rebuild the Python environment, the simplest path is usually:
 
@@ -162,7 +178,7 @@ python -m pip install -e .
 
 If you only want to clear workspace data, you can remove the local `data/` directory, but that will also remove the local database and artifacts.
 
-## 9. Common Problems
+## 10. Common Problems
 
 ### 9.1 `rks` command not found
 
@@ -196,10 +212,11 @@ Confirm where `data_dir` points. The database is typically located at:
 <data_dir>/rks.sqlite3
 ```
 
-## 10. Suggested Next Reading
+## 11. Suggested Next Reading
 
 After installation, continue with:
 
 - [user-usage-guide.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/user-usage-guide.md)
 - [agent-usage-guide.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/agent-usage-guide.md)
 - [manual-testing-guide.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/manual-testing-guide.md)
+- [pypi-publishing-guide.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/pypi-publishing-guide.md)

@@ -38,6 +38,7 @@ The repository now has a hardened post-MVP base for extraction quality:
 - a dedicated operations layer for paper status and claim-relation review flows
 - HTTP review endpoints for claim-relation promotion and retraction
 - direct research output surfaces for grounded answers, topic briefs, disagreements, and opportunities
+- package metadata, packaged migrations, and CI workflows for formal PyPI distribution readiness
 
 ## Implemented Milestones
 

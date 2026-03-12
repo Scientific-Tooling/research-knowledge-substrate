@@ -14,6 +14,8 @@ These documents describe the current product, architecture direction, operations
 - `agent-skills.md`
 - `installation-guide.md`
 - `installation-guide-zh.md`
+- `pypi-publishing-guide.md`
+- `pypi-publishing-guide-zh.md`
 - `user-usage-guide.md`
 - `user-usage-guide-zh.md`
 - `agent-usage-guide.md`
@@ -28,6 +30,9 @@ Current help and usage docs are maintained in both English and Chinese:
 - Installation:
   `installation-guide.md`
   `installation-guide-zh.md`
+- PyPI publishing:
+  `pypi-publishing-guide.md`
+  `pypi-publishing-guide-zh.md`
 - User usage:
   `user-usage-guide.md`
   `user-usage-guide-zh.md`

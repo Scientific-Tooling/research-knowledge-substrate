@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from importlib import resources
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from rks.storage.schema import SCHEMA_SQL
 from rks.utils import ensure_dir, utc_now
@@ -53,11 +55,17 @@ def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path | None = Non
     }
 
 
-def list_migration_files(migrations_dir: Path | None = None) -> list[Path]:
-    directory = migrations_dir or Path(__file__).resolve().parents[3] / "migrations"
-    if not directory.exists():
-        return []
-    return sorted(path for path in directory.glob("*.sql") if path.is_file())
+def list_migration_files(migrations_dir: Path | None = None) -> list[Any]:
+    if migrations_dir is not None:
+        if not migrations_dir.exists():
+            return []
+        return sorted(path for path in migrations_dir.glob("*.sql") if path.is_file())
+
+    repo_directory = Path(__file__).resolve().parents[3] / "migrations"
+    if repo_directory.exists():
+        return sorted(path for path in repo_directory.glob("*.sql") if path.is_file())
+
+    return _packaged_migration_files()
 
 
 def current_schema_version(conn: sqlite3.Connection) -> str | None:
@@ -71,6 +79,14 @@ def current_schema_version(conn: sqlite3.Connection) -> str | None:
     )
     row = conn.execute("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").fetchone()
     return row["version"] if row is not None else None
+
+
+def _packaged_migration_files() -> list[Any]:
+    directory = resources.files("rks.migrations")
+    return sorted(
+        (path for path in directory.iterdir() if path.name.endswith(".sql") and path.is_file()),
+        key=lambda path: path.name,
+    )
 
 
 def _ensure_indexes(conn: sqlite3.Connection) -> None:

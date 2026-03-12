@@ -4,7 +4,7 @@
 
 ## 1. 安装方式概览
 
-当前最直接的安装方式是从源码本地安装。
+仓库现在已经补到可正式发布到 PyPI 的状态，但在真正上传 release 之前，最稳妥的默认方式仍然是从源码本地安装。
 
 适合：
 
@@ -12,7 +12,13 @@
 - 开发与调试
 - 使用 Codex / Claude Code 等 agent 在仓库内操作 RKS
 
-当前仓库没有表现出已经发布到 PyPI、Homebrew 或独立图形安装器的分发形态，因此推荐统一使用源码安装。
+等 release 真正上传到 PyPI 之后，也可以直接安装：
+
+```bash
+python -m pip install research-knowledge-substrate
+```
+
+Homebrew 和独立桌面安装器目前仍不在范围内。
 
 ## 2. 环境要求
 
@@ -57,7 +63,17 @@ python -m pip install -e .
 - 安装后可以直接运行 `rks`
 - 仓库内代码变动会立刻反映到当前环境
 
-## 4. 初始化工作区
+## 4. 发布到 PyPI 之后的安装方式
+
+当 release 已经上传到 PyPI 后，标准安装方式会变成：
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install research-knowledge-substrate
+```
+
+## 5. 初始化工作区
 
 安装完成后，建议立刻初始化：
 
@@ -73,7 +89,7 @@ rks migrate
 rks config show
 ```
 
-## 5. 验证安装是否成功
+## 6. 验证安装是否成功
 
 至少执行这几步：
 
@@ -92,7 +108,7 @@ printf '%s\n' '%PDF-1.4' 'Hello RKS.' > sample.pdf
 rks ingest pdf sample.pdf
 ```
 
-## 6. LLM / Agent 相关准备
+## 7. LLM / Agent 相关准备
 
 ### 6.1 使用 `llm-api` 模式
 
@@ -123,7 +139,7 @@ rks summarize paper <paper_id> --mode agent
 
 然后通过 `import` 路径导入 agent 结果。
 
-## 7. 推荐安装形态
+## 8. 推荐安装形态
 
 ### 7.1 普通用户
 
@@ -149,7 +165,7 @@ python -m pip install -e .
 - `rks` 命令在当前 shell 可用
 - 数据目录写入权限正常
 
-## 8. 卸载或重建
+## 9. 卸载或重建
 
 如果你想重建环境，最简单的方法通常是删除虚拟环境后重新创建：
 
@@ -162,7 +178,7 @@ python -m pip install -e .
 
 如果只是想清空当前工作区数据，可以删除工作目录下的 `data/`，但这会移除本地数据库和 artifacts。
 
-## 9. 常见问题
+## 10. 常见问题
 
 ### 9.1 `rks` 命令找不到
 
@@ -196,10 +212,11 @@ rks config show
 <data_dir>/rks.sqlite3
 ```
 
-## 10. 后续阅读
+## 11. 后续阅读
 
 安装完成后，建议继续阅读：
 
 - [user-usage-guide-zh.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/user-usage-guide-zh.md)
 - [agent-usage-guide-zh.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/agent-usage-guide-zh.md)
 - [manual-testing-guide-zh.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/manual-testing-guide-zh.md)
+- [pypi-publishing-guide-zh.md](/mnt/c/Users/mingz/Codes/research-knowledge-substrate/docs/pypi-publishing-guide-zh.md)

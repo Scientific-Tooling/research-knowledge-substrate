@@ -1,0 +1,2 @@
+include README-PYPI.md
+recursive-include src/rks/migrations *.sql

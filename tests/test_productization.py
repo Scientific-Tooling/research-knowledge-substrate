@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from rks.service import dispatch_get_request, dispatch_post_request
+from rks.storage.db import _packaged_migration_files
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,6 +28,11 @@ def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 class ProductizationTest(unittest.TestCase):
+    def test_packaged_migrations_exist_for_distributions(self) -> None:
+        packaged = _packaged_migration_files()
+        self.assertEqual([path.name for path in packaged], ["0001_init.sql"])
+        self.assertIn("CREATE TABLE IF NOT EXISTS papers", packaged[0].read_text(encoding="utf-8"))
+
     def test_config_migrate_and_graph_snapshot_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
             source = Path(source_dir)

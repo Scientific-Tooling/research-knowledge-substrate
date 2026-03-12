@@ -2,6 +2,8 @@
 
 Research Knowledge Substrate (RKS) is an agent-first local research graph system for ingesting papers, extracting research objects, querying evidence, and serving a local research workspace.
 
+The repository is now packaged for formal PyPI distribution, including a PyPI-specific README, packaged schema migrations, and GitHub Actions workflows for package validation and publishing.
+
 ## Current Capabilities
 
 The current implementation supports:
@@ -156,6 +158,8 @@ When a provider exposes PDF candidates, RKS also attempts to persist a local `so
 - [docs/research-output-roadmap.md](docs/research-output-roadmap.md)
 - [docs/installation-guide.md](docs/installation-guide.md)
 - [docs/installation-guide-zh.md](docs/installation-guide-zh.md)
+- [docs/pypi-publishing-guide.md](docs/pypi-publishing-guide.md)
+- [docs/pypi-publishing-guide-zh.md](docs/pypi-publishing-guide-zh.md)
 - [docs/user-usage-guide.md](docs/user-usage-guide.md)
 - [docs/user-usage-guide-zh.md](docs/user-usage-guide-zh.md)
 - [docs/agent-usage-guide.md](docs/agent-usage-guide.md)
