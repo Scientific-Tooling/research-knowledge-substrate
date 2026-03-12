@@ -54,6 +54,7 @@ Run deterministic graph queries:
 ```bash
 rks query claims-about <concept>
 rks query papers-supporting <claim_id>
+rks query claim-relations <claim_id>
 ```
 
 Generate a summary:
@@ -69,7 +70,19 @@ For ambiguous research questions, prefer:
 1. `rks search <query>`
 2. `rks query claims-about <concept>`
 3. `rks show claim <claim_id>` for evidence validation
-4. `rks summarize paper <paper_id>` if a concise synthesis is needed
+4. `rks query claim-relations <claim_id>` when relationship structure matters
+5. `rks summarize paper <paper_id>` if a concise synthesis is needed
+
+## Claim Relation Discipline
+
+`rks query claim-relations <claim_id>` returns two layers:
+
+- `inferred_relations`: query-time candidates
+- `reviewed_relations`: durable graph facts promoted by an agent or human
+
+Do not report inferred relations as durable truth.
+
+If the task is to modify relation state rather than inspect it, switch to `rks-agent-operations` or `rks-codex-operator`.
 
 ## Evidence Discipline
 
@@ -77,6 +90,7 @@ When reporting an answer back to the user:
 
 - prefer claim IDs and paper IDs over paraphrased memory
 - inspect `rks show claim <claim_id>` before asserting support
+- distinguish `reviewed_relations` from `inferred_relations` when discussing claim-to-claim structure
 - treat summary outputs as convenience artifacts, not stronger evidence than claims
 
 ## Important Constraints

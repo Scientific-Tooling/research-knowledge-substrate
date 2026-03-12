@@ -90,6 +90,22 @@ The expected paper state is:
 - structured claims present when extraction was requested
 - concepts present when claims were extracted
 
+For DOI and arXiv ingestion, also inspect source acquisition state:
+
+```bash
+rks show paper <paper_id>
+rks status paper <paper_id>
+```
+
+Check for:
+
+- `metadata` artifact present
+- `source_pdf_acquisition` artifact present
+- `source_pdf.available=true` when a PDF was successfully acquired
+- `data/papers/<paper_id>/source.pdf` on disk when acquisition succeeded
+
+Treat `downloaded`, `unavailable`, `failed`, and `skipped` as distinct outcomes. Do not assume reference ingestion failed just because no PDF was stored.
+
 ## Important Constraints
 
 - Prefer rerunning the same artifact-producing command over inventing manual file edits

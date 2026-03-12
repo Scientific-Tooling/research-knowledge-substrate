@@ -19,6 +19,7 @@ Purpose:
 - inspect papers, claims, concepts, and evidence
 - run local search and deterministic graph queries
 - produce summaries from already-ingested graph data
+- distinguish inferred claim relations from reviewed durable relations
 
 ### `rks-dual-track-llm`
 
@@ -41,6 +42,16 @@ Purpose:
 - run batch ingest and extraction workflows
 - inspect queued/completed/failed agent tasks
 - audit paper-level workflow status and failure states
+- promote or retract reviewed claim relations
+- verify CLI and HTTP operations remain consistent
+
+### `rks-codex-operator`
+
+Purpose:
+
+- let Codex act as the external agent driving RKS end-to-end
+- validate ingest, query, review, and HTTP product behavior
+- enforce ID capture, artifact inspection, and CLI/HTTP cross-checks
 
 ## Why These Skills Exist
 

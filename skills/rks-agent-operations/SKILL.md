@@ -16,6 +16,8 @@ Use this skill for requests such as:
 - check which agent requests are still queued
 - mark an agent task as failed
 - inspect extraction status for a paper
+- verify CLI and HTTP product operations agree
+- promote or retract reviewed claim relations
 
 ## Core Commands
 
@@ -52,6 +54,34 @@ Inspect paper workflow status:
 rks status paper <paper_id>
 ```
 
+Inspect claim relation state:
+
+```bash
+rks query claim-relations <claim_id>
+rks show claim <claim_id>
+```
+
+Promote a reviewed relation:
+
+```bash
+rks review promote-claim-relation <source_claim_id> <relation_type> <target_claim_id> --reviewed-by agent:review
+```
+
+Retract a reviewed relation:
+
+```bash
+rks review retract-claim-relation <source_claim_id> <relation_type> <target_claim_id>
+```
+
+HTTP inspection and review endpoints:
+
+```bash
+curl -s http://127.0.0.1:8765/api/status/<paper_id>
+curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
+curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/promote -H 'Content-Type: application/json' -d '{...}'
+curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/retract -H 'Content-Type: application/json' -d '{...}'
+```
+
 ## Agent Mode Discipline
 
 When using `--mode agent`, do not stop at the request artifact. Confirm that:
@@ -60,6 +90,19 @@ When using `--mode agent`, do not stop at the request artifact. Confirm that:
 2. the task is visible through `rks tasks show <task_id>`
 3. the result import transitions the task to `completed`, or explicitly mark it `failed`
 
+When operating claim relations:
+
+1. inspect `inferred_relations` before promoting anything
+2. record the exact `source_claim_id` and `target_claim_id` from command output
+3. after promote or retract, re-run both CLI and HTTP inspection to confirm consistency
+4. do not treat `inferred_relations` as durable truth
+
+When operating reference ingestion:
+
+1. check `source_pdf.available`
+2. inspect `source_pdf.acquisition.status`
+3. verify `source_pdf_acquisition` artifact exists even when acquisition failed or was skipped
+
 ## Expected Outcome
 
 A healthy paper or batch run should have:
@@ -67,3 +110,5 @@ A healthy paper or batch run should have:
 - explicit queued/completed/failed task records
 - visible artifact stage status
 - no hidden failures outside the task table
+- consistent paper status across CLI and HTTP
+- reviewed claim relations changing only through explicit promote or retract operations
