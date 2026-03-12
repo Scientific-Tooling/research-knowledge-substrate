@@ -11,9 +11,31 @@ These documents describe the current product, architecture direction, operations
 - `design-implementation-comparison.md`
 - `dual-track-llm-contract.md`
 - `agent-skills.md`
+- `installation-guide.md`
+- `installation-guide-zh.md`
+- `user-usage-guide.md`
 - `user-usage-guide-zh.md`
+- `agent-usage-guide.md`
 - `agent-usage-guide-zh.md`
+- `manual-testing-guide.md`
 - `manual-testing-guide-zh.md`
+
+## Bilingual Help Docs
+
+Current help and usage docs are maintained in both English and Chinese:
+
+- Installation:
+  `installation-guide.md`
+  `installation-guide-zh.md`
+- User usage:
+  `user-usage-guide.md`
+  `user-usage-guide-zh.md`
+- Agent usage:
+  `agent-usage-guide.md`
+  `agent-usage-guide-zh.md`
+- Manual testing:
+  `manual-testing-guide.md`
+  `manual-testing-guide-zh.md`
 
 ## Archived Design History
 
