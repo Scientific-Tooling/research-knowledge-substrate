@@ -162,17 +162,21 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
                 "title": paper.title,
                 "source_type": paper.source_type,
                 "source_ref": paper.source_ref,
+                "pdf_path": paper.pdf_path,
                 "artifacts": [artifact.artifact_type for artifact in artifacts],
+                "source_pdf": _source_pdf_status(paper, artifacts),
             }
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/status/"):
         paper_id = parsed.path.rsplit("/", 1)[-1]
         with _open_repositories() as repos:
+            paper = repos["papers"].get_paper(paper_id)
             artifacts = repos["papers"].get_artifacts_for_paper(paper_id)
             tasks = repos["tasks"].list_tasks(paper_id=paper_id)
             payload = {
                 "paper_id": paper_id,
                 "artifacts": [artifact.artifact_type for artifact in artifacts],
+                "source_pdf": _source_pdf_status(paper, artifacts),
                 "tasks": [{"id": task.id, "task_type": task.task_type, "status": task.status} for task in tasks],
             }
         return 200, "application/json", json.dumps(payload).encode("utf-8")
@@ -185,3 +189,16 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
             ]
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     raise KeyError(path)
+
+
+def _source_pdf_status(paper, artifacts) -> dict:
+    acquisition = None
+    for artifact in artifacts:
+        if artifact.artifact_type == "source_pdf_acquisition":
+            acquisition = json.loads(artifact.metadata_json or "{}")
+            break
+    return {
+        "available": bool(paper.pdf_path),
+        "path": paper.pdf_path,
+        "acquisition": acquisition,
+    }

@@ -188,6 +188,21 @@ class PaperRepository:
         )
         self.conn.commit()
 
+    def attach_source_pdf(self, paper_id: str, stored_pdf: Path, source_ref: str) -> ArtifactRecord:
+        timestamp = utc_now()
+        self.conn.execute(
+            "UPDATE papers SET pdf_path = ?, updated_at = ? WHERE id = ?",
+            (str(stored_pdf), timestamp, paper_id),
+        )
+        self.conn.commit()
+        return self.create_artifact(
+            paper_id=paper_id,
+            artifact_type="source_pdf",
+            path=stored_pdf,
+            format_name="pdf",
+            metadata={"source_ref": source_ref},
+        )
+
     def touch_paper(self, paper_id: str) -> None:
         self.conn.execute(
             "UPDATE papers SET updated_at = ? WHERE id = ?",

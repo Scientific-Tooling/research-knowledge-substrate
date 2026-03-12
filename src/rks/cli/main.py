@@ -316,6 +316,7 @@ def handle_config_show(args: argparse.Namespace) -> int:
             {
                 "root": str(app_config.root),
                 "data_dir": str(app_config.data_dir),
+                "reference_pdf_acquisition": app_config.reference_pdf_acquisition,
                 "llm": {
                     "base_url": app_config.llm_base_url,
                     "model": app_config.llm_model,
@@ -351,24 +352,28 @@ def handle_ingest_pdf(args: argparse.Namespace) -> int:
 
 
 def handle_ingest_doi(args: argparse.Namespace) -> int:
+    app_config = load_app_config()
     with _open_repository() as repo:
         paper = ingest_doi_reference(
             repo=repo,
             paths=load_paths(),
             doi=args.doi,
             provider=CrossrefMetadataProvider(),
+            acquire_pdf=app_config.reference_pdf_acquisition == "auto",
         )
     print(json.dumps(_paper_to_payload(paper), indent=2))
     return 0
 
 
 def handle_ingest_arxiv(args: argparse.Namespace) -> int:
+    app_config = load_app_config()
     with _open_repository() as repo:
         paper = ingest_arxiv_reference(
             repo=repo,
             paths=load_paths(),
             arxiv_id=args.arxiv_id,
             provider=ArxivMetadataProvider(),
+            acquire_pdf=app_config.reference_pdf_acquisition == "auto",
         )
     print(json.dumps(_paper_to_payload(paper), indent=2))
     return 0
@@ -377,6 +382,7 @@ def handle_ingest_arxiv(args: argparse.Namespace) -> int:
 def handle_batch_ingest(args: argparse.Namespace) -> int:
     manifest = _load_manifest(args.manifest_path)
     results = []
+    app_config = load_app_config()
     with _open_repository() as repo:
         for item in manifest:
             source_type = item["source_type"]
@@ -393,6 +399,7 @@ def handle_batch_ingest(args: argparse.Namespace) -> int:
                     paths=load_paths(),
                     doi=item["source_ref"],
                     provider=CrossrefMetadataProvider(),
+                    acquire_pdf=app_config.reference_pdf_acquisition == "auto",
                 )
             elif source_type == "arxiv":
                 paper = ingest_arxiv_reference(
@@ -400,6 +407,7 @@ def handle_batch_ingest(args: argparse.Namespace) -> int:
                     paths=load_paths(),
                     arxiv_id=item["source_ref"],
                     provider=ArxivMetadataProvider(),
+                    acquire_pdf=app_config.reference_pdf_acquisition == "auto",
                 )
             else:
                 raise ValueError(f"Unsupported batch source type: {source_type}")
@@ -527,6 +535,7 @@ def handle_status_paper(args: argparse.Namespace) -> int:
         paper = session.papers.get_paper(args.paper_id)
         artifacts = session.papers.get_artifacts_for_paper(args.paper_id)
         tasks = session.tasks.list_tasks(paper_id=args.paper_id)
+        source_pdf = _source_pdf_status(paper, artifacts)
     artifact_types = {artifact.artifact_type for artifact in artifacts}
     task_summary = {}
     for task in tasks:
@@ -544,6 +553,7 @@ def handle_status_paper(args: argparse.Namespace) -> int:
                     "summary": "paper_summary" in artifact_types,
                     "citations": "citations" in artifact_types,
                 },
+                "source_pdf": source_pdf,
                 "task_summary": task_summary,
                 "tasks": [_task_payload(task) for task in tasks],
             },
@@ -1163,6 +1173,19 @@ def _edge_payload(edge) -> dict:
         "target_id": edge.target_id,
         "target_type": edge.target_type,
         "metadata": json.loads(edge.metadata_json or "{}"),
+    }
+
+
+def _source_pdf_status(paper, artifacts) -> dict:
+    acquisition = None
+    for artifact in artifacts:
+        if artifact.artifact_type == "source_pdf_acquisition":
+            acquisition = json.loads(artifact.metadata_json or "{}")
+            break
+    return {
+        "available": bool(paper.pdf_path),
+        "path": paper.pdf_path,
+        "acquisition": acquisition,
     }
 
 

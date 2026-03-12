@@ -8,6 +8,7 @@ The current implementation supports:
 
 - ingesting local PDFs
 - ingesting DOI and arXiv references
+- attempting source PDF acquisition during DOI and arXiv ingestion when provider metadata exposes PDF candidates
 - persisting papers and extraction artifacts to SQLite plus local disk
 - generating inspectable pipeline artifacts such as extracted text, sections, and structured claims
 - extracting heuristic structured claims, methods, and datasets
@@ -130,12 +131,14 @@ rks ingest arxiv 1706.03762
 ```
 
 These flows create paper records and metadata artifacts and, when an abstract is available, generate text artifacts that can feed claim extraction.
+When a provider exposes PDF candidates, RKS also attempts to persist a local `source.pdf` and records acquisition status for later inspection.
 
 ## Design Docs
 
 - [docs/project-positioning.md](docs/project-positioning.md)
 - [docs/design-implementation-comparison.md](docs/design-implementation-comparison.md)
 - [docs/implementation-plan.md](docs/implementation-plan.md)
+- [docs/product-priorities.md](docs/product-priorities.md)
 - [docs/progress.md](docs/progress.md)
 - [docs/mvp-status.md](docs/mvp-status.md)
 - [docs/roadmap.md](docs/roadmap.md)

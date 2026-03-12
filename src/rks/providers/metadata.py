@@ -26,6 +26,14 @@ class CrossrefMetadataProvider:
         abstract = _strip_tags(message.get("abstract", ""))
         titles = message.get("title") or []
         venues = message.get("container-title") or []
+        pdf_candidates = []
+        for link in message.get("link", []):
+            if link.get("content-type") != "application/pdf":
+                continue
+            url = link.get("URL")
+            if not url:
+                continue
+            pdf_candidates.append({"url": url, "source": "crossref_link"})
 
         return {
             "title": titles[0] if titles else doi,
@@ -43,6 +51,7 @@ class CrossrefMetadataProvider:
                 }
                 for reference in message.get("reference", [])
             ],
+            "pdf_candidates": pdf_candidates,
             "raw": payload,
         }
 
@@ -78,6 +87,12 @@ class ArxivMetadataProvider:
             "doi": None,
             "arxiv_id": arxiv_id,
             "references": [],
+            "pdf_candidates": [
+                {
+                    "url": f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+                    "source": "arxiv_pdf",
+                }
+            ],
             "raw": raw_xml,
         }
 
