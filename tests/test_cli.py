@@ -353,6 +353,159 @@ class CliSmokeTest(unittest.TestCase):
             final_project_payload = json.loads(final_project_result.stdout)
             self.assertEqual(len(final_project_payload["hypotheses"]), 1)
 
+    def test_project_links_outputs_and_planner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            paper_a = tmp_path / "project-a.pdf"
+            paper_a.write_bytes(
+                b"%PDF-1.4\nWe propose Sparse Attention. Sparse Attention improves translation accuracy on WMT14.\n"
+            )
+            paper_b = tmp_path / "project-b.pdf"
+            paper_b.write_bytes(
+                b"%PDF-1.4\nSparse Attention does not improve translation accuracy on WMT14.\n"
+            )
+
+            paper_a_id = json.loads(run_cli("ingest", "pdf", str(paper_a), cwd=tmp_path).stdout)["id"]
+            paper_b_id = json.loads(run_cli("ingest", "pdf", str(paper_b), cwd=tmp_path).stdout)["id"]
+
+            claims_a_path = tmp_path / "project-a-claims.json"
+            claims_a_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Sparse Attention improves translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Sparse Attention", "dataset": "WMT14"},
+                                "evidence": {"paper_id": paper_a_id},
+                                "confidence": 0.91,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            claims_b_path = tmp_path / "project-b-claims.json"
+            claims_b_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Sparse Attention does not improve translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Sparse Attention", "dataset": "WMT14"},
+                                "evidence": {"paper_id": paper_b_id},
+                                "confidence": 0.74,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "claims", paper_a_id, str(claims_a_path), cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("import", "claims", paper_b_id, str(claims_b_path), cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("extract", "methods", paper_a_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("extract", "datasets", paper_a_id, cwd=tmp_path).returncode, 0)
+
+            claim_a_id = json.loads(run_cli("claims", paper_a_id, cwd=tmp_path).stdout)[0]["id"]
+            claim_b_id = json.loads(run_cli("claims", paper_b_id, cwd=tmp_path).stdout)[0]["id"]
+            method_id = json.loads(run_cli("methods", paper_a_id, cwd=tmp_path).stdout)[0]["id"]
+            dataset_id = json.loads(run_cli("datasets", paper_a_id, cwd=tmp_path).stdout)[0]["id"]
+            concept_id = json.loads(run_cli("concepts", paper_a_id, cwd=tmp_path).stdout)[0]["id"]
+
+            project_id = json.loads(
+                run_cli(
+                    "project",
+                    "create",
+                    "--name",
+                    "Sparse Attention Project",
+                    "--research-question",
+                    "Does sparse attention hold up on realistic translation benchmarks?",
+                    cwd=tmp_path,
+                ).stdout
+            )["id"]
+
+            self.assertEqual(run_cli("project", "add-paper", project_id, paper_a_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("project", "add-link", project_id, "claim", claim_a_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("project", "add-link", project_id, "method", method_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("project", "add-link", project_id, "dataset", dataset_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("project", "add-link", project_id, "concept", concept_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(
+                run_cli(
+                    "review",
+                    "promote-claim-relation",
+                    claim_a_id,
+                    "contradicts",
+                    claim_b_id,
+                    "--reviewed-by",
+                    "agent:test",
+                    cwd=tmp_path,
+                ).returncode,
+                0,
+            )
+
+            hypothesis_id = json.loads(
+                run_cli(
+                    "hypothesis",
+                    "create",
+                    project_id,
+                    "--text",
+                    "Sparse attention only survives under selective benchmark conditions.",
+                    "--status",
+                    "active",
+                    cwd=tmp_path,
+                ).stdout
+            )["id"]
+            self.assertEqual(
+                run_cli("hypothesis", "add-evidence", hypothesis_id, "claim", claim_a_id, cwd=tmp_path).returncode,
+                0,
+            )
+
+            links_result = run_cli("project", "links", project_id, cwd=tmp_path)
+            self.assertEqual(links_result.returncode, 0, links_result.stderr)
+            links_payload = json.loads(links_result.stdout)
+            self.assertEqual({entry["link"]["object_type"] for entry in links_payload}, {"paper", "claim", "method", "dataset", "concept"})
+
+            claim_links_result = run_cli("project", "links", project_id, "--object-type", "claim", cwd=tmp_path)
+            self.assertEqual(claim_links_result.returncode, 0, claim_links_result.stderr)
+            self.assertEqual(len(json.loads(claim_links_result.stdout)), 1)
+
+            show_project_payload = json.loads(run_cli("show", "project", project_id, cwd=tmp_path).stdout)
+            self.assertEqual(len(show_project_payload["papers"]), 1)
+            self.assertEqual(len(show_project_payload["claims"]), 1)
+            self.assertEqual(len(show_project_payload["methods"]), 1)
+            self.assertEqual(len(show_project_payload["datasets"]), 1)
+            self.assertEqual(len(show_project_payload["concepts"]), 1)
+
+            project_brief_result = run_cli("output", "project-brief", project_id, cwd=tmp_path)
+            self.assertEqual(project_brief_result.returncode, 0, project_brief_result.stderr)
+            project_brief_payload = json.loads(project_brief_result.stdout)
+            self.assertEqual(project_brief_payload["scope_type"], "project")
+            self.assertEqual(project_brief_payload["research_question"], "Does sparse attention hold up on realistic translation benchmarks?")
+            self.assertEqual(len(project_brief_payload["hypotheses"]), 1)
+
+            project_review_result = run_cli("output", "project-review-priorities", project_id, cwd=tmp_path)
+            self.assertEqual(project_review_result.returncode, 0, project_review_result.stderr)
+            project_review_payload = json.loads(project_review_result.stdout)
+            self.assertEqual(project_review_payload["scope_type"], "project")
+            self.assertGreaterEqual(len(project_review_payload["review_priorities"]), 1)
+
+            planner_result = run_cli(
+                "plan",
+                "query",
+                "What should we review next?",
+                "--project-id",
+                project_id,
+                cwd=tmp_path,
+            )
+            self.assertEqual(planner_result.returncode, 0, planner_result.stderr)
+            planner_payload = json.loads(planner_result.stdout)
+            self.assertEqual(planner_payload["scope"]["type"], "project")
+            self.assertEqual(planner_payload["recommended_surface"], "project_review_priorities")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -223,6 +223,148 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertGreaterEqual(len(json.loads(open_questions_body.decode("utf-8"))["open_questions"]), 1)
             self.assertGreaterEqual(len(json.loads(review_priorities_body.decode("utf-8"))["review_priorities"]), 1)
 
+    def test_project_scoped_output_surfaces_use_project_links_and_hypotheses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            paper_1 = ingest_paper(
+                tmp_path,
+                "project-paper-1.pdf",
+                "We propose Sparse Attention. Sparse Attention improves translation accuracy on WMT14.",
+            )
+            paper_2 = ingest_paper(
+                tmp_path,
+                "project-paper-2.pdf",
+                "Sparse Attention does not improve translation accuracy on WMT14.",
+            )
+
+            claims_1 = import_claims(
+                tmp_path,
+                paper_1,
+                [
+                    {
+                        "text": "Sparse Attention improves translation accuracy on WMT14.",
+                        "predicate": "improves",
+                        "object_text": "translation accuracy",
+                        "context": {"subject_text": "Sparse Attention", "dataset": "WMT14"},
+                        "evidence": {"paper_id": paper_1},
+                        "confidence": 0.91,
+                    }
+                ],
+            )
+            claims_2 = import_claims(
+                tmp_path,
+                paper_2,
+                [
+                    {
+                        "text": "Sparse Attention does not improve translation accuracy on WMT14.",
+                        "predicate": "improves",
+                        "object_text": "translation accuracy",
+                        "context": {"subject_text": "Sparse Attention", "dataset": "WMT14"},
+                        "evidence": {"paper_id": paper_2},
+                        "confidence": 0.74,
+                    }
+                ],
+            )
+
+            self.assertEqual(run_cli("extract", "methods", paper_1, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("extract", "datasets", paper_1, cwd=tmp_path).returncode, 0)
+            method_id = json.loads(run_cli("methods", paper_1, cwd=tmp_path).stdout)[0]["id"]
+            dataset_id = json.loads(run_cli("datasets", paper_1, cwd=tmp_path).stdout)[0]["id"]
+            concept_id = json.loads(run_cli("concepts", paper_1, cwd=tmp_path).stdout)[0]["id"]
+
+            project_id = json.loads(
+                run_cli(
+                    "project",
+                    "create",
+                    "--name",
+                    "Sparse Attention Review",
+                    "--research-question",
+                    "Do sparse attention gains survive realistic benchmark conditions?",
+                    cwd=tmp_path,
+                ).stdout
+            )["id"]
+            self.assertEqual(run_cli("project", "add-paper", project_id, paper_1, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("project", "add-link", project_id, "claim", claims_1[0]["id"], cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("project", "add-link", project_id, "method", method_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("project", "add-link", project_id, "dataset", dataset_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("project", "add-link", project_id, "concept", concept_id, cwd=tmp_path).returncode, 0)
+            self.assertEqual(
+                run_cli(
+                    "review",
+                    "promote-claim-relation",
+                    claims_1[0]["id"],
+                    "contradicts",
+                    claims_2[0]["id"],
+                    "--reviewed-by",
+                    "agent:test",
+                    cwd=tmp_path,
+                ).returncode,
+                0,
+            )
+
+            hypothesis_id = json.loads(
+                run_cli(
+                    "hypothesis",
+                    "create",
+                    project_id,
+                    "--text",
+                    "Sparse attention only works under selective evaluation settings.",
+                    "--status",
+                    "active",
+                    cwd=tmp_path,
+                ).stdout
+            )["id"]
+            self.assertEqual(run_cli("hypothesis", "add-evidence", hypothesis_id, "claim", claims_1[0]["id"], cwd=tmp_path).returncode, 0)
+
+            project_answer_payload = json.loads(
+                run_cli(
+                    "output",
+                    "project-answer",
+                    project_id,
+                    "--question",
+                    "What does the current project evidence say?",
+                    cwd=tmp_path,
+                ).stdout
+            )
+            self.assertEqual(project_answer_payload["scope_type"], "project")
+            self.assertGreaterEqual(len(project_answer_payload["supporting_claims"]), 1)
+            self.assertGreaterEqual(len(project_answer_payload["disagreements"]), 1)
+
+            project_brief_payload = json.loads(run_cli("output", "project-brief", project_id, cwd=tmp_path).stdout)
+            self.assertEqual(project_brief_payload["scope_type"], "project")
+            self.assertEqual(project_brief_payload["research_question"], "Do sparse attention gains survive realistic benchmark conditions?")
+            self.assertEqual(len(project_brief_payload["hypotheses"]), 1)
+            self.assertGreaterEqual(len(project_brief_payload["methods"]), 1)
+            self.assertGreaterEqual(len(project_brief_payload["datasets"]), 1)
+
+            project_reading_payload = json.loads(run_cli("output", "project-reading-list", project_id, cwd=tmp_path).stdout)
+            self.assertEqual(project_reading_payload["scope_type"], "project")
+            self.assertGreaterEqual(len(project_reading_payload["reading_sequence"]), 1)
+
+            project_questions_payload = json.loads(run_cli("output", "project-open-questions", project_id, cwd=tmp_path).stdout)
+            self.assertEqual(project_questions_payload["scope_type"], "project")
+            self.assertGreaterEqual(len(project_questions_payload["open_questions"]), 1)
+            self.assertEqual(len(project_questions_payload["hypotheses"]), 1)
+
+            project_review_payload = json.loads(run_cli("output", "project-review-priorities", project_id, cwd=tmp_path).stdout)
+            self.assertEqual(project_review_payload["scope_type"], "project")
+            self.assertGreaterEqual(len(project_review_payload["review_priorities"]), 1)
+
+            previous_cwd = Path.cwd()
+            os.chdir(tmp_path)
+            try:
+                _, _, project_brief_body = dispatch_get_request(f"/api/output/projects/{project_id}/brief")
+                _, _, project_answer_body = dispatch_get_request(
+                    f"/api/output/projects/{project_id}/answer?q=What%20does%20the%20current%20project%20evidence%20say%3F"
+                )
+                _, _, project_questions_body = dispatch_get_request(f"/api/output/projects/{project_id}/open-questions")
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertEqual(json.loads(project_brief_body.decode("utf-8"))["scope_type"], "project")
+            self.assertEqual(json.loads(project_answer_body.decode("utf-8"))["scope_type"], "project")
+            self.assertGreaterEqual(len(json.loads(project_questions_body.decode("utf-8"))["open_questions"]), 1)
+
     def test_output_ranking_clusters_duplicate_claims_and_handles_sparse_topics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

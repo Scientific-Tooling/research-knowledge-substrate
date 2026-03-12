@@ -356,6 +356,7 @@ class ProductizationTest(unittest.TestCase):
                 claim_id = claims_payload[0]["id"]
                 related_claim_payload = json.loads(run_cli("claims", related_paper_id, cwd=tmp_path).stdout)
                 related_claim_id = related_claim_payload[0]["id"]
+                concept_id = json.loads(run_cli("concepts", paper_id, cwd=tmp_path).stdout)[0]["id"]
                 _, _, relations_body = dispatch_get_request(f"/api/claims/{claim_id}/relations")
                 relations_payload = json.loads(relations_body.decode("utf-8"))
                 self.assertIn("inferred_relations", relations_payload)
@@ -391,6 +392,42 @@ class ProductizationTest(unittest.TestCase):
                 add_hypothesis_claim_evidence_payload = json.loads(add_hypothesis_claim_evidence_body.decode("utf-8"))
                 self.assertEqual(add_hypothesis_claim_evidence_payload["claim"]["id"], claim_id)
 
+                _, _, add_project_claim_link_body = dispatch_post_request(
+                    f"/api/projects/{project_id}/links",
+                    json.dumps(
+                        {
+                            "object_type": "claim",
+                            "object_id": claim_id,
+                            "link_type": "key_evidence",
+                            "created_by": "agent:http",
+                        }
+                    ).encode("utf-8"),
+                )
+                add_project_claim_link_payload = json.loads(add_project_claim_link_body.decode("utf-8"))
+                self.assertEqual(add_project_claim_link_payload["claim"]["id"], claim_id)
+
+                _, _, add_project_concept_link_body = dispatch_post_request(
+                    f"/api/projects/{project_id}/links",
+                    json.dumps(
+                        {
+                            "object_type": "concept",
+                            "object_id": concept_id,
+                            "link_type": "focus",
+                            "created_by": "agent:http",
+                        }
+                    ).encode("utf-8"),
+                )
+                add_project_concept_link_payload = json.loads(add_project_concept_link_body.decode("utf-8"))
+                self.assertEqual(add_project_concept_link_payload["concept"]["id"], concept_id)
+
+                _, _, project_links_body = dispatch_get_request(f"/api/projects/{project_id}/links")
+                project_links_payload = json.loads(project_links_body.decode("utf-8"))
+                self.assertGreaterEqual(len(project_links_payload), 3)
+
+                _, _, project_claim_links_body = dispatch_get_request(f"/api/projects/{project_id}/links?object_type=claim")
+                project_claim_links_payload = json.loads(project_claim_links_body.decode("utf-8"))
+                self.assertEqual(len(project_claim_links_payload), 1)
+
                 _, _, hypothesis_body = dispatch_get_request(f"/api/hypotheses/{hypothesis_id}")
                 hypothesis_payload = json.loads(hypothesis_body.decode("utf-8"))
                 self.assertEqual(hypothesis_payload["id"], hypothesis_id)
@@ -407,6 +444,23 @@ class ProductizationTest(unittest.TestCase):
                 _, _, after_review_status_body = dispatch_get_request(f"/api/status/{paper_id}")
                 after_review_status_payload = json.loads(after_review_status_body.decode("utf-8"))
                 self.assertEqual(after_review_status_payload["review"]["reviewed_relation_count"], 1)
+
+                _, _, project_output_body = dispatch_get_request(f"/api/output/projects/{project_id}/brief")
+                project_output_payload = json.loads(project_output_body.decode("utf-8"))
+                self.assertEqual(project_output_payload["scope_type"], "project")
+                self.assertEqual(project_output_payload["research_question"], "Can the service persist project state cleanly?")
+
+                _, _, project_questions_body = dispatch_get_request(f"/api/output/projects/{project_id}/open-questions")
+                project_questions_payload = json.loads(project_questions_body.decode("utf-8"))
+                self.assertEqual(project_questions_payload["scope_type"], "project")
+                self.assertGreaterEqual(len(project_questions_payload["open_questions"]), 1)
+
+                _, _, plan_body = dispatch_get_request(
+                    f"/api/plan/query?q=What%20should%20we%20review%20next%3F&project_id={project_id}"
+                )
+                plan_payload = json.loads(plan_body.decode("utf-8"))
+                self.assertEqual(plan_payload["scope"]["type"], "project")
+                self.assertEqual(plan_payload["recommended_surface"], "project_review_priorities")
 
                 _, _, retract_body = dispatch_post_request(
                     "/api/review/claim-relations/retract",

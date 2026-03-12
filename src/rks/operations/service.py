@@ -13,14 +13,22 @@ from rks.extraction import (
 from rks.providers import LocalHashEmbeddingProvider
 from rks.query import QueryService
 from rks.reasoning import (
+    build_scoped_answer,
+    build_scoped_brief,
     build_comparison,
     build_research_answer,
     build_research_opportunities,
+    build_scoped_disagreements,
+    build_scoped_open_questions,
+    build_scoped_opportunities,
+    build_scoped_reading_list,
+    build_scoped_review_priorities,
     build_topic_brief,
     build_topic_disagreements,
     build_topic_open_questions,
     build_topic_reading_list,
     build_topic_review_priorities,
+    plan_research_request,
 )
 from rks.reasoning.summary import summarize_paper_heuristic
 
@@ -91,11 +99,16 @@ class ResearchOperations:
     def get_project(self, project_id: str) -> dict:
         project = self.projects.get_project(project_id)
         notes = self.notes.list_notes_for_target(target_id=project_id, target_type="project")
-        paper_links = self.projects.list_links_for_project(project_id, object_type="paper")
+        grouped_links = self._grouped_project_links(project_id)
         return {
             **_project_payload(project),
             "notes": [_note_payload(note) for note in notes],
-            "papers": _project_paper_entries(self.papers, paper_links),
+            "links": grouped_links["links"],
+            "papers": grouped_links["papers"],
+            "claims": grouped_links["claims"],
+            "methods": grouped_links["methods"],
+            "datasets": grouped_links["datasets"],
+            "concepts": grouped_links["concepts"],
             "hypotheses": [_hypothesis_payload(item) for item in self.hypotheses.list_hypotheses_for_project(project_id)],
         }
 
@@ -123,6 +136,76 @@ class ResearchOperations:
         links = self.projects.list_links_for_project(project_id, object_type="paper")
         return _project_paper_entries(self.papers, links)
 
+    def list_project_links(self, project_id: str, *, object_type: str | None = None) -> list[dict]:
+        self.projects.get_project(project_id)
+        return _project_link_entries(
+            self.papers,
+            self.claims,
+            self.methods,
+            self.datasets,
+            self.concepts,
+            self.query,
+            self.projects.list_links_for_project(project_id, object_type=object_type),
+        )
+
+    def list_project_claims(self, project_id: str) -> list[dict]:
+        self.projects.get_project(project_id)
+        links = self.projects.list_links_for_project(project_id, object_type="claim")
+        return _project_link_entries(self.papers, self.claims, self.methods, self.datasets, self.concepts, self.query, links)
+
+    def list_project_methods(self, project_id: str) -> list[dict]:
+        self.projects.get_project(project_id)
+        links = self.projects.list_links_for_project(project_id, object_type="method")
+        return _project_link_entries(self.papers, self.claims, self.methods, self.datasets, self.concepts, self.query, links)
+
+    def list_project_datasets(self, project_id: str) -> list[dict]:
+        self.projects.get_project(project_id)
+        links = self.projects.list_links_for_project(project_id, object_type="dataset")
+        return _project_link_entries(self.papers, self.claims, self.methods, self.datasets, self.concepts, self.query, links)
+
+    def list_project_concepts(self, project_id: str) -> list[dict]:
+        self.projects.get_project(project_id)
+        links = self.projects.list_links_for_project(project_id, object_type="concept")
+        return _project_link_entries(self.papers, self.claims, self.methods, self.datasets, self.concepts, self.query, links)
+
+    def add_project_link(
+        self,
+        project_id: str,
+        object_type: str,
+        object_id: str,
+        *,
+        link_type: str = "in_scope",
+        created_by: str = "human:user",
+    ) -> dict:
+        self.projects.get_project(project_id)
+        normalized_object_type = object_type.strip()
+        normalized_link_type = link_type.strip()
+        if normalized_object_type not in {"paper", "claim", "method", "dataset", "concept"}:
+            raise ValueError("object_type must be one of: paper, claim, method, dataset, concept")
+        if not normalized_link_type:
+            raise ValueError("link_type must not be empty")
+
+        target_payload = _resolve_project_link_target(
+            self.papers,
+            self.claims,
+            self.methods,
+            self.datasets,
+            self.concepts,
+            self.query,
+            normalized_object_type,
+            object_id,
+        )
+        link = self.projects.add_link(
+            project_id=project_id,
+            object_id=object_id,
+            object_type=normalized_object_type,
+            link_type=normalized_link_type,
+            created_by=created_by,
+            metadata=None,
+        )
+        self.projects.touch_project(project_id)
+        return _project_link_entry(link, target_payload)
+
     def add_project_paper(
         self,
         project_id: str,
@@ -131,21 +214,13 @@ class ResearchOperations:
         link_type: str = "in_scope",
         created_by: str = "human:user",
     ) -> dict:
-        self.projects.get_project(project_id)
-        paper = self.papers.get_paper(paper_id)
-        normalized_link_type = link_type.strip()
-        if not normalized_link_type:
-            raise ValueError("link_type must not be empty")
-        link = self.projects.add_link(
-            project_id=project_id,
-            object_id=paper.id,
-            object_type="paper",
-            link_type=normalized_link_type,
+        return self.add_project_link(
+            project_id,
+            "paper",
+            paper_id,
+            link_type=link_type,
             created_by=created_by,
-            metadata=None,
         )
-        self.projects.touch_project(project_id)
-        return _project_paper_entry(link, paper)
 
     def create_hypothesis(
         self,
@@ -318,6 +393,66 @@ class ResearchOperations:
     def topic_review_priorities(self, topic: str) -> dict:
         return build_topic_review_priorities(self.query, topic)
 
+    def project_answer(self, project_id: str, *, question: str | None = None) -> dict:
+        project = self.projects.get_project(project_id)
+        context = self._project_output_context(project_id)
+        return build_scoped_answer(
+            self.query,
+            "project",
+            project.name,
+            context,
+            question=_optional_text(question) or project.research_question or project.name,
+        )
+
+    def project_brief(self, project_id: str) -> dict:
+        project = self.projects.get_project(project_id)
+        context = self._project_output_context(project_id)
+        return build_scoped_brief(
+            self.query,
+            "project",
+            project.name,
+            context,
+            hypotheses=self.list_project_hypotheses(project_id),
+            research_question=project.research_question,
+        )
+
+    def project_disagreements(self, project_id: str) -> dict:
+        project = self.projects.get_project(project_id)
+        context = self._project_output_context(project_id)
+        return build_scoped_disagreements(self.query, "project", project.name, context)
+
+    def project_opportunities(self, project_id: str) -> dict:
+        project = self.projects.get_project(project_id)
+        context = self._project_output_context(project_id)
+        return build_scoped_opportunities(self.query, "project", project.name, context)
+
+    def project_reading_list(self, project_id: str) -> dict:
+        project = self.projects.get_project(project_id)
+        context = self._project_output_context(project_id)
+        return build_scoped_reading_list(self.query, "project", project.name, context)
+
+    def project_open_questions(self, project_id: str) -> dict:
+        project = self.projects.get_project(project_id)
+        context = self._project_output_context(project_id)
+        return build_scoped_open_questions(
+            self.query,
+            "project",
+            project.name,
+            context,
+            hypotheses=self.list_project_hypotheses(project_id),
+        )
+
+    def project_review_priorities(self, project_id: str) -> dict:
+        project = self.projects.get_project(project_id)
+        context = self._project_output_context(project_id)
+        return build_scoped_review_priorities(self.query, "project", project.name, context)
+
+    def plan_query(self, request: str, *, project_id: str | None = None) -> dict:
+        project = None
+        if project_id is not None:
+            project = _project_payload(self.projects.get_project(project_id))
+        return plan_research_request(request, project=project)
+
     def compare_targets(self, left: str, right: str) -> dict:
         return build_comparison(self.query, left, right)
 
@@ -457,6 +592,167 @@ class ResearchOperations:
             "deleted": deleted,
         }
 
+    def _grouped_project_links(self, project_id: str) -> dict:
+        entries = self.list_project_links(project_id)
+        grouped = {
+            "links": entries,
+            "papers": [],
+            "claims": [],
+            "methods": [],
+            "datasets": [],
+            "concepts": [],
+        }
+        for entry in entries:
+            object_type = entry["link"]["object_type"]
+            if object_type == "paper":
+                grouped["papers"].append(entry)
+            elif object_type == "claim":
+                grouped["claims"].append(entry)
+            elif object_type == "method":
+                grouped["methods"].append(entry)
+            elif object_type == "dataset":
+                grouped["datasets"].append(entry)
+            elif object_type == "concept":
+                grouped["concepts"].append(entry)
+        return grouped
+
+    def _project_output_context(self, project_id: str) -> dict:
+        self.projects.get_project(project_id)
+        paper_ids: set[str] = set()
+        claim_ids: set[str] = set()
+        method_ids: set[str] = set()
+        dataset_ids: set[str] = set()
+        concept_ids: set[str] = set()
+        expanded_papers: set[str] = set()
+        expanded_methods: set[str] = set()
+        expanded_concepts: set[str] = set()
+
+        def include_paper(paper_id: str) -> bool:
+            if paper_id in paper_ids:
+                return False
+            self.papers.get_paper(paper_id)
+            paper_ids.add(paper_id)
+            return True
+
+        def include_claim(claim_id: str) -> bool:
+            if claim_id in claim_ids:
+                return False
+            claim = self.claims.get_claim(claim_id)
+            claim_ids.add(claim_id)
+            include_paper(claim.paper_id)
+            if claim.subject_concept_id:
+                concept_ids.add(claim.subject_concept_id)
+            if claim.object_concept_id:
+                concept_ids.add(claim.object_concept_id)
+            return True
+
+        def include_method(method_id: str) -> bool:
+            if method_id in method_ids:
+                return False
+            method = self.methods.get_method(method_id)
+            method_ids.add(method_id)
+            include_paper(method.paper_id)
+            if method.about_concept_id:
+                concept_ids.add(method.about_concept_id)
+            return True
+
+        def include_dataset(dataset_id: str) -> bool:
+            if dataset_id in dataset_ids:
+                return False
+            dataset = self.datasets.get_dataset(dataset_id)
+            dataset_ids.add(dataset_id)
+            include_paper(dataset.paper_id)
+            return True
+
+        def include_concept(concept_id: str) -> bool:
+            if concept_id in concept_ids:
+                return False
+            self.concepts.get_concept(concept_id)
+            concept_ids.add(concept_id)
+            return True
+
+        for link in self.projects.list_links_for_project(project_id):
+            if link.object_type == "paper":
+                include_paper(link.object_id)
+            elif link.object_type == "claim":
+                include_claim(link.object_id)
+            elif link.object_type == "method":
+                include_method(link.object_id)
+            elif link.object_type == "dataset":
+                include_dataset(link.object_id)
+            elif link.object_type == "concept":
+                include_concept(link.object_id)
+
+        for hypothesis in self.hypotheses.list_hypotheses_for_project(project_id):
+            for evidence_link in self.hypotheses.list_evidence_links_for_hypothesis(hypothesis.id):
+                if evidence_link.object_type == "paper":
+                    include_paper(evidence_link.object_id)
+                elif evidence_link.object_type == "claim":
+                    include_claim(evidence_link.object_id)
+
+        changed = True
+        while changed:
+            changed = False
+
+            for paper_id in list(paper_ids - expanded_papers):
+                expanded_papers.add(paper_id)
+                for claim in self.claims.list_claims_for_paper(paper_id):
+                    changed = include_claim(claim.id) or changed
+                for method in self.methods.list_methods_for_paper(paper_id):
+                    changed = include_method(method.id) or changed
+                for dataset in self.datasets.list_datasets_for_paper(paper_id):
+                    changed = include_dataset(dataset.id) or changed
+                for concept in self.query.concepts_for_paper(paper_id):
+                    changed = include_concept(concept["id"]) or changed
+
+            for method_id in list(method_ids - expanded_methods):
+                expanded_methods.add(method_id)
+                for dataset in self.query.datasets_for(method_id).get("datasets", []):
+                    changed = include_dataset(dataset["id"]) or changed
+
+            for concept_id in list(concept_ids - expanded_concepts):
+                expanded_concepts.add(concept_id)
+                claims_payload = self.query.claims_about(concept_id).get("claims", [])
+                methods_payload = self.query.methods_for(concept_id).get("methods", [])
+                datasets_payload = self.query.evidence_for(concept_id).get("datasets", [])
+                for claim in claims_payload:
+                    changed = include_claim(claim["id"]) or changed
+                for method in methods_payload:
+                    changed = include_method(method["id"]) or changed
+                for dataset in datasets_payload:
+                    changed = include_dataset(dataset["id"]) or changed
+
+        claims = sorted(
+            [_claim_payload(self.concepts, self.claims.get_claim(claim_id)) for claim_id in claim_ids],
+            key=lambda item: (item.get("confidence") or 0.0, item["id"]),
+            reverse=True,
+        )
+        papers = sorted(
+            [_paper_payload(self.papers.get_paper(paper_id)) for paper_id in paper_ids],
+            key=lambda item: (item["title"].lower(), item["id"]),
+        )
+        methods = sorted(
+            [_method_payload(self.concepts, self.methods.get_method(method_id)) for method_id in method_ids],
+            key=lambda item: (item["name"].lower(), item["id"]),
+        )
+        datasets = sorted(
+            [_dataset_payload(self.datasets.get_dataset(dataset_id)) for dataset_id in dataset_ids],
+            key=lambda item: (item["name"].lower(), item["id"]),
+        )
+        concepts = sorted(
+            [_concept_payload(self.concepts.get_concept(concept_id)) for concept_id in concept_ids],
+            key=lambda item: (item["name"].lower(), item["id"]),
+        )
+        return {
+            "project_id": project_id,
+            "claims": claims,
+            "claim_ids": [claim["id"] for claim in claims[:12]],
+            "papers": papers,
+            "methods": methods,
+            "datasets": datasets,
+            "concepts": concepts,
+        }
+
 
 def _paper_payload(paper) -> dict:
     return {
@@ -487,6 +783,72 @@ def _project_payload(project) -> dict:
         "created_by": project.created_by,
         "created_at": project.created_at,
         "updated_at": project.updated_at,
+    }
+
+
+def _claim_payload(concepts, claim) -> dict:
+    context = json.loads(claim.context_json or "{}")
+    subject_name = context.get("subject_text")
+    object_name = claim.object_text
+    if claim.subject_concept_id:
+        subject_name = concepts.get_concept(claim.subject_concept_id).name
+    if claim.object_concept_id:
+        object_name = concepts.get_concept(claim.object_concept_id).name
+    return {
+        "id": claim.id,
+        "paper_id": claim.paper_id,
+        "text": claim.text,
+        "subject": subject_name,
+        "predicate": claim.predicate,
+        "object": object_name,
+        "confidence": claim.confidence,
+        "context": context,
+        "evidence": json.loads(claim.evidence_json or "{}"),
+        "created_by": claim.created_by,
+        "created_at": claim.created_at,
+        "updated_at": claim.updated_at,
+    }
+
+
+def _method_payload(concepts, method) -> dict:
+    about_concept = None
+    if method.about_concept_id:
+        concept = concepts.get_concept(method.about_concept_id)
+        about_concept = {"id": concept.id, "name": concept.name}
+    return {
+        "id": method.id,
+        "paper_id": method.paper_id,
+        "name": method.name,
+        "description": method.description,
+        "about_concept": about_concept,
+        "created_at": method.created_at,
+        "updated_at": method.updated_at,
+    }
+
+
+def _dataset_payload(dataset) -> dict:
+    return {
+        "id": dataset.id,
+        "paper_id": dataset.paper_id,
+        "name": dataset.name,
+        "description": dataset.description,
+        "source": dataset.source,
+        "created_at": dataset.created_at,
+        "updated_at": dataset.updated_at,
+    }
+
+
+def _concept_payload(concept) -> dict:
+    return {
+        "id": concept.id,
+        "name": concept.name,
+        "aliases": json.loads(concept.aliases_json or "[]"),
+        "domain": concept.domain,
+        "parent_concept_id": concept.parent_concept_id,
+        "description": concept.description,
+        "status": concept.status,
+        "created_at": concept.created_at,
+        "updated_at": concept.updated_at,
     }
 
 
@@ -573,6 +935,47 @@ def _project_paper_entries(papers, links: list) -> list[dict]:
             continue
         entries.append(_project_paper_entry(link, papers.get_paper(link.object_id)))
     return entries
+
+
+def _project_link_entry(link, target_payload: dict) -> dict:
+    return {
+        "link": _project_link_payload(link),
+        **target_payload,
+    }
+
+
+def _project_link_entries(papers, claims, methods, datasets, concepts, query, links: list) -> list[dict]:
+    return [
+        _project_link_entry(
+            link,
+            _resolve_project_link_target(papers, claims, methods, datasets, concepts, query, link.object_type, link.object_id),
+        )
+        for link in links
+    ]
+
+
+def _resolve_project_link_target(papers, claims, methods, datasets, concepts, query, object_type: str, object_id: str) -> dict:
+    if object_type == "paper":
+        return {"paper": _paper_payload(papers.get_paper(object_id))}
+    if object_type == "claim":
+        return {"claim": _claim_payload(concepts, claims.get_claim(object_id))}
+    if object_type == "method":
+        return {"method": _method_payload(concepts, methods.get_method(object_id))}
+    if object_type == "dataset":
+        return {"dataset": _dataset_payload(datasets.get_dataset(object_id))}
+    if object_type == "concept":
+        concept = concepts.get_concept(object_id)
+        evidence = query.evidence_for(object_id)
+        return {
+            "concept": {
+                **_concept_payload(concept),
+                "claim_count": len(evidence.get("claims", [])),
+                "paper_count": len(evidence.get("papers", [])),
+                "method_count": len(evidence.get("methods", [])),
+                "dataset_count": len(evidence.get("datasets", [])),
+            }
+        }
+    raise ValueError(f"Unsupported project link object type: {object_type}")
 
 
 def _hypothesis_evidence_link_payload(link) -> dict:

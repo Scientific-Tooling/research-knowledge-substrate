@@ -5,6 +5,11 @@ from rks.concepts.normalize import canonicalize_term
 
 def build_research_answer(query_service, question: str) -> dict:
     context = _topic_context(query_service, question)
+    return build_scoped_answer(query_service, "topic", question, context)
+
+
+def build_scoped_answer(query_service, scope_type: str, scope_label: str, context: dict, *, question: str | None = None) -> dict:
+    resolved_question = question or scope_label
     disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=3)
     key_claims = context["claims"][:5]
     key_findings = [claim["text"] for claim in key_claims[:3]]
@@ -12,17 +17,19 @@ def build_research_answer(query_service, question: str) -> dict:
     confidence = _answer_confidence(evidence_assessment)
     uncertainties = []
     if not key_claims:
-        uncertainties.append("No grounded claims matched the question yet.")
+        uncertainties.append(f"No grounded claims matched the current {scope_type} yet.")
     if disagreements:
         uncertainties.append("Relevant claims include disagreement signals that need review or replication.")
     if len(context["papers"]) < 2:
         uncertainties.append("The answer is grounded in a narrow paper set.")
 
     recommendations = _next_steps_from_context(context, disagreements)
-    answer = _compose_answer_text(question, context, key_findings, disagreements, uncertainties, recommendations)
-    conclusion = _compose_conclusion(question, context, key_claims, disagreements, confidence)
+    answer = _compose_answer_text(resolved_question, context, key_findings, disagreements, uncertainties, recommendations)
+    conclusion = _compose_conclusion(resolved_question, context, key_claims, disagreements, confidence)
     return {
-        "question": question,
+        "scope_type": scope_type,
+        "scope_label": scope_label,
+        "question": resolved_question,
         "conclusion": conclusion,
         "confidence": confidence,
         "answer": answer,
@@ -40,20 +47,28 @@ def build_research_answer(query_service, question: str) -> dict:
     }
 
 
-def build_topic_brief(query_service, topic: str) -> dict:
-    context = _topic_context(query_service, topic)
+def build_scoped_brief(
+    query_service,
+    scope_type: str,
+    scope_label: str,
+    context: dict,
+    *,
+    hypotheses: list[dict] | None = None,
+    research_question: str | None = None,
+) -> dict:
     disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=4)
     evidence_assessment = _evidence_assessment(context, disagreements)
-    overview = _compose_brief_overview(topic, context, disagreements)
+    overview = _compose_brief_overview(scope_label, context, disagreements)
     open_questions = []
     if disagreements:
-        open_questions.append("Why do the strongest claims for this topic disagree?")
+        open_questions.append(f"Why do the strongest claims for {scope_label} disagree?")
     if context["methods"] and not context["datasets"]:
         open_questions.append("Which datasets should the observed methods be evaluated on next?")
     if not context["claims"]:
-        open_questions.append("Which papers should be extracted next to ground this topic better?")
-    return {
-        "topic": topic,
+        open_questions.append(f"Which papers should be extracted next to ground {scope_label} better?")
+    payload = {
+        "scope_type": scope_type,
+        "scope_label": scope_label,
         "overview": overview,
         "state_of_topic": {
             "evidence_strength": evidence_assessment["evidence_strength"],
@@ -74,19 +89,34 @@ def build_topic_brief(query_service, topic: str) -> dict:
         "evidence_gaps": _evidence_gaps(context, disagreements),
         "open_questions": open_questions,
     }
+    if hypotheses is not None:
+        payload["hypotheses"] = hypotheses
+    if research_question is not None:
+        payload["research_question"] = research_question
+    return payload
+
+
+def build_topic_brief(query_service, topic: str) -> dict:
+    context = _topic_context(query_service, topic)
+    return build_scoped_brief(query_service, "topic", topic, context)
 
 
 def build_topic_reading_list(query_service, topic: str) -> dict:
     context = _topic_context(query_service, topic)
+    return build_scoped_reading_list(query_service, "topic", topic, context)
+
+
+def build_scoped_reading_list(query_service, scope_type: str, scope_label: str, context: dict) -> dict:
     disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=4)
     navigation = _reading_navigation(context, disagreements)
     summary = (
-        f"{topic} has {len(navigation['reading_sequence'])} prioritized reading step(s) in the current graph."
+        f"{scope_label} has {len(navigation['reading_sequence'])} prioritized reading step(s) in the current graph."
         if navigation["reading_sequence"]
-        else f"No grounded reading path could be assembled for {topic} yet."
+        else f"No grounded reading path could be assembled for {scope_label} yet."
     )
     return {
-        "topic": topic,
+        "scope_type": scope_type,
+        "scope_label": scope_label,
         "summary": summary,
         "entry_papers": navigation["entry_papers"],
         "representative_papers": navigation["representative_papers"],
@@ -97,14 +127,19 @@ def build_topic_reading_list(query_service, topic: str) -> dict:
 
 def build_topic_disagreements(query_service, topic: str) -> dict:
     context = _topic_context(query_service, topic)
+    return build_scoped_disagreements(query_service, "topic", topic, context)
+
+
+def build_scoped_disagreements(query_service, scope_type: str, scope_label: str, context: dict) -> dict:
     disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=6)
     summary = (
-        f"{topic} currently has {len(disagreements)} surfaced disagreement signals."
+        f"{scope_label} currently has {len(disagreements)} surfaced disagreement signals."
         if disagreements
-        else f"No contradictions or refinements were surfaced for {topic}."
+        else f"No contradictions or refinements were surfaced for {scope_label}."
     )
     return {
-        "topic": topic,
+        "scope_type": scope_type,
+        "scope_label": scope_label,
         "summary": summary,
         "disagreements": disagreements,
         "claim_count_considered": len(context["claim_ids"]),
@@ -114,6 +149,17 @@ def build_topic_disagreements(query_service, topic: str) -> dict:
 
 def build_topic_open_questions(query_service, topic: str) -> dict:
     context = _topic_context(query_service, topic)
+    return build_scoped_open_questions(query_service, "topic", topic, context)
+
+
+def build_scoped_open_questions(
+    query_service,
+    scope_type: str,
+    scope_label: str,
+    context: dict,
+    *,
+    hypotheses: list[dict] | None = None,
+) -> dict:
     disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=6)
     questions = []
     if disagreements:
@@ -134,7 +180,7 @@ def build_topic_open_questions(query_service, topic: str) -> dict:
         questions.append(
             {
                 "kind": "evaluation_gap",
-                "question": f"Which datasets should the visible {topic} methods be evaluated on next?",
+                "question": f"Which datasets should the visible {scope_label} methods be evaluated on next?",
                 "why_it_matters": "Method coverage without evaluation coverage makes it hard to compare results or plan experiments.",
                 "grounding": {
                     "method_ids": [method["id"] for method in context["methods"][:3]],
@@ -147,7 +193,7 @@ def build_topic_open_questions(query_service, topic: str) -> dict:
         questions.append(
             {
                 "kind": "coverage_gap",
-                "question": f"Which additional papers should be ingested to broaden the evidence base for {topic}?",
+                "question": f"Which additional papers should be ingested to broaden the evidence base for {scope_label}?",
                 "why_it_matters": "A narrow paper set weakens synthesis and often hides counterexamples or alternative methods.",
                 "grounding": {
                     "paper_ids": [paper["id"] for paper in context["papers"][:3]],
@@ -159,7 +205,7 @@ def build_topic_open_questions(query_service, topic: str) -> dict:
         questions.append(
             {
                 "kind": "structure_gap",
-                "question": f"Which method entities still need to be extracted or normalized for {topic}?",
+                "question": f"Which method entities still need to be extracted or normalized for {scope_label}?",
                 "why_it_matters": "Claims without method structure are hard to compare and reason about experimentally.",
                 "grounding": {
                     "claim_ids": [claim["id"] for claim in context["claims"][:3]],
@@ -168,31 +214,53 @@ def build_topic_open_questions(query_service, topic: str) -> dict:
                 "next_step": "Run method extraction on the lead papers and review the resulting entities.",
             }
         )
+    if hypotheses:
+        questions.append(
+            {
+                "kind": "hypothesis_review",
+                "question": f"Which project hypotheses for {scope_label} still lack strong claim-level review?",
+                "why_it_matters": "Project hypotheses are only useful when they stay explicitly connected to inspectable evidence.",
+                "grounding": {
+                    "hypothesis_ids": [item["id"] for item in hypotheses[:4]],
+                    "paper_ids": [paper["id"] for paper in context["papers"][:3]],
+                },
+                "next_step": "Inspect the leading hypotheses and add claim-level support or contradiction links where evidence is still paper-only.",
+            }
+        )
     summary = (
-        f"{topic} currently has {len(questions)} grounded open question(s)."
+        f"{scope_label} currently has {len(questions)} grounded open question(s)."
         if questions
-        else f"No grounded open questions were surfaced for {topic}."
+        else f"No grounded open questions were surfaced for {scope_label}."
     )
-    return {
-        "topic": topic,
+    payload = {
+        "scope_type": scope_type,
+        "scope_label": scope_label,
         "summary": summary,
         "open_questions": questions[:6],
         "evidence_gaps": _evidence_gaps(context, disagreements),
     }
+    if hypotheses is not None:
+        payload["hypotheses"] = hypotheses
+    return payload
 
 
 def build_topic_review_priorities(query_service, topic: str) -> dict:
     context = _topic_context(query_service, topic)
+    return build_scoped_review_priorities(query_service, "topic", topic, context)
+
+
+def build_scoped_review_priorities(query_service, scope_type: str, scope_label: str, context: dict) -> dict:
     disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=6)
     review_priorities = _review_priorities(disagreements)
     replication_risks = _replication_risks(disagreements)
     summary = (
-        f"{topic} currently has {len(review_priorities)} review priority item(s) and {len(replication_risks)} replication risk(s)."
+        f"{scope_label} currently has {len(review_priorities)} review priority item(s) and {len(replication_risks)} replication risk(s)."
         if review_priorities or replication_risks
-        else f"No review-priority signals were surfaced for {topic}."
+        else f"No review-priority signals were surfaced for {scope_label}."
     )
     return {
-        "topic": topic,
+        "scope_type": scope_type,
+        "scope_label": scope_label,
         "summary": summary,
         "review_priorities": review_priorities,
         "replication_risks": replication_risks,
@@ -201,6 +269,10 @@ def build_topic_review_priorities(query_service, topic: str) -> dict:
 
 def build_research_opportunities(query_service, topic: str) -> dict:
     context = _topic_context(query_service, topic)
+    return build_scoped_opportunities(query_service, "topic", topic, context)
+
+
+def build_scoped_opportunities(query_service, scope_type: str, scope_label: str, context: dict) -> dict:
     disagreements = _collect_disagreements(query_service, context["claim_ids"], limit=6)
     opportunities = []
     for disagreement in disagreements[:3]:
@@ -298,7 +370,7 @@ def build_research_opportunities(query_service, topic: str) -> dict:
             {
                 "suggestion_type": "grounding_gap",
                 "kind": "expand_grounding",
-                "title": f"Expand extracted grounding for {topic}",
+                "title": f"Expand extracted grounding for {scope_label}",
                 "reasoning": "The topic has too little extracted claim structure to support synthesis.",
                 "claim_ids": [],
                 "paper_ids": [paper["id"] for paper in context["papers"][:3]],
@@ -320,7 +392,7 @@ def build_research_opportunities(query_service, topic: str) -> dict:
             {
                 "suggestion_type": "structure_gap",
                 "kind": "extract_methods",
-                "title": f"Extract method structure for {topic}",
+                "title": f"Extract method structure for {scope_label}",
                 "reasoning": "Claims exist, but method coverage is thin in the current topic view.",
                 "claim_ids": [claim["id"] for claim in context["claims"][:3]],
                 "paper_ids": [claim["paper_id"] for claim in context["claims"][:3]],
@@ -343,7 +415,7 @@ def build_research_opportunities(query_service, topic: str) -> dict:
             {
                 "suggestion_type": "structure_gap",
                 "kind": "extract_datasets",
-                "title": f"Extract dataset structure for {topic}",
+                "title": f"Extract dataset structure for {scope_label}",
                 "reasoning": "Claim evidence exists, but dataset coverage is sparse.",
                 "claim_ids": [claim["id"] for claim in context["claims"][:3]],
                 "paper_ids": [claim["paper_id"] for claim in context["claims"][:3]],
@@ -362,12 +434,13 @@ def build_research_opportunities(query_service, topic: str) -> dict:
         )
 
     summary = (
-        f"{topic} has {len(opportunities)} surfaced research opportunities."
+        f"{scope_label} has {len(opportunities)} surfaced research opportunities."
         if opportunities
-        else f"No grounded research opportunities were surfaced for {topic}."
+        else f"No grounded research opportunities were surfaced for {scope_label}."
     )
     return {
-        "topic": topic,
+        "scope_type": scope_type,
+        "scope_label": scope_label,
         "summary": summary,
         "opportunities": opportunities[:8],
         "disagreements": disagreements,

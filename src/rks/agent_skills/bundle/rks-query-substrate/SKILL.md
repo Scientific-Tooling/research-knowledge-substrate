@@ -16,6 +16,7 @@ Use this skill for requests such as:
 - summarize this paper from stored evidence
 - inspect the evidence trail for this claim
 - inspect a project hypothesis and its linked evidence
+- inspect project-scoped links and output surfaces
 - search the local research graph
 - answer a question from already-ingested graph data
 
@@ -80,6 +81,7 @@ rks summarize paper <paper_id>
 List project hypotheses or evidence:
 
 ```bash
+rks project links <project_id>
 rks hypothesis list <project_id>
 rks hypothesis evidence <hypothesis_id>
 ```
@@ -91,6 +93,11 @@ rks output answer "<question>"
 rks output brief "<topic>"
 rks output disagreements "<topic>"
 rks output opportunities "<topic>"
+rks output project-answer <project_id> --question "<question>"
+rks output project-brief <project_id>
+rks output project-open-questions <project_id>
+rks output project-review-priorities <project_id>
+rks plan query "<request>" --project-id <project_id>
 ```
 
 ## Recommended Query Order
@@ -102,8 +109,10 @@ For ambiguous research questions, prefer:
 3. `rks show claim <claim_id>` for evidence validation
 4. `rks query claim-relations <claim_id>` when relationship structure matters
 5. `rks show project <project_id>` or `rks show hypothesis <hypothesis_id>` when the task is project-scoped
-6. `rks output answer "<question>"` or `rks output brief "<topic>"` for directly consumable synthesis
-7. `rks summarize paper <paper_id>` if a paper-specific synthesis is needed
+6. `rks project links <project_id>` when the project boundary itself matters
+7. `rks output project-brief <project_id>` or `rks output project-answer <project_id> --question "<question>"` for project-scoped synthesis
+8. `rks output answer "<question>"` or `rks output brief "<topic>"` for workspace-wide synthesis
+9. `rks summarize paper <paper_id>` if a paper-specific synthesis is needed
 
 ## Research Output Discipline
 
@@ -111,6 +120,7 @@ Prefer `rks output ...` commands when the user expects:
 
 - a direct answer
 - a topic synthesis
+- a project-scoped synthesis
 - surfaced disagreements
 - inspiration or next-step guidance
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for phase 1 and phase 2 implementation on March 12, 2026.
+Accepted and implemented through the March 12, 2026 project-output and planner extension.
 
 ## Summary
 
@@ -18,20 +18,15 @@ This design keeps paper-grounded extraction semantics intact:
 - `claim` remains a paper-grounded structured statement
 - `ResearchProject` becomes the research workspace layer above papers
 
-Phase 1 implements:
+Implemented:
 
 - `ResearchProject`
 - project notes
-- project-to-paper links
-
-Phase 2 implements:
-
+- project links for `paper`, `claim`, `method`, `dataset`, and `concept`
 - project hypotheses
 - hypothesis-to-evidence links
-
-Still deferred:
-
 - project-scoped output generation
+- deterministic request planning for topic and project scopes
 
 ## Problem
 
@@ -60,14 +55,17 @@ Without a project entity:
 - Preserve existing paper-grounded note and claim behavior.
 - Allow a project to collect multiple papers without changing paper ownership semantics.
 - Reuse the existing note model cleanly for project notes.
+- Support project-scoped outputs without changing paper or claim ownership rules.
+- Add a lightweight planner that can map research requests to deterministic RKS commands.
 - Keep the project model simple and easy to verify.
 
 ## Non-Goals
 
 - Reworking claims to become project-owned
 - Reworking extracted claims to become project-owned hypotheses
-- Adding project-scoped reasoning or ranking logic in phase 2
 - Making papers belong to exactly one project
+- Replacing the existing topic outputs with a separate project-only reasoning stack
+- Building a fully agentic planner before a deterministic planner exists
 
 ## Core Model
 
@@ -190,7 +188,13 @@ Columns:
 - `created_by TEXT NOT NULL`
 - `created_at TEXT NOT NULL`
 
-Phase 1 only exposes `object_type="paper"`, but the schema remains open for future `claim`, `method`, `dataset`, or `concept` links.
+The implemented CLI and HTTP surfaces expose:
+
+- `object_type="paper"`
+- `object_type="claim"`
+- `object_type="method"`
+- `object_type="dataset"`
+- `object_type="concept"`
 
 ### `hypotheses`
 
@@ -259,51 +263,69 @@ Responsibilities:
 
 ## CLI Surface
 
-Phase 1 CLI adds:
+Implemented CLI surface:
 
 - `rks project create --name ...`
 - `rks project list`
 - `rks project add-paper <project_id> <paper_id>`
 - `rks project papers <project_id>`
+- `rks project add-link <project_id> <object_type> <object_id>`
+- `rks project links <project_id> [--object-type ...]`
 - `rks show project <project_id>`
 - `rks note add project <project_id> --content ...`
 - `rks note list project <project_id>`
-
-Phase 2 CLI adds:
-
 - `rks hypothesis create <project_id> --text ...`
 - `rks hypothesis list <project_id>`
 - `rks hypothesis add-evidence <hypothesis_id> paper <paper_id>`
 - `rks hypothesis add-evidence <hypothesis_id> claim <claim_id>`
 - `rks hypothesis evidence <hypothesis_id>`
 - `rks show hypothesis <hypothesis_id>`
+- `rks output project-answer <project_id> [--question ...]`
+- `rks output project-brief <project_id>`
+- `rks output project-disagreements <project_id>`
+- `rks output project-opportunities <project_id>`
+- `rks output project-reading-list <project_id>`
+- `rks output project-open-questions <project_id>`
+- `rks output project-review-priorities <project_id>`
+- `rks plan query "<request>" [--project-id <project_id>]`
 
 `rks show project` returns:
 
 - project fields
 - project notes
 - linked papers
+- linked claims
+- linked methods
+- linked datasets
+- linked concepts
 - project hypotheses
 
 ## HTTP Surface
 
-Phase 1 HTTP adds:
+Implemented HTTP surface:
 
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/<project_id>`
 - `GET /api/projects/<project_id>/papers`
 - `POST /api/projects/<project_id>/papers`
+- `GET /api/projects/<project_id>/links`
+- `POST /api/projects/<project_id>/links`
 - `GET /api/projects/<project_id>/notes`
 - `POST /api/projects/<project_id>/notes`
-
-Phase 2 HTTP adds:
-
 - `GET /api/projects/<project_id>/hypotheses`
 - `POST /api/projects/<project_id>/hypotheses`
 - `GET /api/hypotheses/<hypothesis_id>`
 - `GET /api/hypotheses/<hypothesis_id>/evidence`
 - `POST /api/hypotheses/<hypothesis_id>/evidence`
+- `GET /api/output/projects/<project_id>/answer`
+- `GET /api/output/projects/<project_id>/brief`
+- `GET /api/output/projects/<project_id>/disagreements`
+- `GET /api/output/projects/<project_id>/opportunities`
+- `GET /api/output/projects/<project_id>/reading-list`
+- `GET /api/output/projects/<project_id>/open-questions`
+- `GET /api/output/projects/<project_id>/review-priorities`
+- `GET /api/plan/query?q=...&project_id=...`
 
 ## Snapshot and Migration Requirements
 
@@ -333,9 +355,13 @@ Implemented:
 - `Hypothesis` as a project-owned object
 - hypothesis-to-paper or hypothesis-to-claim evidence links
 
-Still deferred:
+### Follow-on Extensions
 
-- project-scoped reasoning outputs
+Implemented:
+
+- generic project links for `claim`, `method`, `dataset`, and `concept`
+- project-scoped output surfaces
+- deterministic planner routing requests to topic or project output commands
 
 ## Rejected Alternatives
 

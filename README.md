@@ -16,9 +16,12 @@ The current implementation supports:
 - extracting heuristic structured claims, methods, and datasets
 - normalizing and linking concepts
 - creating graph edges for `contains`, `supported_by`, `about`, `proposes`, `uses`, `evaluated_on`, and `cites`
+- organizing research projects with links to papers, claims, methods, datasets, and concepts
+- tracking project-owned hypotheses and evidence links
 - querying claims, methods, datasets, evidence views, and claim relations
 - promoting reviewed claim relations into durable graph edges while keeping inferred relations separate
-- generating direct research outputs for answers, topic briefs, disagreements, and opportunities
+- generating direct research outputs for topic and project answers, briefs, disagreements, opportunities, reading lists, and review guidance
+- planning deterministic next-step command sequences for research requests
 - indexing local embeddings and running hybrid lexical/semantic search
 - two LLM integration modes for text extraction and claim parsing:
   API mode and agent-assisted mode
@@ -96,8 +99,13 @@ rks note list paper p_000001
 rks project create --name "Sparse Attention Review" --research-question "Which papers matter most for long-context evaluation?"
 rks note add project rp_000001 --content "Track benchmark realism separately from raw headline results."
 rks project add-paper rp_000001 p_000001 --link-type key_evidence
+rks project add-link rp_000001 claim c_000001 --link-type key_evidence
+rks project links rp_000001 --object-type claim
 rks hypothesis create rp_000001 --text "Sparse attention gains hold only under realistic long-context benchmarks."
 rks hypothesis add-evidence h_000001 paper p_000001 --relation-type supported_by
+rks output project-brief rp_000001
+rks output project-review-priorities rp_000001
+rks plan query "What should we review next?" --project-id rp_000001
 rks show project rp_000001
 rks show hypothesis h_000001
 rks claims p_000001
@@ -130,6 +138,8 @@ rks output open-questions "Sparse Attention"
 rks output review-priorities "Sparse Attention"
 rks output disagreements "Sparse Attention"
 rks output opportunities "Sparse Attention"
+rks output project-answer rp_000001 --question "What does the current project evidence say?"
+rks output project-reading-list rp_000001
 ```
 
 Generate a paper summary:

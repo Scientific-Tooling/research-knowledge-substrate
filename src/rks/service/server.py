@@ -265,6 +265,38 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_operations() as operations:
             payload = operations.topic_review_priorities(topic)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/plan/query":
+        params = parse_qs(parsed.query)
+        request = params.get("q", [""])[0]
+        project_id = params.get("project_id", [None])[0]
+        with _open_operations() as operations:
+            payload = operations.plan_query(request, project_id=project_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/output/projects/"):
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) != 5:
+            raise KeyError(path)
+        project_id = parts[3]
+        surface = parts[4]
+        params = parse_qs(parsed.query)
+        with _open_operations() as operations:
+            if surface == "answer":
+                payload = operations.project_answer(project_id, question=params.get("q", [""])[0] or None)
+            elif surface == "brief":
+                payload = operations.project_brief(project_id)
+            elif surface == "disagreements":
+                payload = operations.project_disagreements(project_id)
+            elif surface == "opportunities":
+                payload = operations.project_opportunities(project_id)
+            elif surface == "reading-list":
+                payload = operations.project_reading_list(project_id)
+            elif surface == "open-questions":
+                payload = operations.project_open_questions(project_id)
+            elif surface == "review-priorities":
+                payload = operations.project_review_priorities(project_id)
+            else:
+                raise KeyError(path)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/claims/") and parsed.path.endswith("/relations"):
         claim_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
@@ -279,6 +311,13 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         project_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
             payload = operations.list_project_hypotheses(project_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/links"):
+        project_id = parsed.path.split("/")[3]
+        params = parse_qs(parsed.query)
+        object_type = params.get("object_type", [None])[0]
+        with _open_operations() as operations:
+            payload = operations.list_project_links(project_id, object_type=object_type)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/papers"):
         project_id = parsed.path.split("/")[3]
@@ -400,6 +439,17 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
                 status=payload.get("status", "draft"),
                 confidence=payload.get("confidence"),
                 context=payload.get("context"),
+                created_by=payload.get("created_by", "human:http"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/links"):
+        project_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            response = operations.add_project_link(
+                project_id,
+                payload["object_type"],
+                payload["object_id"],
+                link_type=payload.get("link_type", "in_scope"),
                 created_by=payload.get("created_by", "human:http"),
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")

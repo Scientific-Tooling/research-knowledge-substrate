@@ -193,6 +193,19 @@ def build_parser() -> argparse.ArgumentParser:
     project_papers_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
     project_papers_parser.set_defaults(handler=handle_project_papers)
 
+    project_add_link_parser = project_subparsers.add_parser("add-link", help="Link a graph object to a project.")
+    project_add_link_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    project_add_link_parser.add_argument("object_type", choices=("paper", "claim", "method", "dataset", "concept"))
+    project_add_link_parser.add_argument("object_id", help="Target object ID.")
+    project_add_link_parser.add_argument("--link-type", default="in_scope", help="Project link label.")
+    project_add_link_parser.add_argument("--created-by", default="human:user", help="Actor label for the link.")
+    project_add_link_parser.set_defaults(handler=handle_project_add_link)
+
+    project_links_parser = project_subparsers.add_parser("links", help="List graph objects linked to a project.")
+    project_links_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    project_links_parser.add_argument("--object-type", choices=("paper", "claim", "method", "dataset", "concept"))
+    project_links_parser.set_defaults(handler=handle_project_links)
+
     hypothesis_parser = subparsers.add_parser("hypothesis", help="Create and inspect project hypotheses.")
     hypothesis_subparsers = hypothesis_parser.add_subparsers(dest="hypothesis_command", required=True)
 
@@ -495,6 +508,64 @@ def build_parser() -> argparse.ArgumentParser:
     )
     output_review_priorities_parser.add_argument("topic", help="Topic text.")
     output_review_priorities_parser.set_defaults(handler=handle_output_review_priorities)
+
+    output_project_answer_parser = output_subparsers.add_parser(
+        "project-answer",
+        help="Answer a project-scoped research question from project-linked evidence.",
+    )
+    output_project_answer_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    output_project_answer_parser.add_argument("--question", help="Optional override question text.")
+    output_project_answer_parser.set_defaults(handler=handle_output_project_answer)
+
+    output_project_brief_parser = output_subparsers.add_parser(
+        "project-brief",
+        help="Generate a structured project briefing from project-linked evidence.",
+    )
+    output_project_brief_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    output_project_brief_parser.set_defaults(handler=handle_output_project_brief)
+
+    output_project_disagreements_parser = output_subparsers.add_parser(
+        "project-disagreements",
+        help="Surface contradictions and refinements within a project scope.",
+    )
+    output_project_disagreements_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    output_project_disagreements_parser.set_defaults(handler=handle_output_project_disagreements)
+
+    output_project_opportunities_parser = output_subparsers.add_parser(
+        "project-opportunities",
+        help="Generate research opportunities within a project scope.",
+    )
+    output_project_opportunities_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    output_project_opportunities_parser.set_defaults(handler=handle_output_project_opportunities)
+
+    output_project_reading_list_parser = output_subparsers.add_parser(
+        "project-reading-list",
+        help="Generate a prioritized project reading path.",
+    )
+    output_project_reading_list_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    output_project_reading_list_parser.set_defaults(handler=handle_output_project_reading_list)
+
+    output_project_open_questions_parser = output_subparsers.add_parser(
+        "project-open-questions",
+        help="Surface grounded open questions within a project scope.",
+    )
+    output_project_open_questions_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    output_project_open_questions_parser.set_defaults(handler=handle_output_project_open_questions)
+
+    output_project_review_priorities_parser = output_subparsers.add_parser(
+        "project-review-priorities",
+        help="Surface project-scoped review priorities and replication risks.",
+    )
+    output_project_review_priorities_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    output_project_review_priorities_parser.set_defaults(handler=handle_output_project_review_priorities)
+
+    plan_parser = subparsers.add_parser("plan", help="Generate deterministic research workflow plans.")
+    plan_subparsers = plan_parser.add_subparsers(dest="plan_command", required=True)
+
+    plan_query_parser = plan_subparsers.add_parser("query", help="Plan the next RKS commands for a research request.")
+    plan_query_parser.add_argument("request", help="Research request text.")
+    plan_query_parser.add_argument("--project-id", help="Optional project scope to plan against.")
+    plan_query_parser.set_defaults(handler=handle_plan_query)
 
     return parser
 
@@ -844,6 +915,26 @@ def handle_project_add_paper(args: argparse.Namespace) -> int:
 def handle_project_papers(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = _operations(session).list_project_papers(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_project_add_link(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).add_project_link(
+            args.project_id,
+            args.object_type,
+            args.object_id,
+            link_type=args.link_type,
+            created_by=args.created_by,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_project_links(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_project_links(args.project_id, object_type=args.object_type)
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -1569,6 +1660,62 @@ def handle_output_open_questions(args: argparse.Namespace) -> int:
 def handle_output_review_priorities(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = _operations(session).topic_review_priorities(args.topic)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_project_answer(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_answer(args.project_id, question=args.question)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_project_brief(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_brief(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_project_disagreements(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_disagreements(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_project_opportunities(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_opportunities(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_project_reading_list(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_reading_list(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_project_open_questions(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_open_questions(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_output_project_review_priorities(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_review_priorities(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_plan_query(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).plan_query(args.request, project_id=args.project_id)
     print(json.dumps(payload, indent=2))
     return 0
 

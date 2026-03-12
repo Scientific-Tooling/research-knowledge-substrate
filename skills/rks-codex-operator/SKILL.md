@@ -91,8 +91,16 @@ When the task is organized around a concrete research investigation, create a pr
 rks project create --name "Sparse Attention Review" --research-question "Which papers matter most for realistic long-context evaluation?"
 rks note add project <project_id> --content "Separate benchmark realism from headline wins." --created-by agent:review
 rks project add-paper <project_id> <paper_id> --link-type key_evidence --created-by agent:review
+rks project add-link <project_id> claim <claim_id> --link-type key_evidence --created-by agent:review
+rks project add-link <project_id> method <method_id> --link-type focus --created-by agent:review
+rks project add-link <project_id> dataset <dataset_id> --link-type benchmark --created-by agent:review
+rks project add-link <project_id> concept <concept_id> --link-type focus --created-by agent:review
+rks project links <project_id>
 rks hypothesis create <project_id> --text "Sparse attention gains shrink under realistic evaluation." --status active --created-by agent:review
 rks hypothesis add-evidence <hypothesis_id> paper <paper_id> --relation-type supported_by --created-by agent:review
+rks output project-brief <project_id>
+rks output project-review-priorities <project_id>
+rks plan query "What should we review next?" --project-id <project_id>
 ```
 
 ### 4. Run query and review flows
@@ -138,11 +146,15 @@ curl -s http://127.0.0.1:8765/api/status/<paper_id>
 curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
 curl -s http://127.0.0.1:8765/api/projects
 curl -s http://127.0.0.1:8765/api/projects/<project_id>
+curl -s http://127.0.0.1:8765/api/projects/<project_id>/links
 curl -s http://127.0.0.1:8765/api/hypotheses/<hypothesis_id>
 curl -s "http://127.0.0.1:8765/api/output/answer?q=<encoded-question>"
 curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
 curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=<encoded-topic>"
 curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=<encoded-topic>"
+curl -s http://127.0.0.1:8765/api/output/projects/<project_id>/brief
+curl -s "http://127.0.0.1:8765/api/output/projects/<project_id>/answer?q=<encoded-question>"
+curl -s "http://127.0.0.1:8765/api/plan/query?q=<encoded-request>&project_id=<project_id>"
 ```
 
 For relation writes:
@@ -151,6 +163,7 @@ For relation writes:
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/promote -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/retract -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST http://127.0.0.1:8765/api/projects -H 'Content-Type: application/json' -d '{...}'
+curl -s -X POST http://127.0.0.1:8765/api/projects/<project_id>/links -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST http://127.0.0.1:8765/api/projects/<project_id>/hypotheses -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST http://127.0.0.1:8765/api/hypotheses/<hypothesis_id>/evidence -H 'Content-Type: application/json' -d '{...}'
 ```

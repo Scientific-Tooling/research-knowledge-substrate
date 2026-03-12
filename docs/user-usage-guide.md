@@ -87,6 +87,11 @@ Create a research project when you want a durable investigation scope above indi
 rks project create --name "Sparse Attention Review" --research-question "Which sparse attention papers matter most for long-context evaluation?"
 rks note add project <project_id> --content "Track benchmark realism separately from headline wins."
 rks project add-paper <project_id> <paper_id> --link-type key_evidence
+rks project add-link <project_id> claim <claim_id> --link-type key_evidence
+rks project add-link <project_id> method <method_id> --link-type focus
+rks project add-link <project_id> dataset <dataset_id> --link-type benchmark
+rks project add-link <project_id> concept <concept_id> --link-type focus
+rks project links <project_id>
 rks project papers <project_id>
 rks hypothesis create <project_id> --text "Sparse attention gains hold only under realistic long-context benchmarks."
 rks hypothesis add-evidence <hypothesis_id> paper <paper_id> --relation-type supported_by
@@ -97,6 +102,7 @@ rks show project <project_id>
 ```
 
 Use projects for your working context and curated evidence set. Use hypotheses for your own research ideas. Keep extracted claims bound to papers so provenance remains explicit.
+Use `project add-link` when the project needs to foreground a specific claim, method, dataset, or concept without changing object ownership.
 
 ### 4.2 DOI
 
@@ -299,6 +305,25 @@ rks output review-priorities "Sparse Attention"
 ```
 
 These outputs are grounded in claims, papers, methods, datasets, and reviewed or inferred relation structure. They are intended to be more directly consumable than lower-level query outputs.
+
+Project-scoped output commands use only the project's linked graph objects plus hypothesis evidence:
+
+```bash
+rks output project-answer <project_id> --question "What does the current project evidence say?"
+rks output project-brief <project_id>
+rks output project-disagreements <project_id>
+rks output project-opportunities <project_id>
+rks output project-reading-list <project_id>
+rks output project-open-questions <project_id>
+rks output project-review-priorities <project_id>
+```
+
+When you are not sure which command to run next, ask the deterministic planner:
+
+```bash
+rks plan query "What should we review next?" --project-id <project_id>
+rks plan query "What should I read about Sparse Attention next?"
+```
 
 ## 9. Manually Review Claim Relations
 
