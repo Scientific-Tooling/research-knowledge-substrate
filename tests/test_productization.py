@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rks.service import dispatch_get_request
+from rks.service import dispatch_get_request, dispatch_post_request
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -74,12 +74,58 @@ class ProductizationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             pdf_path = tmp_path / "service-paper.pdf"
-            pdf_path.write_bytes(b"%PDF-1.4\nTransformers improve translation accuracy on WMT14.\n")
+            pdf_path.write_bytes(b"%PDF-1.4\nPlaceholder source text.\n")
+            related_pdf_path = tmp_path / "service-paper-2.pdf"
+            related_pdf_path.write_bytes(b"%PDF-1.4\nPlaceholder source text.\n")
 
             ingest_result = run_cli("ingest", "pdf", str(pdf_path), cwd=tmp_path)
             self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
             paper_id = json.loads(ingest_result.stdout)["id"]
-            self.assertEqual(run_cli("extract", "claims", paper_id, cwd=tmp_path).returncode, 0)
+            related_ingest_result = run_cli("ingest", "pdf", str(related_pdf_path), cwd=tmp_path)
+            self.assertEqual(related_ingest_result.returncode, 0, related_ingest_result.stderr)
+            related_paper_id = json.loads(related_ingest_result.stdout)["id"]
+
+            first_claims_path = tmp_path / "service-paper-claims.json"
+            first_claims_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Sparse Attention improves translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Sparse Attention", "dataset": "WMT14"},
+                                "evidence": {"paper_id": paper_id},
+                                "confidence": 0.91,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            second_claims_path = tmp_path / "service-paper-2-claims.json"
+            second_claims_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Sparse Attention does not improve translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Sparse Attention", "dataset": "WMT14"},
+                                "evidence": {"paper_id": related_paper_id},
+                                "confidence": 0.73,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "claims", paper_id, str(first_claims_path), cwd=tmp_path).returncode, 0)
+            self.assertEqual(
+                run_cli("import", "claims", related_paper_id, str(second_claims_path), cwd=tmp_path).returncode,
+                0,
+            )
 
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
@@ -87,7 +133,7 @@ class ProductizationTest(unittest.TestCase):
                 _, _, health_body = dispatch_get_request("/health")
                 self.assertEqual(json.loads(health_body.decode("utf-8"))["status"], "ok")
 
-                _, _, search_body = dispatch_get_request("/api/search?q=Transformer&mode=hybrid")
+                _, _, search_body = dispatch_get_request("/api/search?q=Sparse%20Attention&mode=hybrid")
                 search_payload = json.loads(search_body.decode("utf-8"))
                 self.assertTrue(search_payload["claims"] or search_payload["semantic_matches"])
 
@@ -98,10 +144,44 @@ class ProductizationTest(unittest.TestCase):
 
                 claims_payload = json.loads(run_cli("claims", paper_id, cwd=tmp_path).stdout)
                 claim_id = claims_payload[0]["id"]
+                related_claim_payload = json.loads(run_cli("claims", related_paper_id, cwd=tmp_path).stdout)
+                related_claim_id = related_claim_payload[0]["id"]
                 _, _, relations_body = dispatch_get_request(f"/api/claims/{claim_id}/relations")
                 relations_payload = json.loads(relations_body.decode("utf-8"))
                 self.assertIn("inferred_relations", relations_payload)
                 self.assertIn("reviewed_relations", relations_payload)
+                self.assertEqual(relations_payload["reviewed_relations"], [])
+
+                _, _, promote_body = dispatch_post_request(
+                    "/api/review/claim-relations/promote",
+                    json.dumps(
+                        {
+                            "source_claim_id": claim_id,
+                            "relation_type": "contradicts",
+                            "target_claim_id": related_claim_id,
+                            "reviewed_by": "agent:http",
+                            "note": "confirmed from service test",
+                        }
+                    ).encode("utf-8"),
+                )
+                promote_payload = json.loads(promote_body.decode("utf-8"))
+                self.assertEqual(promote_payload["created_by"], "agent:http")
+
+                _, _, reviewed_relations_body = dispatch_get_request(f"/api/claims/{claim_id}/relations")
+                reviewed_relations_payload = json.loads(reviewed_relations_body.decode("utf-8"))
+                self.assertEqual(len(reviewed_relations_payload["reviewed_relations"]), 1)
+
+                _, _, retract_body = dispatch_post_request(
+                    "/api/review/claim-relations/retract",
+                    json.dumps(
+                        {
+                            "source_claim_id": claim_id,
+                            "relation_type": "contradicts",
+                            "target_claim_id": related_claim_id,
+                        }
+                    ).encode("utf-8"),
+                )
+                self.assertTrue(json.loads(retract_body.decode("utf-8"))["deleted"])
 
                 _, _, ui_body = dispatch_get_request("/")
                 self.assertIn("RKS Workspace", ui_body.decode("utf-8"))

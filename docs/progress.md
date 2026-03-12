@@ -33,6 +33,10 @@ The repository now has a hardened post-MVP base for extraction quality:
 - migration/version tracking for the local database schema
 - graph snapshot export and import
 - local API plus lightweight web UI service surface
+- reference-ingestion source PDF acquisition with inspectable acquisition outcomes
+- durable reviewed claim-to-claim relations alongside non-durable inferred candidates
+- a dedicated operations layer for paper status and claim-relation review flows
+- HTTP review endpoints for claim-relation promotion and retraction
 
 ## Implemented Milestones
 

@@ -39,11 +39,11 @@ Exit criteria:
 
 ## Priority 2: Stable Agent-Facing Operations
 
-- [ ] Introduce a dedicated operations layer for high-level product actions.
-- [ ] Move paper status assembly and claim-relation review logic behind operations interfaces.
-- [ ] Expose agent-friendly HTTP endpoints for paper status and claim relation inspection.
-- [ ] Add HTTP write endpoints for claim-relation promotion and retraction.
-- [ ] Keep the operations surface narrow and auditable.
+- [x] Introduce a dedicated operations layer for high-level product actions.
+- [x] Move paper status assembly and claim-relation review logic behind operations interfaces.
+- [x] Expose agent-friendly HTTP endpoints for paper status and claim relation inspection.
+- [x] Add HTTP write endpoints for claim-relation promotion and retraction.
+- [x] Keep the operations surface narrow and auditable.
 
 Exit criteria:
 

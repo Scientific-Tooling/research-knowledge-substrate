@@ -23,6 +23,7 @@ The current implementation supports:
 - batch ingest and extraction workflows
 - task queue and paper status inspection for agent-mode operations
 - config initialization, migration/version reporting, and graph snapshot export/import
+- stable agent-facing operations for paper status and claim-relation review over CLI and HTTP
 - a local HTTP service and lightweight UI
 
 Progress is tracked in [docs/progress.md](docs/progress.md).

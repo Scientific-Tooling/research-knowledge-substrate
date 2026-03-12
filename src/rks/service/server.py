@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from rks.config import load_paths
+from rks.operations import ResearchOperations
 from rks.providers import LocalHashEmbeddingProvider
 from rks.query import QueryService
 from rks.storage import (
@@ -33,6 +34,23 @@ def _build_handler():
                 status_code, content_type, body = dispatch_get_request(self.path)
             except KeyError:
                 self.send_error(404, "Not found")
+                return
+            self.send_response(status_code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self) -> None:
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(content_length) if content_length else b"{}"
+                status_code, content_type, body = dispatch_post_request(self.path, raw_body)
+            except KeyError:
+                self.send_error(404, "Not found")
+                return
+            except ValueError as exc:
+                self.send_error(400, str(exc))
                 return
             self.send_response(status_code)
             self.send_header("Content-Type", content_type)
@@ -91,6 +109,29 @@ def _open_repositories() -> _RepositoryContext:
 
 def _open_query_service() -> _QueryContext:
     return _QueryContext()
+
+
+class _OperationsContext:
+    def __enter__(self):
+        self._repo_context = _RepositoryContext()
+        repos = self._repo_context.__enter__()
+        return ResearchOperations(
+            papers=repos["papers"],
+            claims=repos["claims"],
+            concepts=repos["concepts"],
+            edges=repos["edges"],
+            methods=repos["methods"],
+            datasets=repos["datasets"],
+            embeddings=repos["embeddings"],
+            tasks=repos["tasks"],
+        )
+
+    def __exit__(self, exc_type, exc, tb):
+        self._repo_context.__exit__(exc_type, exc, tb)
+
+
+def _open_operations() -> _OperationsContext:
+    return _OperationsContext()
 
 
 def _ui_html() -> str:
@@ -154,8 +195,8 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/claims/") and parsed.path.endswith("/relations"):
         claim_id = parsed.path.split("/")[3]
-        with _open_query_service() as query_service:
-            payload = query_service.claim_relations(claim_id)
+        with _open_operations() as operations:
+            payload = operations.claim_relations(claim_id)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/papers/"):
         paper_id = parsed.path.rsplit("/", 1)[-1]
@@ -174,16 +215,8 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/status/"):
         paper_id = parsed.path.rsplit("/", 1)[-1]
-        with _open_repositories() as repos:
-            paper = repos["papers"].get_paper(paper_id)
-            artifacts = repos["papers"].get_artifacts_for_paper(paper_id)
-            tasks = repos["tasks"].list_tasks(paper_id=paper_id)
-            payload = {
-                "paper_id": paper_id,
-                "artifacts": [artifact.artifact_type for artifact in artifacts],
-                "source_pdf": _source_pdf_status(paper, artifacts),
-                "tasks": [{"id": task.id, "task_type": task.task_type, "status": task.status} for task in tasks],
-            }
+        with _open_operations() as operations:
+            payload = operations.paper_status(paper_id)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path == "/api/tasks":
         with _open_repositories() as repos:
@@ -196,14 +229,26 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
     raise KeyError(path)
 
 
-def _source_pdf_status(paper, artifacts) -> dict:
-    acquisition = None
-    for artifact in artifacts:
-        if artifact.artifact_type == "source_pdf_acquisition":
-            acquisition = json.loads(artifact.metadata_json or "{}")
-            break
-    return {
-        "available": bool(paper.pdf_path),
-        "path": paper.pdf_path,
-        "acquisition": acquisition,
-    }
+def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
+    parsed = urlparse(path)
+    payload = json.loads(body.decode("utf-8") or "{}")
+    if parsed.path == "/api/review/claim-relations/promote":
+        with _open_operations() as operations:
+            response = operations.promote_claim_relation(
+                source_claim_id=payload["source_claim_id"],
+                relation_type=payload["relation_type"],
+                target_claim_id=payload["target_claim_id"],
+                confidence=float(payload.get("confidence", 1.0)),
+                reviewed_by=payload.get("reviewed_by", "agent:review"),
+                note=payload.get("note"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path == "/api/review/claim-relations/retract":
+        with _open_operations() as operations:
+            response = operations.retract_claim_relation(
+                source_claim_id=payload["source_claim_id"],
+                relation_type=payload["relation_type"],
+                target_claim_id=payload["target_claim_id"],
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    raise KeyError(path)

@@ -23,6 +23,7 @@ from rks.extraction import (
 )
 from rks.ingestion import ingest_arxiv_reference, ingest_doi_reference, ingest_pdf
 from rks.llm import ALL_EXTRACTION_MODES, run_dual_track_mode
+from rks.operations import ResearchOperations
 from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, LocalHashEmbeddingProvider, OpenAICompatibleLlmProvider
 from rks.query import QueryService, index_embeddings
 from rks.reasoning import summarize_paper_heuristic
@@ -556,34 +557,9 @@ def handle_index_embeddings(args: argparse.Namespace) -> int:
 
 def handle_status_paper(args: argparse.Namespace) -> int:
     with _open_session() as session:
-        paper = session.papers.get_paper(args.paper_id)
-        artifacts = session.papers.get_artifacts_for_paper(args.paper_id)
-        tasks = session.tasks.list_tasks(paper_id=args.paper_id)
-        source_pdf = _source_pdf_status(paper, artifacts)
-    artifact_types = {artifact.artifact_type for artifact in artifacts}
-    task_summary = {}
-    for task in tasks:
-        task_summary[task.status] = task_summary.get(task.status, 0) + 1
-    print(
-        json.dumps(
-            {
-                "paper": _paper_to_payload(paper),
-                "artifacts": sorted(artifact_types),
-                "stages": {
-                    "text": "extracted_text" in artifact_types,
-                    "claims": "structured_claims" in artifact_types,
-                    "methods": "methods" in artifact_types,
-                    "datasets": "datasets" in artifact_types,
-                    "summary": "paper_summary" in artifact_types,
-                    "citations": "citations" in artifact_types,
-                },
-                "source_pdf": source_pdf,
-                "task_summary": task_summary,
-                "tasks": [_task_payload(task) for task in tasks],
-            },
-            indent=2,
-        )
-    )
+        operations = _operations(session)
+        payload = operations.paper_status(args.paper_id)
+    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -961,44 +937,26 @@ def handle_tasks_fail(args: argparse.Namespace) -> int:
 
 def handle_review_promote_claim_relation(args: argparse.Namespace) -> int:
     with _open_session() as session:
-        source_claim = session.claims.get_claim(args.source_claim_id)
-        target_claim = session.claims.get_claim(args.target_claim_id)
-        metadata = {
-            "source_paper_id": source_claim.paper_id,
-            "target_paper_id": target_claim.paper_id,
-        }
-        if args.note:
-            metadata["note"] = args.note
-        edge = session.edges.upsert_claim_relation_edge(
-            source_id=source_claim.id,
+        payload = _operations(session).promote_claim_relation(
+            source_claim_id=args.source_claim_id,
             relation_type=args.relation_type,
-            target_id=target_claim.id,
+            target_claim_id=args.target_claim_id,
             confidence=args.confidence,
-            metadata=metadata,
-            created_by=args.reviewed_by,
+            reviewed_by=args.reviewed_by,
+            note=args.note,
         )
-    print(json.dumps(_edge_payload(edge), indent=2))
+    print(json.dumps(payload, indent=2))
     return 0
 
 
 def handle_review_retract_claim_relation(args: argparse.Namespace) -> int:
     with _open_session() as session:
-        deleted = session.edges.delete_claim_relation_edge(
-            source_id=args.source_claim_id,
+        payload = _operations(session).retract_claim_relation(
+            source_claim_id=args.source_claim_id,
             relation_type=args.relation_type,
-            target_id=args.target_claim_id,
+            target_claim_id=args.target_claim_id,
         )
-    print(
-        json.dumps(
-            {
-                "source_claim_id": args.source_claim_id,
-                "relation_type": args.relation_type,
-                "target_claim_id": args.target_claim_id,
-                "deleted": deleted,
-            },
-            indent=2,
-        )
-    )
+    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -1055,17 +1013,7 @@ def handle_query_evidence_for(args: argparse.Namespace) -> int:
 
 def handle_query_claim_relations(args: argparse.Namespace) -> int:
     with _open_session() as session:
-        query = QueryService(
-            papers=session.papers,
-            claims=session.claims,
-            concepts=session.concepts,
-            edges=session.edges,
-            methods=session.methods,
-            datasets=session.datasets,
-            embeddings=session.embeddings,
-            embedding_provider=LocalHashEmbeddingProvider(),
-        )
-        payload = query.claim_relations(args.claim_id)
+        payload = _operations(session).claim_relations(args.claim_id)
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -1169,6 +1117,19 @@ def _open_session() -> _SessionContext:
     return _SessionContext()
 
 
+def _operations(session: _Session) -> ResearchOperations:
+    return ResearchOperations(
+        papers=session.papers,
+        claims=session.claims,
+        concepts=session.concepts,
+        edges=session.edges,
+        methods=session.methods,
+        datasets=session.datasets,
+        embeddings=session.embeddings,
+        tasks=session.tasks,
+    )
+
+
 def _paper_to_payload(paper) -> dict:
     return {
         "id": paper.id,
@@ -1254,19 +1215,6 @@ def _edge_payload(edge) -> dict:
         "confidence": edge.confidence,
         "created_by": edge.created_by,
         "metadata": json.loads(edge.metadata_json or "{}"),
-    }
-
-
-def _source_pdf_status(paper, artifacts) -> dict:
-    acquisition = None
-    for artifact in artifacts:
-        if artifact.artifact_type == "source_pdf_acquisition":
-            acquisition = json.loads(artifact.metadata_json or "{}")
-            break
-    return {
-        "available": bool(paper.pdf_path),
-        "path": paper.pdf_path,
-        "acquisition": acquisition,
     }
 
 
