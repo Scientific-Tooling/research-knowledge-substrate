@@ -21,7 +21,7 @@ from rks.extraction import (
     extract_text_with_llm,
 )
 from rks.ingestion import ingest_arxiv_reference, ingest_doi_reference, ingest_pdf
-from rks.llm import ALL_EXTRACTION_MODES
+from rks.llm import ALL_EXTRACTION_MODES, run_dual_track_mode
 from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, OpenAICompatibleLlmProvider
 from rks.query import QueryService
 from rks.reasoning import summarize_paper_heuristic
@@ -248,39 +248,40 @@ def handle_concepts(args: argparse.Namespace) -> int:
 
 
 def handle_summarize_paper(args: argparse.Namespace) -> int:
-    if args.mode == "heuristic":
-        with _open_session() as session:
-            payload = summarize_paper_heuristic(
+    with _open_session() as session:
+        payload = run_dual_track_mode(
+            args.mode,
+            heuristic=lambda: summarize_paper_heuristic(
                 paths=load_paths(),
                 paper_repo=session.papers,
                 claim_repo=session.claims,
                 concept_repo=session.concepts,
                 paper_id=args.paper_id,
-            )
-    elif args.mode == "llm-api":
-        with _open_session() as session:
-            provider = OpenAICompatibleLlmProvider(load_llm_config())
-            summary_input = build_summary_input(session.papers, session.claims, session.concepts, args.paper_id)
-            summary_payload = provider.summarize_paper(summary_input)
-            summary_payload["mode"] = "llm-api"
-            payload = persist_summary_artifact(
+            ),
+            llm_api=lambda: persist_summary_artifact(
                 paper_repo=session.papers,
                 paths=load_paths(),
                 paper_id=args.paper_id,
-                payload=summary_payload,
+                payload={
+                    **OpenAICompatibleLlmProvider(load_llm_config()).summarize_paper(
+                        build_summary_input(session.papers, session.claims, session.concepts, args.paper_id)
+                    ),
+                    "mode": "llm-api",
+                },
                 artifact_type="paper_summary",
                 filename="paper_summary.json",
-            )
-    else:
-        with _open_session() as session:
-            payload = create_summary_request(
-                repo=session.papers,
-                claim_repo=session.claims,
-                concept_repo=session.concepts,
-                paths=load_paths(),
-                paper_id=args.paper_id,
-            )
-            payload["mode"] = "agent"
+            ),
+            agent=lambda: {
+                **create_summary_request(
+                    repo=session.papers,
+                    claim_repo=session.claims,
+                    concept_repo=session.concepts,
+                    paths=load_paths(),
+                    paper_id=args.paper_id,
+                ),
+                "mode": "agent",
+            },
+        )
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -318,69 +319,66 @@ def handle_extract_text(args: argparse.Namespace) -> int:
     paths = load_paths()
     with _open_repository() as repo:
         paper = repo.get_paper(args.paper_id)
-        if args.mode == "heuristic":
-            artifact = extract_text_for_paper(repo=repo, paths=paths, paper=paper)
-            payload = {
-                "paper_id": args.paper_id,
+        payload = run_dual_track_mode(
+            args.mode,
+            heuristic=lambda: _artifact_payload(
+                args.paper_id,
+                args.mode,
+                extract_text_for_paper(repo=repo, paths=paths, paper=paper),
+            ),
+            llm_api=lambda: _artifact_payload(
+                args.paper_id,
+                args.mode,
+                extract_text_with_llm(
+                    repo=repo,
+                    paths=paths,
+                    paper=paper,
+                    provider=OpenAICompatibleLlmProvider(load_llm_config()),
+                ),
+            ),
+            agent=lambda: {
+                **create_text_request(repo=repo, paths=paths, paper_id=args.paper_id),
                 "mode": args.mode,
-                "artifact_id": artifact.id,
-                "artifact_type": artifact.artifact_type,
-                "path": artifact.path,
-            }
-        elif args.mode == "llm-api":
-            provider = OpenAICompatibleLlmProvider(load_llm_config())
-            artifact = extract_text_with_llm(repo=repo, paths=paths, paper=paper, provider=provider)
-            payload = {
-                "paper_id": args.paper_id,
-                "mode": args.mode,
-                "artifact_id": artifact.id,
-                "artifact_type": artifact.artifact_type,
-                "path": artifact.path,
-            }
-        else:
-            payload = create_text_request(repo=repo, paths=paths, paper_id=args.paper_id)
-            payload["mode"] = args.mode
+            },
+        )
     print(json.dumps(payload, indent=2))
     return 0
 
 
 def handle_extract_claims(args: argparse.Namespace) -> int:
     with _open_session() as session:
-        if args.mode == "heuristic":
-            claims = extract_claims_for_paper(
-                paths=load_paths(),
-                paper_repo=session.papers,
-                claim_repo=session.claims,
-                concept_repo=session.concepts,
-                edge_repo=session.edges,
-                paper_id=args.paper_id,
-            )
-            payload = {
-                "paper_id": args.paper_id,
+        payload = run_dual_track_mode(
+            args.mode,
+            heuristic=lambda: _claims_payload(
+                args.paper_id,
+                args.mode,
+                extract_claims_for_paper(
+                    paths=load_paths(),
+                    paper_repo=session.papers,
+                    claim_repo=session.claims,
+                    concept_repo=session.concepts,
+                    edge_repo=session.edges,
+                    paper_id=args.paper_id,
+                ),
+            ),
+            llm_api=lambda: _claims_payload(
+                args.paper_id,
+                args.mode,
+                extract_claims_with_llm(
+                    paths=load_paths(),
+                    paper_repo=session.papers,
+                    claim_repo=session.claims,
+                    concept_repo=session.concepts,
+                    edge_repo=session.edges,
+                    paper_id=args.paper_id,
+                    provider=OpenAICompatibleLlmProvider(load_llm_config()),
+                ),
+            ),
+            agent=lambda: {
+                **create_claims_request(repo=session.papers, paths=load_paths(), paper_id=args.paper_id),
                 "mode": args.mode,
-                "claim_count": len(claims),
-                "claim_ids": [claim.id for claim in claims],
-            }
-        elif args.mode == "llm-api":
-            provider = OpenAICompatibleLlmProvider(load_llm_config())
-            claims = extract_claims_with_llm(
-                paths=load_paths(),
-                paper_repo=session.papers,
-                claim_repo=session.claims,
-                concept_repo=session.concepts,
-                edge_repo=session.edges,
-                paper_id=args.paper_id,
-                provider=provider,
-            )
-            payload = {
-                "paper_id": args.paper_id,
-                "mode": args.mode,
-                "claim_count": len(claims),
-                "claim_ids": [claim.id for claim in claims],
-            }
-        else:
-            payload = create_claims_request(repo=session.papers, paths=load_paths(), paper_id=args.paper_id)
-            payload["mode"] = args.mode
+            },
+        )
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -542,3 +540,22 @@ def _claim_object(concepts: ConceptRepository, claim) -> str | None:
     if claim.object_concept_id:
         return concepts.get_concept(claim.object_concept_id).name
     return claim.object_text
+
+
+def _artifact_payload(paper_id: str, mode: str, artifact) -> dict:
+    return {
+        "paper_id": paper_id,
+        "mode": mode,
+        "artifact_id": artifact.id,
+        "artifact_type": artifact.artifact_type,
+        "path": artifact.path,
+    }
+
+
+def _claims_payload(paper_id: str, mode: str, claims: list) -> dict:
+    return {
+        "paper_id": paper_id,
+        "mode": mode,
+        "claim_count": len(claims),
+        "claim_ids": [claim.id for claim in claims],
+    }

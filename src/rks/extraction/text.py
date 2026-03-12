@@ -68,6 +68,7 @@ def write_text_artifact(
         },
     )
     repo.set_text_artifact(paper_id, artifact.id)
+    _write_sections_artifact(repo=repo, paper_id=paper_id, paper_dir=paper_dir, payload=normalized_payload)
     return artifact
 
 
@@ -123,3 +124,64 @@ def _looks_like_pdf_scaffolding(line: str) -> bool:
         "trailer",
         "%%eof",
     }
+
+
+def _write_sections_artifact(repo: PaperRepository, paper_id: str, paper_dir: Path, payload: dict) -> None:
+    sections = detect_sections(payload)
+    sections_path = paper_dir / "sections.json"
+    sections_path.write_text(json.dumps(sections, indent=2), encoding="utf-8")
+    repo.create_artifact(
+        paper_id=paper_id,
+        artifact_type="sections",
+        path=sections_path,
+        format_name="json",
+        metadata={"section_count": len(sections["sections"])},
+    )
+
+
+def detect_sections(payload: dict) -> dict:
+    paragraphs = [paragraph for paragraph in payload.get("paragraphs", []) if paragraph]
+    sections = []
+    current_name = "abstract"
+    current_paragraphs: list[str] = []
+
+    for paragraph in paragraphs:
+        heading = _match_heading(paragraph)
+        if heading is not None:
+            if current_paragraphs:
+                sections.append({"name": current_name, "paragraphs": current_paragraphs})
+            current_name = heading
+            current_paragraphs = []
+            continue
+        current_paragraphs.append(paragraph)
+
+    if current_paragraphs:
+        sections.append({"name": current_name, "paragraphs": current_paragraphs})
+
+    if not sections and payload.get("text"):
+        sections = [{"name": "abstract", "paragraphs": [payload["text"]]}]
+
+    return {
+        "extractor": payload.get("extractor"),
+        "sections": sections,
+    }
+
+
+def _match_heading(paragraph: str) -> str | None:
+    normalized = paragraph.strip().lower().rstrip(":")
+    heading_map = {
+        "abstract": "abstract",
+        "introduction": "introduction",
+        "background": "background",
+        "related work": "related_work",
+        "method": "method",
+        "methods": "method",
+        "approach": "method",
+        "experiment": "experiments",
+        "experiments": "experiments",
+        "evaluation": "experiments",
+        "results": "results",
+        "discussion": "discussion",
+        "conclusion": "conclusion",
+    }
+    return heading_map.get(normalized)

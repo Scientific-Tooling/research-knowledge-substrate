@@ -9,6 +9,7 @@ The current MVP supports:
 - ingesting local PDFs
 - ingesting DOI and arXiv references
 - persisting papers and extraction artifacts to SQLite plus local disk
+- generating inspectable pipeline artifacts such as extracted text, sections, and structured claims
 - extracting heuristic structured claims
 - normalizing and linking concepts
 - creating graph edges for `contains`, `supported_by`, and `about`

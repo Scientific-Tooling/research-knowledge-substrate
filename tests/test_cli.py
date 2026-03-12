@@ -55,6 +55,7 @@ class CliSmokeTest(unittest.TestCase):
             artifact_types = [artifact["artifact_type"] for artifact in show_payload["artifacts"]]
             self.assertIn("source_pdf", artifact_types)
             self.assertIn("extracted_text", artifact_types)
+            self.assertIn("sections", artifact_types)
 
             extract_claims_result = run_cli("extract", "claims", payload["id"], cwd=tmp_path)
             self.assertEqual(extract_claims_result.returncode, 0, extract_claims_result.stderr)

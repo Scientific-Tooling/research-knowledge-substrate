@@ -7,6 +7,7 @@ The repository now has a working local MVP spine:
 - local SQLite initialization
 - PDF ingestion into stable paper IDs
 - metadata and extracted text artifacts on disk
+- section detection artifacts on disk
 - heuristic structured claim extraction
 - optional `llm-api` claim/text extraction when the user provides an API key
 - optional `agent` extraction workflow for Codex, Claude Code, or other external agents
