@@ -38,6 +38,7 @@ The repository now has a hardened post-MVP base for extraction quality:
 - a dedicated operations layer for paper status and claim-relation review flows
 - HTTP review endpoints for claim-relation promotion and retraction
 - direct research output surfaces for grounded answers, topic briefs, disagreements, and opportunities
+- richer research-output contracts with explicit conclusion, confidence, evidence assessment, reading guidance, disagreement causes, and validation plans
 - package metadata, packaged migrations, and CI workflows for formal PyPI distribution readiness
 - installed CLI export of bundled repository skills for Codex, Claude Code, and other agent runtimes
 
@@ -57,6 +58,7 @@ The repository now has a hardened post-MVP base for extraction quality:
 ## Remaining Work
 
 - continue hardening real-world fixtures and provider integrations
+- execute the focused optimization plan for output quality, agent readiness/status loops, and user-facing research content
 
 ## Latest Architectural Direction
 

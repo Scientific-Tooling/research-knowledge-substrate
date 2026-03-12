@@ -281,6 +281,7 @@ class QueryService:
             "predicate": claim.predicate,
             "object": object_name,
             "confidence": claim.confidence,
+            "context": context,
             "evidence": json.loads(claim.evidence_json or "{}"),
         }
 

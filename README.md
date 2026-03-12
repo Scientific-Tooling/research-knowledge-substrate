@@ -164,6 +164,7 @@ When a provider exposes PDF candidates, RKS also attempts to persist a local `so
 - [docs/README.md](docs/README.md)
 - [docs/design-implementation-comparison.md](docs/design-implementation-comparison.md)
 - [docs/research-output-roadmap.md](docs/research-output-roadmap.md)
+- [docs/focus-optimization-plan.md](docs/focus-optimization-plan.md)
 - [docs/installation-guide.md](docs/installation-guide.md)
 - [docs/installation-guide-zh.md](docs/installation-guide-zh.md)
 - [docs/pypi-publishing-guide.md](docs/pypi-publishing-guide.md)

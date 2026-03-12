@@ -128,14 +128,22 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertEqual(answer_result.returncode, 0, answer_result.stderr)
             answer_payload = json.loads(answer_result.stdout)
             self.assertIn("answer", answer_payload)
+            self.assertIn("conclusion", answer_payload)
+            self.assertIn(answer_payload["confidence"], {"low", "medium", "high"})
+            self.assertIn("evidence_assessment", answer_payload)
             self.assertGreaterEqual(len(answer_payload["supporting_claims"]), 1)
             self.assertGreaterEqual(len(answer_payload["disagreements"]), 1)
             self.assertGreaterEqual(len(answer_payload["next_steps"]), 1)
+            self.assertIn("counterevidence", answer_payload)
+            self.assertEqual(answer_payload["evidence_assessment"]["reviewed_disagreement_count"], 1)
 
             brief_result = run_cli("output", "brief", "Sparse Attention", cwd=tmp_path)
             self.assertEqual(brief_result.returncode, 0, brief_result.stderr)
             brief_payload = json.loads(brief_result.stdout)
             self.assertIn("overview", brief_payload)
+            self.assertIn("state_of_topic", brief_payload)
+            self.assertIn("reading_list", brief_payload)
+            self.assertIn("evidence_gaps", brief_payload)
             self.assertGreaterEqual(len(brief_payload["key_claims"]), 1)
             self.assertGreaterEqual(len(brief_payload["methods"]), 1)
             self.assertGreaterEqual(len(brief_payload["datasets"]), 1)
@@ -145,6 +153,8 @@ class ResearchOutputTest(unittest.TestCase):
             disagreements_payload = json.loads(disagreements_result.stdout)
             self.assertGreaterEqual(len(disagreements_payload["disagreements"]), 1)
             self.assertEqual(disagreements_payload["disagreements"][0]["relation_type"], "contradicts")
+            self.assertIn("possible_causes", disagreements_payload["disagreements"][0])
+            self.assertIn("review_priorities", disagreements_payload)
 
             opportunities_result = run_cli("output", "opportunities", "Sparse Attention", cwd=tmp_path)
             self.assertEqual(opportunities_result.returncode, 0, opportunities_result.stderr)
@@ -152,6 +162,10 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertGreaterEqual(len(opportunities_payload["opportunities"]), 1)
             kinds = {item["kind"] for item in opportunities_payload["opportunities"]}
             self.assertIn("resolve_disagreement", kinds)
+            first_opportunity = opportunities_payload["opportunities"][0]
+            self.assertIn("evidence_basis", first_opportunity)
+            self.assertIn("validation_plan", first_opportunity)
+            self.assertIn("grounding_strength", first_opportunity)
 
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
