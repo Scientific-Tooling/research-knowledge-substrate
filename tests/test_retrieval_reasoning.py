@@ -103,9 +103,56 @@ class RetrievalReasoningTest(unittest.TestCase):
             relations_result = run_cli("query", "claim-relations", anchor_claim_id, cwd=tmp_path)
             self.assertEqual(relations_result.returncode, 0, relations_result.stderr)
             relations_payload = json.loads(relations_result.stdout)
-            relation_types = {relation["relation_type"] for relation in relations_payload["relations"]}
+            self.assertEqual(relations_payload["reviewed_relations"], [])
+            relation_types = {relation["relation_type"] for relation in relations_payload["inferred_relations"]}
             self.assertIn("refines", relation_types)
             self.assertIn("contradicts", relation_types)
+
+            contradictory_claim_id = next(
+                relation["claim"]["id"]
+                for relation in relations_payload["inferred_relations"]
+                if relation["relation_type"] == "contradicts"
+            )
+            promote_result = run_cli(
+                "review",
+                "promote-claim-relation",
+                anchor_claim_id,
+                "contradicts",
+                contradictory_claim_id,
+                "--reviewed-by",
+                "agent:review",
+                "--note",
+                "verified by evaluation trace",
+                cwd=tmp_path,
+            )
+            self.assertEqual(promote_result.returncode, 0, promote_result.stderr)
+
+            reviewed_relations_result = run_cli("query", "claim-relations", anchor_claim_id, cwd=tmp_path)
+            reviewed_payload = json.loads(reviewed_relations_result.stdout)
+            self.assertEqual(len(reviewed_payload["reviewed_relations"]), 1)
+            self.assertEqual(reviewed_payload["reviewed_relations"][0]["relation_type"], "contradicts")
+            self.assertEqual(reviewed_payload["reviewed_relations"][0]["relation_source"], "reviewed")
+            self.assertEqual(reviewed_payload["reviewed_relations"][0]["created_by"], "agent:review")
+            self.assertEqual(
+                reviewed_payload["reviewed_relations"][0]["metadata"]["note"],
+                "verified by evaluation trace",
+            )
+
+            show_claim_result = run_cli("show", "claim", anchor_claim_id, cwd=tmp_path)
+            self.assertEqual(show_claim_result.returncode, 0, show_claim_result.stderr)
+            show_claim_payload = json.loads(show_claim_result.stdout)
+            self.assertEqual(len(show_claim_payload["reviewed_relations"]), 1)
+
+            retract_result = run_cli(
+                "review",
+                "retract-claim-relation",
+                anchor_claim_id,
+                "contradicts",
+                contradictory_claim_id,
+                cwd=tmp_path,
+            )
+            self.assertEqual(retract_result.returncode, 0, retract_result.stderr)
+            self.assertTrue(json.loads(retract_result.stdout)["deleted"])
 
             evidence_result = run_cli("query", "evidence-for", "Sparse Attention", cwd=tmp_path)
             self.assertEqual(evidence_result.returncode, 0, evidence_result.stderr)

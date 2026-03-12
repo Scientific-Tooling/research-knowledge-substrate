@@ -25,11 +25,11 @@ Exit criteria:
 
 ## Priority 1: Semantic Durability Through Review
 
-- [ ] Keep query-time inferred claim relations as candidates, not durable truth.
-- [ ] Persist reviewed `supports` / `refines` / `contradicts` claim-to-claim relations into the existing graph.
-- [ ] Add a narrow CLI review flow for promotion and retraction.
-- [ ] Distinguish reviewed relations from inferred relations in query and service responses.
-- [ ] Surface reviewed claim relations in `show claim`.
+- [x] Keep query-time inferred claim relations as candidates, not durable truth.
+- [x] Persist reviewed `supports` / `refines` / `contradicts` claim-to-claim relations into the existing graph.
+- [x] Add a narrow CLI review flow for promotion and retraction.
+- [x] Distinguish reviewed relations from inferred relations in query and service responses.
+- [x] Surface reviewed claim relations in `show claim`.
 
 Exit criteria:
 

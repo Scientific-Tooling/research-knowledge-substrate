@@ -172,7 +172,12 @@ class QueryService:
 
     def claim_relations(self, claim_id: str) -> dict:
         anchor = self.claims.get_claim(claim_id)
-        relations = []
+        reviewed_relations = self._reviewed_claim_relations(anchor.id)
+        reviewed_keys = {
+            (relation["relation_type"], relation["claim"]["id"], relation["direction"])
+            for relation in reviewed_relations
+        }
+        inferred_relations = []
         for paper in self.papers.list_papers():
             for candidate in self.claims.list_claims_for_paper(paper.id):
                 if candidate.id == claim_id:
@@ -180,16 +185,23 @@ class QueryService:
                 relation = self._infer_claim_relation(anchor, candidate)
                 if relation is None:
                     continue
-                relations.append(
+                dedupe_key = (relation, candidate.id, "outgoing")
+                if dedupe_key in reviewed_keys:
+                    continue
+                inferred_relations.append(
                     {
                         "relation_type": relation,
+                        "relation_source": "inferred",
+                        "direction": "outgoing",
                         "claim": self._claim_payload(candidate),
                         "paper": self._paper_payload(self.papers.get_paper(candidate.paper_id)),
                     }
                 )
         return {
             "claim": self._claim_payload(anchor),
-            "relations": relations,
+            "reviewed_relations": reviewed_relations,
+            "inferred_relations": inferred_relations,
+            "relations": reviewed_relations + inferred_relations,
         }
 
     def methods_for(self, target: str) -> dict:
@@ -271,6 +283,27 @@ class QueryService:
             "confidence": claim.confidence,
             "evidence": json.loads(claim.evidence_json or "{}"),
         }
+
+    def _reviewed_claim_relations(self, claim_id: str) -> list[dict]:
+        relations = []
+        for edge in self.edges.list_claim_relation_edges(claim_id):
+            related_claim_id = edge.target_id if edge.source_id == claim_id else edge.source_id
+            related_claim = self.claims.get_claim(related_claim_id)
+            metadata = json.loads(edge.metadata_json or "{}")
+            relations.append(
+                {
+                    "edge_id": edge.id,
+                    "relation_type": edge.relation_type,
+                    "relation_source": "reviewed",
+                    "direction": "outgoing" if edge.source_id == claim_id else "incoming",
+                    "claim": self._claim_payload(related_claim),
+                    "paper": self._paper_payload(self.papers.get_paper(related_claim.paper_id)),
+                    "confidence": edge.confidence,
+                    "created_by": edge.created_by,
+                    "metadata": metadata,
+                }
+            )
+        return relations
 
     def _paper_payload(self, paper) -> dict:
         return {

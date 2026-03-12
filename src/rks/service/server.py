@@ -152,6 +152,11 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_query_service() as query_service:
             payload = query_service.search(query, mode=mode)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/claims/") and parsed.path.endswith("/relations"):
+        claim_id = parsed.path.split("/")[3]
+        with _open_query_service() as query_service:
+            payload = query_service.claim_relations(claim_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/papers/"):
         paper_id = parsed.path.rsplit("/", 1)[-1]
         with _open_repositories() as repos:

@@ -15,6 +15,7 @@ The current implementation supports:
 - normalizing and linking concepts
 - creating graph edges for `contains`, `supported_by`, `about`, `proposes`, `uses`, `evaluated_on`, and `cites`
 - querying claims, methods, datasets, evidence views, and claim relations
+- promoting reviewed claim relations into durable graph edges while keeping inferred relations separate
 - indexing local embeddings and running hybrid lexical/semantic search
 - two LLM integration modes for text extraction and claim parsing:
   API mode and agent-assisted mode
@@ -93,6 +94,8 @@ rks query claims-about Transformer
 rks query papers-supporting c_000001
 rks query evidence-for Transformer
 rks query claim-relations c_000001
+rks review promote-claim-relation c_000001 supports c_000014 --reviewed-by agent:review
+rks review retract-claim-relation c_000001 supports c_000014
 ```
 
 Generate a paper summary:

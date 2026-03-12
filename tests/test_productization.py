@@ -94,6 +94,14 @@ class ProductizationTest(unittest.TestCase):
                 _, _, status_body = dispatch_get_request(f"/api/status/{paper_id}")
                 status_payload = json.loads(status_body.decode("utf-8"))
                 self.assertIn("structured_claims", status_payload["artifacts"])
+                self.assertIn("source_pdf", status_payload)
+
+                claims_payload = json.loads(run_cli("claims", paper_id, cwd=tmp_path).stdout)
+                claim_id = claims_payload[0]["id"]
+                _, _, relations_body = dispatch_get_request(f"/api/claims/{claim_id}/relations")
+                relations_payload = json.loads(relations_body.decode("utf-8"))
+                self.assertIn("inferred_relations", relations_payload)
+                self.assertIn("reviewed_relations", relations_payload)
 
                 _, _, ui_body = dispatch_get_request("/")
                 self.assertIn("RKS Workspace", ui_body.decode("utf-8"))

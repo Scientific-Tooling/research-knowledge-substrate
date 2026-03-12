@@ -252,6 +252,30 @@ def build_parser() -> argparse.ArgumentParser:
     tasks_fail_parser.add_argument("message", help="Failure message to record.")
     tasks_fail_parser.set_defaults(handler=handle_tasks_fail)
 
+    review_parser = subparsers.add_parser("review", help="Promote or retract reviewed graph facts.")
+    review_subparsers = review_parser.add_subparsers(dest="review_command", required=True)
+
+    review_promote_parser = review_subparsers.add_parser(
+        "promote-claim-relation",
+        help="Persist a reviewed claim-to-claim relation.",
+    )
+    review_promote_parser.add_argument("source_claim_id", help="Source claim ID.")
+    review_promote_parser.add_argument("relation_type", choices=("supports", "refines", "contradicts"))
+    review_promote_parser.add_argument("target_claim_id", help="Target claim ID.")
+    review_promote_parser.add_argument("--confidence", type=float, default=1.0)
+    review_promote_parser.add_argument("--reviewed-by", default="agent:review")
+    review_promote_parser.add_argument("--note", help="Optional review note to persist in edge metadata.")
+    review_promote_parser.set_defaults(handler=handle_review_promote_claim_relation)
+
+    review_retract_parser = review_subparsers.add_parser(
+        "retract-claim-relation",
+        help="Retract a previously reviewed claim-to-claim relation.",
+    )
+    review_retract_parser.add_argument("source_claim_id", help="Source claim ID.")
+    review_retract_parser.add_argument("relation_type", choices=("supports", "refines", "contradicts"))
+    review_retract_parser.add_argument("target_claim_id", help="Target claim ID.")
+    review_retract_parser.set_defaults(handler=handle_review_retract_claim_relation)
+
     query_parser = subparsers.add_parser("query", help="Run deterministic research graph queries.")
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
 
@@ -616,6 +640,17 @@ def handle_show_claim(args: argparse.Namespace) -> int:
     with _open_session() as session:
         claim = session.claims.get_claim(args.claim_id)
         edges = session.edges.list_edges_for_claim(args.claim_id)
+        query = QueryService(
+            papers=session.papers,
+            claims=session.claims,
+            concepts=session.concepts,
+            edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
+        )
+        reviewed_relations = query.claim_relations(args.claim_id)["reviewed_relations"]
         payload = {
             "id": claim.id,
             "paper_id": claim.paper_id,
@@ -626,6 +661,7 @@ def handle_show_claim(args: argparse.Namespace) -> int:
             "confidence": claim.confidence,
             "evidence": json.loads(claim.evidence_json or "{}"),
             "context": json.loads(claim.context_json or "{}"),
+            "reviewed_relations": reviewed_relations,
             "edges": [
                 {
                     "id": edge.id,
@@ -923,6 +959,49 @@ def handle_tasks_fail(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_review_promote_claim_relation(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        source_claim = session.claims.get_claim(args.source_claim_id)
+        target_claim = session.claims.get_claim(args.target_claim_id)
+        metadata = {
+            "source_paper_id": source_claim.paper_id,
+            "target_paper_id": target_claim.paper_id,
+        }
+        if args.note:
+            metadata["note"] = args.note
+        edge = session.edges.upsert_claim_relation_edge(
+            source_id=source_claim.id,
+            relation_type=args.relation_type,
+            target_id=target_claim.id,
+            confidence=args.confidence,
+            metadata=metadata,
+            created_by=args.reviewed_by,
+        )
+    print(json.dumps(_edge_payload(edge), indent=2))
+    return 0
+
+
+def handle_review_retract_claim_relation(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        deleted = session.edges.delete_claim_relation_edge(
+            source_id=args.source_claim_id,
+            relation_type=args.relation_type,
+            target_id=args.target_claim_id,
+        )
+    print(
+        json.dumps(
+            {
+                "source_claim_id": args.source_claim_id,
+                "relation_type": args.relation_type,
+                "target_claim_id": args.target_claim_id,
+                "deleted": deleted,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def handle_query_claims_about(args: argparse.Namespace) -> int:
     with _open_session() as session:
         query = QueryService(
@@ -1172,6 +1251,8 @@ def _edge_payload(edge) -> dict:
         "relation_type": edge.relation_type,
         "target_id": edge.target_id,
         "target_type": edge.target_type,
+        "confidence": edge.confidence,
+        "created_by": edge.created_by,
         "metadata": json.loads(edge.metadata_json or "{}"),
     }
 
