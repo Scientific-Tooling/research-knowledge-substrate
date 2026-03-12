@@ -16,6 +16,16 @@ class EdgeRepository:
         self.conn.execute("DELETE FROM edges WHERE evidence_paper_id = ?", (paper_id,))
         self.conn.commit()
 
+    def clear_edges_for_paper_relations(self, paper_id: str, relation_types: list[str]) -> None:
+        if not relation_types:
+            return
+        placeholders = ", ".join("?" for _ in relation_types)
+        self.conn.execute(
+            f"DELETE FROM edges WHERE evidence_paper_id = ? AND relation_type IN ({placeholders})",
+            (paper_id, *relation_types),
+        )
+        self.conn.commit()
+
     def create_edge(
         self,
         source_id: str,
@@ -63,9 +73,12 @@ class EdgeRepository:
         return EdgeRecord(**dict(row))
 
     def list_edges_for_claim(self, claim_id: str) -> list[EdgeRecord]:
+        return self.list_edges_for_object(claim_id)
+
+    def list_edges_for_object(self, object_id: str) -> list[EdgeRecord]:
         rows = self.conn.execute(
             "SELECT * FROM edges WHERE source_id = ? OR target_id = ? ORDER BY created_at ASC, id ASC",
-            (claim_id, claim_id),
+            (object_id, object_id),
         ).fetchall()
         return [EdgeRecord(**dict(row)) for row in rows]
 

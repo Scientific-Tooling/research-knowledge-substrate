@@ -3,7 +3,14 @@ from __future__ import annotations
 import json
 
 from rks.concepts.normalize import canonicalize_term
-from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
+from rks.storage import (
+    ClaimRepository,
+    ConceptRepository,
+    DatasetRepository,
+    EdgeRepository,
+    MethodRepository,
+    PaperRepository,
+)
 
 
 class QueryService:
@@ -13,11 +20,15 @@ class QueryService:
         claims: ClaimRepository,
         concepts: ConceptRepository,
         edges: EdgeRepository,
+        methods: MethodRepository | None = None,
+        datasets: DatasetRepository | None = None,
     ):
         self.papers = papers
         self.claims = claims
         self.concepts = concepts
         self.edges = edges
+        self.methods = methods
+        self.datasets = datasets
 
     def claims_about(self, concept_name_or_id: str) -> dict:
         concept = self._resolve_concept(concept_name_or_id)
@@ -57,6 +68,8 @@ class QueryService:
         papers = self.papers.search_papers(query)
         claims = self.claims.search_claims(query)
         concepts = self.concepts.search_concepts(query)
+        methods = self.methods.search_methods(query) if self.methods is not None else []
+        datasets = self.datasets.search_datasets(query) if self.datasets is not None else []
         return {
             "query": query,
             "papers": [
@@ -74,6 +87,24 @@ class QueryService:
                     "name": concept.name,
                 }
                 for concept in concepts
+            ],
+            "methods": [
+                {
+                    "id": method.id,
+                    "paper_id": method.paper_id,
+                    "name": method.name,
+                    "description": method.description,
+                }
+                for method in methods
+            ],
+            "datasets": [
+                {
+                    "id": dataset.id,
+                    "paper_id": dataset.paper_id,
+                    "name": dataset.name,
+                    "description": dataset.description,
+                }
+                for dataset in datasets
             ],
         }
 

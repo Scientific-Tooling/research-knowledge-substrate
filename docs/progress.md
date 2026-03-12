@@ -15,6 +15,8 @@ The repository now has a hardened post-MVP base for extraction quality:
 - a formal dual-track contract for all LLM-backed tasks
 - concept normalization and persistence
 - graph edge persistence for `contains`, `supported_by`, and `about`
+- first-class `Method` and `Dataset` persistence
+- graph edge persistence for `proposes`, `uses`, `evaluated_on`, and `cites`
 - deterministic CLI queries for `claims-about` and `papers-supporting`
 - local search across papers, claims, and concepts
 - normalized evidence payloads with section and character offsets
@@ -29,11 +31,10 @@ The repository now has a hardened post-MVP base for extraction quality:
 - Milestone 3: concept linking and edge persistence
 - Milestone 4: first deterministic query templates
 - Phase 1: Quality Hardening
+- Phase 2: Research Graph Expansion
 
 ## Remaining Work
 
-- add first-class method and dataset extraction
-- expand graph edges beyond claims and concepts
 - add semantic retrieval and claim-relation reasoning
 - add batch and queue-based agent workflows
 - add config, migrations, export/import, and service surfaces

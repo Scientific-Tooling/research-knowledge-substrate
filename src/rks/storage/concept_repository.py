@@ -13,7 +13,7 @@ class ConceptRepository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def get_or_create(self, term: str) -> ConceptRecord:
+    def get_or_create(self, term: str, allow_parent: bool = True) -> ConceptRecord:
         existing = self.find_by_name_or_alias(term)
         if existing is not None:
             return existing
@@ -22,6 +22,11 @@ class ConceptRepository:
         concept_id = next_id(self.conn, "concept")
         canonical = canonicalize_term(term)
         aliases = sorted(set(alias_candidates(term)))
+        parent_concept_id = None
+        if allow_parent:
+            parent_term = _infer_parent_term(canonical)
+            if parent_term:
+                parent_concept_id = self.get_or_create(parent_term, allow_parent=False).id
         self.conn.execute(
             """
             INSERT INTO concepts(
@@ -34,7 +39,7 @@ class ConceptRepository:
                 canonical,
                 json.dumps(aliases, sort_keys=True),
                 None,
-                None,
+                parent_concept_id,
                 None,
                 "system",
                 timestamp,
@@ -87,3 +92,13 @@ class ConceptRepository:
             if any(canonical.lower() in value.lower() for value in haystacks if value):
                 matches.append(record)
         return matches
+
+
+def _infer_parent_term(term: str) -> str | None:
+    parts = term.split()
+    if len(parts) < 2:
+        return None
+    candidate = canonicalize_term(parts[-1])
+    if candidate.lower() in {"model", "method", "system", "approach", "dataset", "task"}:
+        return None
+    return candidate

@@ -52,6 +52,28 @@ class ClaimRecord:
 
 
 @dataclass(frozen=True)
+class MethodRecord:
+    id: str
+    paper_id: str
+    name: str
+    description: Optional[str]
+    about_concept_id: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class DatasetRecord:
+    id: str
+    paper_id: str
+    name: str
+    description: Optional[str]
+    source: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class ConceptRecord:
     id: str
     name: str

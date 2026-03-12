@@ -110,6 +110,24 @@ class PaperRepository:
         self.conn.commit()
         return self.get_paper(paper_id)
 
+    def find_by_doi(self, doi: str) -> PaperRecord | None:
+        row = self.conn.execute("SELECT * FROM papers WHERE doi = ? ORDER BY created_at ASC LIMIT 1", (doi,)).fetchone()
+        return PaperRecord(**dict(row)) if row is not None else None
+
+    def find_by_arxiv_id(self, arxiv_id: str) -> PaperRecord | None:
+        row = self.conn.execute(
+            "SELECT * FROM papers WHERE arxiv_id = ? ORDER BY created_at ASC LIMIT 1",
+            (arxiv_id,),
+        ).fetchone()
+        return PaperRecord(**dict(row)) if row is not None else None
+
+    def find_by_title(self, title: str) -> PaperRecord | None:
+        row = self.conn.execute(
+            "SELECT * FROM papers WHERE title = ? ORDER BY created_at ASC LIMIT 1",
+            (title,),
+        ).fetchone()
+        return PaperRecord(**dict(row)) if row is not None else None
+
     def create_artifact(
         self,
         paper_id: str,

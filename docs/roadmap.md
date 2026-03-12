@@ -5,7 +5,7 @@
 Status as of 2026-03-12:
 
 - [x] Phase 1: Quality Hardening
-- [ ] Phase 2: Research Graph Expansion
+- [x] Phase 2: Research Graph Expansion
 - [ ] Phase 3: Retrieval and Reasoning Upgrade
 - [ ] Phase 4: Agent Workflow Maturity
 - [ ] Phase 5: Productization Layer
@@ -58,16 +58,16 @@ Move from a claim-centric MVP to a fuller minimal research graph.
 
 Priority work:
 
-- [ ] add first-class `Method` extraction and persistence
-- [ ] add first-class `Dataset` extraction and persistence
-- [ ] add graph edges such as `proposes`, `uses`, and `evaluated_on`
-- [ ] improve concept hierarchy support with optional parent concepts
-- [ ] add basic citation ingestion and `cites` edges when metadata is available
+- [x] add first-class `Method` extraction and persistence
+- [x] add first-class `Dataset` extraction and persistence
+- [x] add graph edges such as `proposes`, `uses`, and `evaluated_on`
+- [x] improve concept hierarchy support with optional parent concepts
+- [x] add basic citation ingestion and `cites` edges when metadata is available
 
 Exit criteria:
 
-- [ ] a paper can produce claims, methods, datasets, and linked graph edges
-- [ ] the stored graph more closely matches the intended minimal research graph design
+- [x] a paper can produce claims, methods, datasets, and linked graph edges
+- [x] the stored graph more closely matches the intended minimal research graph design
 
 ## Phase 3: Retrieval and Reasoning Upgrade
 

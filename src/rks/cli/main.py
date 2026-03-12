@@ -17,6 +17,8 @@ from rks.config import load_llm_config
 from rks.extraction import (
     extract_claims_for_paper,
     extract_claims_with_llm,
+    extract_datasets_for_paper,
+    extract_methods_for_paper,
     extract_text_for_paper,
     extract_text_with_llm,
 )
@@ -29,7 +31,9 @@ from rks.reasoning.summary import build_summary_input, persist_summary_artifact
 from rks.storage import (
     ClaimRepository,
     ConceptRepository,
+    DatasetRepository,
     EdgeRepository,
+    MethodRepository,
     PaperRepository,
     connect_db,
     initialize_db,
@@ -70,9 +74,25 @@ def build_parser() -> argparse.ArgumentParser:
     show_claim_parser.add_argument("claim_id", help="Claim ID, for example c_000001.")
     show_claim_parser.set_defaults(handler=handle_show_claim)
 
+    show_method_parser = show_subparsers.add_parser("method", help="Show a stored method with edges.")
+    show_method_parser.add_argument("method_id", help="Method ID, for example m_000001.")
+    show_method_parser.set_defaults(handler=handle_show_method)
+
+    show_dataset_parser = show_subparsers.add_parser("dataset", help="Show a stored dataset with edges.")
+    show_dataset_parser.add_argument("dataset_id", help="Dataset ID, for example d_000001.")
+    show_dataset_parser.set_defaults(handler=handle_show_dataset)
+
     claims_parser = subparsers.add_parser("claims", help="List extracted claims for a paper.")
     claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     claims_parser.set_defaults(handler=handle_claims)
+
+    methods_parser = subparsers.add_parser("methods", help="List extracted methods for a paper.")
+    methods_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    methods_parser.set_defaults(handler=handle_methods)
+
+    datasets_parser = subparsers.add_parser("datasets", help="List extracted datasets for a paper.")
+    datasets_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    datasets_parser.set_defaults(handler=handle_datasets)
 
     concepts_parser = subparsers.add_parser("concepts", help="List concepts linked to a paper.")
     concepts_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
@@ -117,6 +137,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Execution mode for claim extraction.",
     )
     extract_claims_parser.set_defaults(handler=handle_extract_claims)
+
+    extract_methods_parser = extract_subparsers.add_parser("methods", help="Extract methods for a paper.")
+    extract_methods_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_methods_parser.set_defaults(handler=handle_extract_methods)
+
+    extract_datasets_parser = extract_subparsers.add_parser("datasets", help="Extract datasets for a paper.")
+    extract_datasets_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_datasets_parser.set_defaults(handler=handle_extract_datasets)
 
     import_parser = subparsers.add_parser("import", help="Import externally produced extraction results.")
     import_subparsers = import_parser.add_subparsers(dest="import_command", required=True)
@@ -238,6 +266,20 @@ def handle_claims(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_methods(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = [_method_payload(session.concepts, method) for method in session.methods.list_methods_for_paper(args.paper_id)]
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_datasets(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = [_dataset_payload(dataset) for dataset in session.datasets.list_datasets_for_paper(args.paper_id)]
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def handle_concepts(args: argparse.Namespace) -> int:
     with _open_session() as session:
         query = QueryService(
@@ -245,6 +287,8 @@ def handle_concepts(args: argparse.Namespace) -> int:
             claims=session.claims,
             concepts=session.concepts,
             edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
         )
         payload = query.concepts_for_paper(args.paper_id)
     print(json.dumps(payload, indent=2))
@@ -258,6 +302,8 @@ def handle_search(args: argparse.Namespace) -> int:
             claims=session.claims,
             concepts=session.concepts,
             edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
         )
         payload = query.search(args.query)
     print(json.dumps(payload, indent=2))
@@ -332,6 +378,30 @@ def handle_show_claim(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_show_method(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        method = session.methods.get_method(args.method_id)
+        edges = session.edges.list_edges_for_object(args.method_id)
+        payload = {
+            **_method_payload(session.concepts, method),
+            "edges": [_edge_payload(edge) for edge in edges],
+        }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_show_dataset(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        dataset = session.datasets.get_dataset(args.dataset_id)
+        edges = session.edges.list_edges_for_object(args.dataset_id)
+        payload = {
+            **_dataset_payload(dataset),
+            "edges": [_edge_payload(edge) for edge in edges],
+        }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def handle_extract_text(args: argparse.Namespace) -> int:
     paths = load_paths()
     with _open_repository() as repo:
@@ -400,6 +470,55 @@ def handle_extract_claims(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_extract_methods(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        methods = extract_methods_for_paper(
+            paths=load_paths(),
+            paper_repo=session.papers,
+            claim_repo=session.claims,
+            concept_repo=session.concepts,
+            edge_repo=session.edges,
+            method_repo=session.methods,
+            dataset_repo=session.datasets,
+            paper_id=args.paper_id,
+        )
+    print(
+        json.dumps(
+            {
+                "paper_id": args.paper_id,
+                "method_count": len(methods),
+                "method_ids": [method.id for method in methods],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def handle_extract_datasets(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        datasets = extract_datasets_for_paper(
+            paths=load_paths(),
+            paper_repo=session.papers,
+            claim_repo=session.claims,
+            edge_repo=session.edges,
+            dataset_repo=session.datasets,
+            method_repo=session.methods,
+            paper_id=args.paper_id,
+        )
+    print(
+        json.dumps(
+            {
+                "paper_id": args.paper_id,
+                "dataset_count": len(datasets),
+                "dataset_ids": [dataset.id for dataset in datasets],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def handle_import_text(args: argparse.Namespace) -> int:
     with _open_repository() as repo:
         artifact = import_text_result(repo=repo, paths=load_paths(), paper_id=args.paper_id, json_path=args.json_path)
@@ -455,6 +574,8 @@ def handle_query_claims_about(args: argparse.Namespace) -> int:
             claims=session.claims,
             concepts=session.concepts,
             edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
         )
         payload = query.claims_about(args.concept)
     print(json.dumps(payload, indent=2))
@@ -468,6 +589,8 @@ def handle_query_papers_supporting(args: argparse.Namespace) -> int:
             claims=session.claims,
             concepts=session.concepts,
             edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
         )
         payload = query.papers_supporting(args.claim_id)
     print(json.dumps(payload, indent=2))
@@ -498,11 +621,15 @@ class _Session:
         claims: ClaimRepository,
         concepts: ConceptRepository,
         edges: EdgeRepository,
+        methods: MethodRepository,
+        datasets: DatasetRepository,
     ):
         self.papers = papers
         self.claims = claims
         self.concepts = concepts
         self.edges = edges
+        self.methods = methods
+        self.datasets = datasets
 
 
 class _SessionContext:
@@ -515,6 +642,8 @@ class _SessionContext:
             claims=ClaimRepository(self.conn),
             concepts=ConceptRepository(self.conn),
             edges=EdgeRepository(self.conn),
+            methods=MethodRepository(self.conn),
+            datasets=DatasetRepository(self.conn),
         )
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -575,4 +704,39 @@ def _claims_payload(paper_id: str, mode: str, claims: list) -> dict:
         "mode": mode,
         "claim_count": len(claims),
         "claim_ids": [claim.id for claim in claims],
+    }
+
+
+def _method_payload(concepts: ConceptRepository, method) -> dict:
+    about_concept = concepts.get_concept(method.about_concept_id).name if method.about_concept_id else None
+    return {
+        "id": method.id,
+        "paper_id": method.paper_id,
+        "name": method.name,
+        "description": method.description,
+        "about_concept": about_concept,
+        "created_at": method.created_at,
+    }
+
+
+def _dataset_payload(dataset) -> dict:
+    return {
+        "id": dataset.id,
+        "paper_id": dataset.paper_id,
+        "name": dataset.name,
+        "description": dataset.description,
+        "source": dataset.source,
+        "created_at": dataset.created_at,
+    }
+
+
+def _edge_payload(edge) -> dict:
+    return {
+        "id": edge.id,
+        "source_id": edge.source_id,
+        "source_type": edge.source_type,
+        "relation_type": edge.relation_type,
+        "target_id": edge.target_id,
+        "target_type": edge.target_type,
+        "metadata": json.loads(edge.metadata_json or "{}"),
     }

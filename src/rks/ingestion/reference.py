@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 
 from rks.config import AppPaths
+from rks.extraction import persist_citations_for_paper
 from rks.extraction.text import write_text_artifact
-from rks.storage import PaperRepository
+from rks.storage import EdgeRepository, PaperRepository
 from rks.utils import ensure_dir
 
 
@@ -13,6 +14,7 @@ def ingest_doi_reference(repo: PaperRepository, paths: AppPaths, doi: str, provi
     metadata = provider.fetch(doi)
     return _ingest_reference(
         repo=repo,
+        edge_repo=EdgeRepository(repo.conn),
         paths=paths,
         source_type="doi",
         source_ref=doi,
@@ -26,6 +28,7 @@ def ingest_arxiv_reference(repo: PaperRepository, paths: AppPaths, arxiv_id: str
     metadata = provider.fetch(arxiv_id)
     return _ingest_reference(
         repo=repo,
+        edge_repo=EdgeRepository(repo.conn),
         paths=paths,
         source_type="arxiv",
         source_ref=arxiv_id,
@@ -37,6 +40,7 @@ def ingest_arxiv_reference(repo: PaperRepository, paths: AppPaths, arxiv_id: str
 
 def _ingest_reference(
     repo: PaperRepository,
+    edge_repo: EdgeRepository,
     paths: AppPaths,
     source_type: str,
     source_ref: str,
@@ -83,5 +87,13 @@ def _ingest_reference(
             "warnings": [],
         }
         write_text_artifact(repo=repo, paths=paths, paper_id=paper.id, payload=text_payload)
+
+    persist_citations_for_paper(
+        paths=paths,
+        paper_repo=repo,
+        edge_repo=edge_repo,
+        paper_id=paper.id,
+        citations=metadata.get("references", []),
+    )
 
     return repo.get_paper(paper.id)

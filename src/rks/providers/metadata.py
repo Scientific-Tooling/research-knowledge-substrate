@@ -35,6 +35,14 @@ class CrossrefMetadataProvider:
             "venue": venues[0] if venues else None,
             "doi": doi,
             "arxiv_id": None,
+            "references": [
+                {
+                    "doi": reference.get("DOI"),
+                    "title": reference.get("article-title") or reference.get("unstructured"),
+                    "year": reference.get("year"),
+                }
+                for reference in message.get("reference", [])
+            ],
             "raw": payload,
         }
 
@@ -69,6 +77,7 @@ class ArxivMetadataProvider:
             "venue": "arXiv",
             "doi": None,
             "arxiv_id": arxiv_id,
+            "references": [],
             "raw": raw_xml,
         }
 
