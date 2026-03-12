@@ -136,6 +136,7 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertGreaterEqual(len(answer_payload["next_steps"]), 1)
             self.assertIn("counterevidence", answer_payload)
             self.assertEqual(answer_payload["evidence_assessment"]["reviewed_disagreement_count"], 1)
+            self.assertIn("cluster_size", answer_payload["supporting_claims"][0])
 
             brief_result = run_cli("output", "brief", "Sparse Attention", cwd=tmp_path)
             self.assertEqual(brief_result.returncode, 0, brief_result.stderr)
@@ -143,6 +144,7 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertIn("overview", brief_payload)
             self.assertIn("state_of_topic", brief_payload)
             self.assertIn("reading_list", brief_payload)
+            self.assertIn("reading_navigation", brief_payload)
             self.assertIn("evidence_gaps", brief_payload)
             self.assertGreaterEqual(len(brief_payload["key_claims"]), 1)
             self.assertGreaterEqual(len(brief_payload["methods"]), 1)
@@ -220,6 +222,115 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertGreaterEqual(len(json.loads(compare_body.decode("utf-8"))["differences"]), 1)
             self.assertGreaterEqual(len(json.loads(open_questions_body.decode("utf-8"))["open_questions"]), 1)
             self.assertGreaterEqual(len(json.loads(review_priorities_body.decode("utf-8"))["review_priorities"]), 1)
+
+    def test_output_ranking_clusters_duplicate_claims_and_handles_sparse_topics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            duplicate_a = ingest_paper(
+                tmp_path,
+                "duplicate-a.pdf",
+                "Retrieval-Augmented Generation improves answer grounding on NQ.",
+            )
+            duplicate_b = ingest_paper(
+                tmp_path,
+                "duplicate-b.pdf",
+                "Retrieval-Augmented Generation improves answer grounding on NQ.",
+            )
+            contradiction = ingest_paper(
+                tmp_path,
+                "duplicate-c.pdf",
+                "Retrieval-Augmented Generation does not improve answer grounding on NQ.",
+            )
+            sparse_only = ingest_paper(
+                tmp_path,
+                "sparse-only.pdf",
+                "Graph retrieval is discussed but not yet extracted into claims.",
+            )
+
+            claims_a = import_claims(
+                tmp_path,
+                duplicate_a,
+                [
+                    {
+                        "text": "Retrieval-Augmented Generation improves answer grounding on NQ.",
+                        "predicate": "improves",
+                        "object_text": "answer grounding",
+                        "context": {"subject_text": "Retrieval-Augmented Generation", "dataset": "NQ"},
+                        "evidence": {"paper_id": duplicate_a},
+                        "confidence": 0.94,
+                    }
+                ],
+            )
+            claims_b = import_claims(
+                tmp_path,
+                duplicate_b,
+                [
+                    {
+                        "text": "Retrieval-Augmented Generation improves answer grounding on NQ.",
+                        "predicate": "improves",
+                        "object_text": "answer grounding",
+                        "context": {"subject_text": "Retrieval-Augmented Generation", "dataset": "NQ"},
+                        "evidence": {"paper_id": duplicate_b},
+                        "confidence": 0.83,
+                    }
+                ],
+            )
+            contradiction_claims = import_claims(
+                tmp_path,
+                contradiction,
+                [
+                    {
+                        "text": "Retrieval-Augmented Generation does not improve answer grounding on NQ.",
+                        "predicate": "improves",
+                        "object_text": "answer grounding",
+                        "context": {"subject_text": "Retrieval-Augmented Generation", "dataset": "NQ"},
+                        "evidence": {"paper_id": contradiction},
+                        "confidence": 0.76,
+                    }
+                ],
+            )
+
+            promote_support = run_cli(
+                "review",
+                "promote-claim-relation",
+                claims_a[0]["id"],
+                "supports",
+                claims_b[0]["id"],
+                "--reviewed-by",
+                "agent:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(promote_support.returncode, 0, promote_support.stderr)
+            promote_contradiction = run_cli(
+                "review",
+                "promote-claim-relation",
+                claims_a[0]["id"],
+                "contradicts",
+                contradiction_claims[0]["id"],
+                "--reviewed-by",
+                "agent:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(promote_contradiction.returncode, 0, promote_contradiction.stderr)
+
+            answer_payload = json.loads(
+                run_cli("output", "answer", "Retrieval-Augmented Generation evidence", cwd=tmp_path).stdout
+            )
+            top_claim = answer_payload["supporting_claims"][0]
+            self.assertEqual(top_claim["text"], "Retrieval-Augmented Generation improves answer grounding on NQ.")
+            self.assertEqual(top_claim["cluster_size"], 2)
+            self.assertEqual(set(top_claim["evidence_paper_ids"]), {duplicate_a, duplicate_b})
+            self.assertGreaterEqual(top_claim["reviewed_relation_count"], 1)
+            self.assertEqual(answer_payload["supporting_papers"][0]["id"], duplicate_a)
+
+            brief_payload = json.loads(run_cli("output", "brief", "Retrieval-Augmented Generation", cwd=tmp_path).stdout)
+            self.assertGreaterEqual(len(brief_payload["reading_navigation"]["entry_papers"]), 1)
+            self.assertGreaterEqual(len(brief_payload["reading_navigation"]["contradiction_papers"]), 1)
+
+            sparse_brief_payload = json.loads(run_cli("output", "brief", "Graph retrieval", cwd=tmp_path).stdout)
+            self.assertIn("Claim extraction is too sparse for stable synthesis.", sparse_brief_payload["evidence_gaps"])
+            sparse_answer_payload = json.loads(run_cli("output", "answer", "Graph retrieval outlook", cwd=tmp_path).stdout)
+            self.assertEqual(sparse_answer_payload["confidence"], "low")
 
 
 if __name__ == "__main__":

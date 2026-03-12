@@ -389,6 +389,8 @@ rks status paper <paper_id>
 - suggested next commands
 - source PDF state
 - task state
+- persisted `agent_reports`
+- `recovery_guidance` for queued, running, or failed tasks
 
 ## 12. Batch Operations
 
@@ -412,6 +414,7 @@ Example manifest:
 ```bash
 rks batch extract claims manifest.json
 rks batch extract summary manifest.json --mode agent
+rks batch output answer output-manifest.json
 ```
 
 Example extract manifest:
@@ -421,6 +424,15 @@ Example extract manifest:
   {"paper_id": "p_000001"},
   {"paper_id": "p_000002", "mode": "agent"}
 ]
+```
+
+Batch commands now return an `audit` block with success, failure, and workflow-specific counts.
+
+For a higher-level local preparation pass, you can also run:
+
+```bash
+rks prepare paper-output <paper_id>
+rks prepare paper-output <paper_id> --apply
 ```
 
 ## 13. Export, Import, and Service

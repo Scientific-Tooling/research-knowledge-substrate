@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from rks.service import dispatch_post_request
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -80,6 +82,36 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertTrue(status_payload["stages"]["claims"])
             self.assertEqual(status_payload["task_summary"]["completed"], 1)
             self.assertEqual(status_payload["task_summary"]["failed"], 1)
+            self.assertIn("agent_execution_reports", status_payload["artifacts"])
+            self.assertEqual(len(status_payload["agent_reports"]), 2)
+            self.assertEqual(status_payload["agent_reports"][0]["current_status"], "completed")
+            self.assertEqual(status_payload["agent_reports"][1]["current_status"], "failed")
+            self.assertEqual(status_payload["recovery_guidance"][0]["status"], "failed")
+            self.assertIn(f"rks summarize paper {paper_id} --mode agent", status_payload["recovery_guidance"][0]["commands"])
+
+            prepare_plan = json.loads(run_cli("prepare", "paper-output", paper_id, cwd=tmp_path).stdout)
+            self.assertFalse(prepare_plan["ready_before"])
+            self.assertTrue(any(action["code"] == "extract_methods" for action in prepare_plan["planned_actions"]))
+
+            prepare_apply = json.loads(run_cli("prepare", "paper-output", paper_id, "--apply", cwd=tmp_path).stdout)
+            self.assertTrue(prepare_apply["ready_after"])
+            executed_codes = {action["code"] for action in prepare_apply["executed_actions"]}
+            self.assertIn("extract_methods", executed_codes)
+            self.assertIn("extract_datasets", executed_codes)
+            self.assertIn("summarize_paper", executed_codes)
+
+            previous_cwd = Path.cwd()
+            os.chdir(tmp_path)
+            try:
+                _, _, prepare_body = dispatch_post_request(
+                    f"/api/prepare/papers/{paper_id}/output",
+                    json.dumps({"apply": False}).encode("utf-8"),
+                )
+            finally:
+                os.chdir(previous_cwd)
+            prepare_http_payload = json.loads(prepare_body.decode("utf-8"))
+            self.assertEqual(prepare_http_payload["goal"], "output")
+            self.assertTrue(prepare_http_payload["ready_before"])
 
     def test_batch_ingest_and_extract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -103,6 +135,8 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
             ingest_payload = json.loads(ingest_result.stdout)
             self.assertEqual(ingest_payload["count"], 2)
+            self.assertEqual(ingest_payload["audit"]["success_count"], 2)
+            self.assertEqual(ingest_payload["audit"]["failure_count"], 0)
 
             paper_ids = [paper["id"] for paper in ingest_payload["papers"]]
             extract_manifest = tmp_path / "extract.json"
@@ -113,6 +147,26 @@ class AgentWorkflowTest(unittest.TestCase):
             extract_payload = json.loads(extract_result.stdout)
             self.assertEqual(extract_payload["count"], 2)
             self.assertTrue(all(result["claim_count"] >= 1 for result in extract_payload["results"]))
+            self.assertEqual(extract_payload["audit"]["success_count"], 2)
+            self.assertGreaterEqual(extract_payload["audit"]["total_claim_count"], 2)
+
+            output_manifest = tmp_path / "output.json"
+            output_manifest.write_text(
+                json.dumps(
+                    [
+                        {"question": "What does the graph say about Transformer?"},
+                        {"question": "What does the graph say about Diffusion Model?"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            output_result = run_cli("batch", "output", "answer", str(output_manifest), cwd=tmp_path)
+            self.assertEqual(output_result.returncode, 0, output_result.stderr)
+            output_payload = json.loads(output_result.stdout)
+            self.assertEqual(output_payload["count"], 2)
+            self.assertEqual(output_payload["audit"]["success_count"], 2)
+            self.assertEqual(output_payload["audit"]["failure_count"], 0)
+            self.assertEqual(len(output_payload["results"]), 2)
 
 
 if __name__ == "__main__":

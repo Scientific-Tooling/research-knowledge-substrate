@@ -12,6 +12,7 @@ from rks.agent import (
     import_claims_result,
     import_summary_result,
     import_text_result,
+    record_task_report,
 )
 from rks.agent_skills import SKILL_BUNDLE_VERSION, export_bundled_skills, list_bundled_skills
 from rks.config import config_path, load_app_config, load_llm_config, load_paths, write_default_config
@@ -114,6 +115,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Execution mode for text, claims, or summary extraction.",
     )
     batch_extract_parser.set_defaults(handler=handle_batch_extract)
+
+    batch_output_parser = batch_subparsers.add_parser("output", help="Generate outputs for a batch manifest.")
+    batch_output_parser.add_argument(
+        "surface",
+        choices=("answer", "brief", "disagreements", "opportunities", "reading-list", "compare", "open-questions", "review-priorities"),
+    )
+    batch_output_parser.add_argument("manifest_path", type=Path, help="Path to a JSON manifest file.")
+    batch_output_parser.set_defaults(handler=handle_batch_output)
+
+    prepare_parser = subparsers.add_parser("prepare", help="Run higher-level preparation workflows.")
+    prepare_subparsers = prepare_parser.add_subparsers(dest="prepare_command", required=True)
+
+    prepare_paper_output_parser = prepare_subparsers.add_parser(
+        "paper-output",
+        help="Plan or execute the steps needed to make a paper output-ready.",
+    )
+    prepare_paper_output_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    prepare_paper_output_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Execute the missing local heuristic steps instead of only planning them.",
+    )
+    prepare_paper_output_parser.set_defaults(handler=handle_prepare_paper_output)
 
     show_parser = subparsers.add_parser("show", help="Inspect stored research objects.")
     show_subparsers = show_parser.add_subparsers(dest="show_command", required=True)
@@ -569,48 +593,108 @@ def handle_ingest_arxiv(args: argparse.Namespace) -> int:
 def handle_batch_ingest(args: argparse.Namespace) -> int:
     manifest = _load_manifest(args.manifest_path)
     results = []
+    failures = []
     app_config = load_app_config()
     with _open_repository() as repo:
         for item in manifest:
-            source_type = item["source_type"]
-            if source_type == "pdf":
-                paper = ingest_pdf(
-                    repo=repo,
-                    paths=load_paths(),
-                    pdf_path=_resolve_manifest_path(args.manifest_path, item["path"]),
-                    title=item.get("title"),
-                )
-            elif source_type == "doi":
-                paper = ingest_doi_reference(
-                    repo=repo,
-                    paths=load_paths(),
-                    doi=item["source_ref"],
-                    provider=CrossrefMetadataProvider(),
-                    acquire_pdf=app_config.reference_pdf_acquisition == "auto",
-                )
-            elif source_type == "arxiv":
-                paper = ingest_arxiv_reference(
-                    repo=repo,
-                    paths=load_paths(),
-                    arxiv_id=item["source_ref"],
-                    provider=ArxivMetadataProvider(),
-                    acquire_pdf=app_config.reference_pdf_acquisition == "auto",
-                )
-            else:
-                raise ValueError(f"Unsupported batch source type: {source_type}")
-            results.append(_paper_to_payload(paper))
-    print(json.dumps({"count": len(results), "papers": results}, indent=2))
+            try:
+                source_type = item["source_type"]
+                if source_type == "pdf":
+                    paper = ingest_pdf(
+                        repo=repo,
+                        paths=load_paths(),
+                        pdf_path=_resolve_manifest_path(args.manifest_path, item["path"]),
+                        title=item.get("title"),
+                    )
+                elif source_type == "doi":
+                    paper = ingest_doi_reference(
+                        repo=repo,
+                        paths=load_paths(),
+                        doi=item["source_ref"],
+                        provider=CrossrefMetadataProvider(),
+                        acquire_pdf=app_config.reference_pdf_acquisition == "auto",
+                    )
+                elif source_type == "arxiv":
+                    paper = ingest_arxiv_reference(
+                        repo=repo,
+                        paths=load_paths(),
+                        arxiv_id=item["source_ref"],
+                        provider=ArxivMetadataProvider(),
+                        acquire_pdf=app_config.reference_pdf_acquisition == "auto",
+                    )
+                else:
+                    raise ValueError(f"Unsupported batch source type: {source_type}")
+                results.append(_paper_to_payload(paper))
+            except Exception as exc:
+                failures.append({"item": item, "error": str(exc)})
+    print(
+        json.dumps(
+            {
+                "count": len(results),
+                "papers": results,
+                "failures": failures,
+                "audit": _batch_ingest_audit(results, failures),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
 def handle_batch_extract(args: argparse.Namespace) -> int:
     manifest = _load_manifest(args.manifest_path)
     results = []
+    failures = []
     for item in manifest:
         paper_id = item["paper_id"] if isinstance(item, dict) else item
         mode = item.get("mode", args.mode) if isinstance(item, dict) else args.mode
-        results.append(_run_batch_extract_item(args.stage, paper_id, mode))
-    print(json.dumps({"stage": args.stage, "count": len(results), "results": results}, indent=2))
+        try:
+            results.append(_run_batch_extract_item(args.stage, paper_id, mode))
+        except Exception as exc:
+            failures.append({"paper_id": paper_id, "mode": mode, "error": str(exc)})
+    print(
+        json.dumps(
+            {
+                "stage": args.stage,
+                "count": len(results),
+                "results": results,
+                "failures": failures,
+                "audit": _batch_extract_audit(args.stage, results, failures),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def handle_batch_output(args: argparse.Namespace) -> int:
+    manifest = _load_manifest(args.manifest_path)
+    results = []
+    failures = []
+    for item in manifest:
+        try:
+            results.append(_run_batch_output_item(args.surface, item))
+        except Exception as exc:
+            failures.append({"surface": args.surface, "item": item, "error": str(exc)})
+    print(
+        json.dumps(
+            {
+                "surface": args.surface,
+                "count": len(results),
+                "results": results,
+                "failures": failures,
+                "audit": _batch_output_audit(args.surface, results, failures),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def handle_prepare_paper_output(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).prepare_paper_for_output(args.paper_id, apply=args.apply)
+    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -789,6 +873,7 @@ def handle_summarize_paper(args: argparse.Namespace) -> int:
                 spec_version=payload["spec_version"],
                 schema_version=payload["schema_version"],
             )
+            record_task_report(session.papers, load_paths(), task, note="Queued from rks summarize paper --mode agent.")
             payload["task_id"] = task.id
     print(json.dumps(payload, indent=2))
     return 0
@@ -894,6 +979,7 @@ def handle_extract_text(args: argparse.Namespace) -> int:
                 spec_version=payload["spec_version"],
                 schema_version=payload["schema_version"],
             )
+            record_task_report(session.papers, load_paths(), task, note="Queued from rks extract text --mode agent.")
             payload["task_id"] = task.id
     print(json.dumps(payload, indent=2))
     return 0
@@ -952,6 +1038,7 @@ def handle_extract_claims(args: argparse.Namespace) -> int:
                 spec_version=claims_payload["spec_version"],
                 schema_version=claims_payload["schema_version"],
             )
+            record_task_report(session.papers, load_paths(), task, note="Queued from rks extract claims --mode agent.")
             payload = {**claims_payload, "task_id": task.id}
     print(json.dumps(payload, indent=2))
     return 0
@@ -1014,7 +1101,9 @@ def handle_import_text(args: argparse.Namespace) -> int:
             paper_id=args.paper_id,
             json_path=args.json_path,
         )
-        session.tasks.complete_latest_task(args.paper_id, "extract_text", artifact.id)
+        task = session.tasks.complete_latest_task(args.paper_id, "extract_text", artifact.id)
+        if task is not None:
+            record_task_report(session.papers, load_paths(), task, note="Imported agent text result.")
     print(
         json.dumps(
             {
@@ -1049,7 +1138,9 @@ def handle_import_claims(args: argparse.Namespace) -> int:
             provider=LocalHashEmbeddingProvider(),
         )
         structured_claims_artifact = _artifact_id_for_type(session.papers, args.paper_id, "structured_claims")
-        session.tasks.complete_latest_task(args.paper_id, "extract_claims", structured_claims_artifact)
+        task = session.tasks.complete_latest_task(args.paper_id, "extract_claims", structured_claims_artifact)
+        if task is not None:
+            record_task_report(session.papers, load_paths(), task, note="Imported agent claims result.")
     print(
         json.dumps(
             {
@@ -1072,7 +1163,9 @@ def handle_import_summary(args: argparse.Namespace) -> int:
             paper_id=args.paper_id,
             json_path=args.json_path,
         )
-        session.tasks.complete_latest_task(args.paper_id, "summarize_paper", payload["artifact_id"])
+        task = session.tasks.complete_latest_task(args.paper_id, "summarize_paper", payload["artifact_id"])
+        if task is not None:
+            record_task_report(session.papers, load_paths(), task, note="Imported agent summary result.")
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -1113,6 +1206,7 @@ def handle_tasks_show(args: argparse.Namespace) -> int:
 def handle_tasks_fail(args: argparse.Namespace) -> int:
     with _open_session() as session:
         task = session.tasks.fail_task(args.task_id, args.message)
+        record_task_report(session.papers, load_paths(), task, note="Task marked as failed.", error={"message": args.message})
     print(json.dumps(_task_payload(task), indent=2))
     return 0
 
@@ -1521,6 +1615,7 @@ def _run_batch_extract_item(stage: str, paper_id: str, mode: str) -> dict:
             task = session.tasks.create_task(
                 "extract_text", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
             )
+            record_task_report(session.papers, load_paths(), task, note="Queued from rks batch extract text --mode agent.")
             return {**request, "mode": "agent", "task_id": task.id}
 
         if stage == "claims":
@@ -1544,6 +1639,7 @@ def _run_batch_extract_item(stage: str, paper_id: str, mode: str) -> dict:
             task = session.tasks.create_task(
                 "extract_claims", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
             )
+            record_task_report(session.papers, load_paths(), task, note="Queued from rks batch extract claims --mode agent.")
             return {**request, "mode": "agent", "task_id": task.id}
 
         if stage == "methods":
@@ -1594,9 +1690,103 @@ def _run_batch_extract_item(stage: str, paper_id: str, mode: str) -> dict:
             task = session.tasks.create_task(
                 "summarize_paper", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
             )
+            record_task_report(session.papers, load_paths(), task, note="Queued from rks batch extract summary --mode agent.")
             return {**request, "mode": "agent", "task_id": task.id}
 
     raise ValueError(f"Unsupported batch stage: {stage}")
+
+
+def _run_batch_output_item(surface: str, item) -> dict:
+    with _open_session() as session:
+        operations = _operations(session)
+        if surface == "answer":
+            question = item["question"] if isinstance(item, dict) else str(item)
+            payload = operations.answer_question(question)
+            return {"surface": surface, "question": question, "payload": payload}
+        if surface == "brief":
+            topic = item["topic"] if isinstance(item, dict) else str(item)
+            payload = operations.topic_brief(topic)
+            return {"surface": surface, "topic": topic, "payload": payload}
+        if surface == "disagreements":
+            topic = item["topic"] if isinstance(item, dict) else str(item)
+            payload = operations.topic_disagreements(topic)
+            return {"surface": surface, "topic": topic, "payload": payload}
+        if surface == "opportunities":
+            topic = item["topic"] if isinstance(item, dict) else str(item)
+            payload = operations.research_opportunities(topic)
+            return {"surface": surface, "topic": topic, "payload": payload}
+        if surface == "reading-list":
+            topic = item["topic"] if isinstance(item, dict) else str(item)
+            payload = operations.topic_reading_list(topic)
+            return {"surface": surface, "topic": topic, "payload": payload}
+        if surface == "open-questions":
+            topic = item["topic"] if isinstance(item, dict) else str(item)
+            payload = operations.topic_open_questions(topic)
+            return {"surface": surface, "topic": topic, "payload": payload}
+        if surface == "review-priorities":
+            topic = item["topic"] if isinstance(item, dict) else str(item)
+            payload = operations.topic_review_priorities(topic)
+            return {"surface": surface, "topic": topic, "payload": payload}
+        if surface == "compare":
+            if not isinstance(item, dict) or "left" not in item or "right" not in item:
+                raise ValueError("Batch compare items must be objects with `left` and `right`.")
+            payload = operations.compare_targets(item["left"], item["right"])
+            return {"surface": surface, "left": item["left"], "right": item["right"], "payload": payload}
+    raise ValueError(f"Unsupported batch output surface: {surface}")
+
+
+def _batch_ingest_audit(results: list[dict], failures: list[dict]) -> dict:
+    source_type_counts = {}
+    source_pdf_available = 0
+    for paper in results:
+        source_type_counts[paper["source_type"]] = source_type_counts.get(paper["source_type"], 0) + 1
+        if paper.get("pdf_path"):
+            source_pdf_available += 1
+    return {
+        "success_count": len(results),
+        "failure_count": len(failures),
+        "source_pdf_available_count": source_pdf_available,
+        "source_type_counts": source_type_counts,
+    }
+
+
+def _batch_extract_audit(stage: str, results: list[dict], failures: list[dict]) -> dict:
+    audit = {
+        "stage": stage,
+        "success_count": len(results),
+        "failure_count": len(failures),
+        "queued_task_count": sum(1 for result in results if result.get("mode") == "agent" and result.get("task_id")),
+    }
+    if stage == "claims":
+        audit["total_claim_count"] = sum(result.get("claim_count", 0) for result in results)
+    elif stage == "methods":
+        audit["total_method_count"] = sum(result.get("method_count", 0) for result in results)
+    elif stage == "datasets":
+        audit["total_dataset_count"] = sum(result.get("dataset_count", 0) for result in results)
+    elif stage == "summary":
+        audit["summary_artifact_count"] = sum(1 for result in results if result.get("artifact_id"))
+    elif stage == "text":
+        audit["text_artifact_count"] = sum(1 for result in results if result.get("artifact_id"))
+    return audit
+
+
+def _batch_output_audit(surface: str, results: list[dict], failures: list[dict]) -> dict:
+    payload_key = {
+        "answer": "question",
+        "brief": "topic",
+        "disagreements": "topic",
+        "opportunities": "topic",
+        "reading-list": "topic",
+        "open-questions": "topic",
+        "review-priorities": "topic",
+        "compare": "left",
+    }[surface]
+    return {
+        "surface": surface,
+        "success_count": len(results),
+        "failure_count": len(failures),
+        "items": [result[payload_key] for result in results if payload_key in result],
+    }
 
 
 def _artifact_id_for_type(repo: PaperRepository, paper_id: str, artifact_type: str) -> str | None:

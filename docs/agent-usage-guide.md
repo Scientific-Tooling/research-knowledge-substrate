@@ -309,7 +309,16 @@ Read these fields first:
 - `missing_steps`
 - `blockers`
 - `suggested_next_commands`
+- `recovery_guidance`
+- `agent_reports`
 - `task_summary`
+
+For a single high-level preparation pass:
+
+```bash
+rks prepare paper-output <paper_id>
+rks prepare paper-output <paper_id> --apply
+```
 
 ## 10. HTTP Usage
 
@@ -329,6 +338,9 @@ curl -s "http://127.0.0.1:8765/api/output/answer?q=Sparse%20Attention%20outlook"
 curl -s "http://127.0.0.1:8765/api/output/brief?topic=Sparse%20Attention"
 curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=Sparse%20Attention"
 curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=Sparse%20Attention"
+curl -s -X POST http://127.0.0.1:8765/api/prepare/papers/<paper_id>/output \
+  -H 'Content-Type: application/json' \
+  -d '{"apply": false}'
 ```
 
 ### 10.3 Write endpoints

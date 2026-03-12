@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import json
 
+from rks.agent import load_task_reports
+from rks.config import load_paths
+from rks.extraction import (
+    extract_claims_for_paper,
+    extract_datasets_for_paper,
+    extract_methods_for_paper,
+    extract_text_for_paper,
+)
 from rks.providers import LocalHashEmbeddingProvider
 from rks.query import QueryService
 from rks.reasoning import (
@@ -14,6 +22,7 @@ from rks.reasoning import (
     build_topic_reading_list,
     build_topic_review_priorities,
 )
+from rks.reasoning.summary import summarize_paper_heuristic
 
 
 class ResearchOperations:
@@ -78,6 +87,11 @@ class ResearchOperations:
             review=review,
             tasks=tasks,
         )
+        recovery_guidance = _recovery_guidance(
+            paper=paper,
+            stages=stages,
+            tasks=tasks,
+        )
         return {
             "paper": _paper_payload(paper),
             "artifacts": sorted(artifact_types),
@@ -87,6 +101,8 @@ class ResearchOperations:
             "missing_steps": missing_steps,
             "blockers": blockers,
             "suggested_next_commands": suggested_next_commands,
+            "recovery_guidance": recovery_guidance,
+            "agent_reports": load_task_reports(self.papers, paper_id),
             "source_pdf": _source_pdf_status(paper, artifacts),
             "note_count": len(notes),
             "task_summary": task_summary,
@@ -138,6 +154,101 @@ class ResearchOperations:
 
     def compare_targets(self, left: str, right: str) -> dict:
         return build_comparison(self.query, left, right)
+
+    def prepare_paper_for_output(self, paper_id: str, *, apply: bool = False) -> dict:
+        status_before = self.paper_status(paper_id)
+        planned_actions = _planned_prepare_actions(status_before)
+        executed_actions = []
+        skipped_actions = []
+
+        if apply:
+            paths = load_paths()
+            for action in planned_actions:
+                if action["code"] == "extract_text":
+                    paper = self.papers.get_paper(paper_id)
+                    if not paper.pdf_path:
+                        skipped_actions.append({**action, "status": "skipped", "reason": "no_local_pdf"})
+                        continue
+                    artifact = extract_text_for_paper(repo=self.papers, paths=paths, paper=paper)
+                    executed_actions.append({**action, "status": "completed", "artifact_id": artifact.id})
+                elif action["code"] == "extract_claims":
+                    claims = extract_claims_for_paper(
+                        paths=paths,
+                        paper_repo=self.papers,
+                        claim_repo=self.claims,
+                        concept_repo=self.concepts,
+                        edge_repo=self.edges,
+                        paper_id=paper_id,
+                    )
+                    executed_actions.append(
+                        {**action, "status": "completed", "claim_count": len(claims), "claim_ids": [claim.id for claim in claims]}
+                    )
+                elif action["code"] == "extract_methods":
+                    methods = extract_methods_for_paper(
+                        paths=paths,
+                        paper_repo=self.papers,
+                        claim_repo=self.claims,
+                        concept_repo=self.concepts,
+                        edge_repo=self.edges,
+                        method_repo=self.methods,
+                        dataset_repo=self.datasets,
+                        paper_id=paper_id,
+                    )
+                    executed_actions.append(
+                        {
+                            **action,
+                            "status": "completed",
+                            "method_count": len(methods),
+                            "method_ids": [method.id for method in methods],
+                        }
+                    )
+                elif action["code"] == "extract_datasets":
+                    datasets = extract_datasets_for_paper(
+                        paths=paths,
+                        paper_repo=self.papers,
+                        claim_repo=self.claims,
+                        edge_repo=self.edges,
+                        dataset_repo=self.datasets,
+                        method_repo=self.methods,
+                        paper_id=paper_id,
+                    )
+                    executed_actions.append(
+                        {
+                            **action,
+                            "status": "completed",
+                            "dataset_count": len(datasets),
+                            "dataset_ids": [dataset.id for dataset in datasets],
+                        }
+                    )
+                elif action["code"] == "summarize_paper":
+                    payload = summarize_paper_heuristic(
+                        paths=paths,
+                        paper_repo=self.papers,
+                        claim_repo=self.claims,
+                        concept_repo=self.concepts,
+                        paper_id=paper_id,
+                    )
+                    executed_actions.append(
+                        {
+                            **action,
+                            "status": "completed",
+                            "artifact_id": payload["artifact_id"],
+                        }
+                    )
+
+        status_after = self.paper_status(paper_id)
+        return {
+            "paper_id": paper_id,
+            "goal": "output",
+            "apply": apply,
+            "ready_before": status_before["readiness"]["levels"]["output_ready"],
+            "ready_after": status_after["readiness"]["levels"]["output_ready"],
+            "planned_actions": planned_actions,
+            "executed_actions": executed_actions,
+            "skipped_actions": skipped_actions,
+            "status_before": status_before,
+            "status_after": status_after,
+        }
 
     def promote_claim_relation(
         self,
@@ -420,7 +531,84 @@ def _suggested_next_commands(*, paper, stages: dict, review: dict, tasks: list) 
     return deduped[:8]
 
 
+def _recovery_guidance(*, paper, stages: dict, tasks: list) -> list[dict]:
+    guidance = []
+    for task in tasks:
+        if task.status == "queued":
+            guidance.append(
+                {
+                    "status": "queued",
+                    "task_id": task.id,
+                    "message": f"{task.task_type} is queued. Wait for the external agent result or import it when ready.",
+                    "commands": _task_recovery_commands(task.task_type, task.status, paper.id, task.id),
+                }
+            )
+        elif task.status == "running":
+            guidance.append(
+                {
+                    "status": "running",
+                    "task_id": task.id,
+                    "message": f"{task.task_type} is still running. Do not start a duplicate task until the current one resolves.",
+                    "commands": _task_recovery_commands(task.task_type, task.status, paper.id, task.id),
+                }
+            )
+        elif task.status == "failed":
+            guidance.append(
+                {
+                    "status": "failed",
+                    "task_id": task.id,
+                    "message": f"{task.task_type} failed. Inspect the task detail, then retry or import a corrected result.",
+                    "commands": _task_recovery_commands(task.task_type, task.status, paper.id, task.id),
+                }
+            )
+    if not paper.pdf_path and not stages["text"]:
+        guidance.append(
+            {
+                "status": "blocked",
+                "message": "Text extraction is blocked until a local PDF or external text result is available.",
+                "commands": [command for command in (f"rks ingest doi {paper.doi}" if paper.doi else None, f"rks ingest arxiv {paper.arxiv_id}" if paper.arxiv_id else None) if command],
+            }
+        )
+    return guidance
+
+
 def _relation_key(anchor_claim_id: str, relation: dict) -> tuple[str, tuple[str, str]]:
     other_claim_id = relation["claim"]["id"]
     pair = tuple(sorted((anchor_claim_id, other_claim_id)))
     return relation["relation_type"], pair
+
+
+def _planned_prepare_actions(status_payload: dict) -> list[dict]:
+    paper_id = status_payload["paper"]["id"]
+    stages = status_payload["stages"]
+    actions = []
+    if not stages["text"]:
+        actions.append({"code": "extract_text", "command": f"rks extract text {paper_id}", "reason": "text artifact missing"})
+    if not stages["claims"]:
+        actions.append({"code": "extract_claims", "command": f"rks extract claims {paper_id}", "reason": "claims missing"})
+    if stages["claims"] and not stages["methods"]:
+        actions.append({"code": "extract_methods", "command": f"rks extract methods {paper_id}", "reason": "methods missing"})
+    if stages["claims"] and not stages["datasets"]:
+        actions.append({"code": "extract_datasets", "command": f"rks extract datasets {paper_id}", "reason": "datasets missing"})
+    if stages["claims"] and not stages["summary"]:
+        actions.append({"code": "summarize_paper", "command": f"rks summarize paper {paper_id}", "reason": "summary missing"})
+    return actions
+
+
+def _task_recovery_commands(task_type: str, status: str, paper_id: str, task_id: str) -> list[str]:
+    commands = [f"rks tasks show {task_id}"]
+    if status in {"queued", "running"}:
+        if task_type == "extract_text":
+            commands.append(f"rks import text {paper_id} <agent-result.json>")
+        elif task_type == "extract_claims":
+            commands.append(f"rks import claims {paper_id} <agent-result.json>")
+        elif task_type == "summarize_paper":
+            commands.append(f"rks import summary {paper_id} <agent-result.json>")
+    elif status == "failed":
+        if task_type == "extract_text":
+            commands.append(f"rks extract text {paper_id} --mode agent")
+        elif task_type == "extract_claims":
+            commands.append(f"rks extract claims {paper_id} --mode agent")
+        elif task_type == "summarize_paper":
+            commands.append(f"rks summarize paper {paper_id} --mode agent")
+    return commands

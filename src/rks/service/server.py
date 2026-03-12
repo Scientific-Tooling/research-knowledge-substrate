@@ -329,6 +329,14 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
                 created_by=payload.get("created_by", "human:http"),
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/prepare/papers/") and parsed.path.endswith("/output"):
+        paper_id = parsed.path.split("/")[4]
+        with _open_operations() as operations:
+            response = operations.prepare_paper_for_output(
+                paper_id,
+                apply=bool(payload.get("apply", False)),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
     raise KeyError(path)
 
 

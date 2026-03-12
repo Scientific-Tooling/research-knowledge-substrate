@@ -14,7 +14,7 @@ from rks.llm import (
 )
 from rks.reasoning.summary import build_summary_input, persist_summary_artifact
 from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
-from rks.utils import ensure_dir
+from rks.utils import ensure_dir, utc_now
 
 TEXT_SCHEMA_VERSION = "text.v1"
 CLAIMS_SCHEMA_VERSION = "claims.v1"
@@ -169,6 +169,81 @@ def import_summary_result(repo: PaperRepository, paths: AppPaths, paper_id: str,
     )
 
 
+def record_task_report(
+    repo: PaperRepository,
+    paths: AppPaths,
+    task,
+    *,
+    note: str | None = None,
+    error: dict | None = None,
+) -> dict:
+    report_path = ensure_dir(paths.papers_dir / task.paper_id) / "agent_execution_reports.json"
+    payload = _load_task_report_payload(report_path)
+    reports = {report["task_id"]: report for report in payload.get("reports", [])}
+    report = reports.get(task.id)
+    if report is None:
+        report = {
+            "task_id": task.id,
+            "task_type": task.task_type,
+            "paper_id": task.paper_id,
+            "mode": task.mode,
+            "spec_version": task.spec_version,
+            "schema_version": task.schema_version,
+            "events": [],
+        }
+        reports[task.id] = report
+
+    event = {
+        "status": task.status,
+        "at": utc_now(),
+        "request_artifact_id": task.request_artifact_id,
+        "result_artifact_id": task.result_artifact_id,
+        "note": note,
+        "error": error,
+        "recovery_commands": _task_recovery_commands(task.task_type, task.status, task.paper_id, task.id),
+    }
+    report.update(
+        {
+            "current_status": task.status,
+            "request_artifact_id": task.request_artifact_id,
+            "result_artifact_id": task.result_artifact_id,
+            "last_error": error,
+            "recovery_commands": event["recovery_commands"],
+        }
+    )
+    report["events"].append(event)
+
+    serialized = {
+        "updated_at": utc_now(),
+        "report_count": len(reports),
+        "reports": sorted(reports.values(), key=lambda item: item["task_id"]),
+    }
+    report_path.write_text(json.dumps(serialized, indent=2), encoding="utf-8")
+    repo.create_artifact(
+        paper_id=task.paper_id,
+        artifact_type="agent_execution_reports",
+        path=report_path,
+        format_name="json",
+        metadata={
+            "report_count": serialized["report_count"],
+            "updated_at": serialized["updated_at"],
+        },
+    )
+    return report
+
+
+def load_task_reports(repo: PaperRepository, paper_id: str) -> list[dict]:
+    for artifact in repo.get_artifacts_for_paper(paper_id):
+        if artifact.artifact_type != "agent_execution_reports":
+            continue
+        path = Path(artifact.path)
+        if not path.exists():
+            return []
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload.get("reports", [])
+    return []
+
+
 def _write_request_artifact(
     repo: PaperRepository,
     paths: AppPaths,
@@ -201,3 +276,40 @@ def _write_request_artifact(
         "schema_version": payload["schema_version"],
         "instruction": payload["instruction"],
     }
+
+
+def _load_task_report_payload(path: Path) -> dict:
+    if not path.exists():
+        return {"reports": []}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _task_recovery_commands(task_type: str, status: str, paper_id: str, task_id: str) -> list[str]:
+    commands = [f"rks tasks show {task_id}"]
+    if status in {"queued", "running"}:
+        commands.append(_task_import_command(task_type, paper_id))
+        return [command for command in commands if command]
+    if status == "failed":
+        commands.append(_task_retry_command(task_type, paper_id))
+        return [command for command in commands if command]
+    return commands
+
+
+def _task_import_command(task_type: str, paper_id: str) -> str | None:
+    if task_type == "extract_text":
+        return f"rks import text {paper_id} <agent-result.json>"
+    if task_type == "extract_claims":
+        return f"rks import claims {paper_id} <agent-result.json>"
+    if task_type == "summarize_paper":
+        return f"rks import summary {paper_id} <agent-result.json>"
+    return None
+
+
+def _task_retry_command(task_type: str, paper_id: str) -> str | None:
+    if task_type == "extract_text":
+        return f"rks extract text {paper_id} --mode agent"
+    if task_type == "extract_claims":
+        return f"rks extract claims {paper_id} --mode agent"
+    if task_type == "summarize_paper":
+        return f"rks summarize paper {paper_id} --mode agent"
+    return None

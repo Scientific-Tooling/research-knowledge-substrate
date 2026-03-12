@@ -5,6 +5,8 @@ from rks.agent.workflow import (
     import_claims_result,
     import_summary_result,
     import_text_result,
+    load_task_reports,
+    record_task_report,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "import_claims_result",
     "import_summary_result",
     "import_text_result",
+    "load_task_reports",
+    "record_task_report",
 ]

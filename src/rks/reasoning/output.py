@@ -432,13 +432,15 @@ def _topic_context(query_service, topic: str) -> dict:
         concept_claims = query_service.claims_about(concept["id"]).get("claims", [])
         concept_methods = query_service.methods_for(concept["id"]).get("methods", [])
 
-    claims = _dedupe_objects(concept_claims + search["claims"] + semantic_claims)
+    claims = _cluster_and_rank_claims(query_service, _dedupe_objects(concept_claims + search["claims"] + semantic_claims))
     claim_ids = [claim["id"] for claim in claims[:8]]
 
     papers = _dedupe_objects(search["papers"] + semantic_papers)
     for claim in claims[:5]:
         support = query_service.papers_supporting(claim["id"])
         papers = _dedupe_objects(papers + support.get("papers", []))
+    disagreements = _collect_disagreements(query_service, claim_ids, limit=6)
+    papers = _rank_papers(papers, claims, disagreements)
 
     methods = _dedupe_objects(concept_methods + search["methods"] + semantic_methods)
     datasets = _dedupe_objects(search["datasets"] + semantic_datasets)
@@ -486,6 +488,82 @@ def _collect_disagreements(query_service, claim_ids: list[str], limit: int) -> l
             if len(disagreements) >= limit:
                 return disagreements
     return disagreements
+
+
+def _cluster_and_rank_claims(query_service, claims: list[dict]) -> list[dict]:
+    relation_cache = {}
+    groups: dict[str, list[dict]] = {}
+    for claim in claims:
+        enriched = {**claim, **_claim_relation_stats(query_service, claim["id"], relation_cache)}
+        groups.setdefault(_claim_cluster_signature(claim), []).append(enriched)
+
+    representatives = []
+    for group in groups.values():
+        ranked_group = sorted(group, key=_claim_rank_key, reverse=True)
+        representative = dict(ranked_group[0])
+        representative["cluster_size"] = len(ranked_group)
+        representative["corroborating_claim_ids"] = [item["id"] for item in ranked_group]
+        representative["evidence_paper_ids"] = sorted({item["paper_id"] for item in ranked_group})
+        representative["cluster_confidences"] = [item.get("confidence") for item in ranked_group if item.get("confidence") is not None]
+        representatives.append(representative)
+    return sorted(representatives, key=_claim_rank_key, reverse=True)
+
+
+def _claim_relation_stats(query_service, claim_id: str, cache: dict[str, dict]) -> dict:
+    if claim_id in cache:
+        return cache[claim_id]
+    relations = query_service.claim_relations(claim_id)
+    reviewed_relation_count = len(relations["reviewed_relations"])
+    inferred_relation_count = len(relations["inferred_relations"])
+    stats = {
+        "reviewed_relation_count": reviewed_relation_count,
+        "inferred_relation_count": inferred_relation_count,
+    }
+    cache[claim_id] = stats
+    return stats
+
+
+def _claim_cluster_signature(claim: dict) -> str:
+    return "|".join(
+        [
+            canonicalize_term(claim.get("subject") or ""),
+            canonicalize_term(claim.get("predicate") or ""),
+            canonicalize_term(claim.get("object") or ""),
+            canonicalize_term(_claim_dataset(claim) or ""),
+            str(_claim_polarity(claim.get("text", ""))),
+        ]
+    )
+
+
+def _claim_rank_key(claim: dict) -> tuple:
+    confidence = claim.get("confidence") or 0.0
+    cluster_size = claim.get("cluster_size") or 1
+    evidence_span = len(claim.get("evidence_paper_ids") or [claim.get("paper_id")])
+    return (
+        claim.get("reviewed_relation_count", 0),
+        cluster_size,
+        confidence,
+        evidence_span,
+        -claim.get("inferred_relation_count", 0),
+    )
+
+
+def _rank_papers(papers: list[dict], claims: list[dict], disagreements: list[dict]) -> list[dict]:
+    scores = {paper["id"]: 0.0 for paper in papers}
+    for index, claim in enumerate(claims[:6]):
+        weight = max(1, 6 - index)
+        for paper_id in claim.get("evidence_paper_ids") or [claim.get("paper_id")]:
+            scores[paper_id] = scores.get(paper_id, 0.0) + weight + (claim.get("cluster_size", 1) - 1)
+            scores[paper_id] += float(claim.get("reviewed_relation_count", 0)) * 1.5
+            scores[paper_id] += float(claim.get("confidence") or 0.0)
+    for disagreement in disagreements:
+        for paper_id in {
+            disagreement["anchor_claim"]["paper_id"],
+            disagreement["related_claim"]["paper_id"],
+            disagreement["paper"]["id"],
+        }:
+            scores[paper_id] = scores.get(paper_id, 0.0) + (2.0 if disagreement["relation_source"] == "reviewed" else 1.0)
+    return sorted(papers, key=lambda paper: (scores.get(paper["id"], 0.0), paper["title"]), reverse=True)
 
 
 def _compose_answer_text(

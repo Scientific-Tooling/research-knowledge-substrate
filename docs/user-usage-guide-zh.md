@@ -389,6 +389,8 @@ rks status paper <paper_id>
 - suggested next commands
 - source PDF 状态
 - 任务状态
+- 持久化的 `agent_reports`
+- 针对 queued / running / failed 任务的 `recovery_guidance`
 
 ## 12. 批量操作
 
@@ -412,6 +414,7 @@ manifest 示例：
 ```bash
 rks batch extract claims manifest.json
 rks batch extract summary manifest.json --mode agent
+rks batch output answer output-manifest.json
 ```
 
 extract manifest 示例：
@@ -421,6 +424,15 @@ extract manifest 示例：
   {"paper_id": "p_000001"},
   {"paper_id": "p_000002", "mode": "agent"}
 ]
+```
+
+现在 batch 命令都会返回一个 `audit` 区块，用来汇总 success、failure 和该工作流特有的计数。
+
+如果想对单篇 paper 先做高层准备计划，或者直接补齐本地缺失步骤，可以执行：
+
+```bash
+rks prepare paper-output <paper_id>
+rks prepare paper-output <paper_id> --apply
 ```
 
 ## 13. 导出、导入和服务

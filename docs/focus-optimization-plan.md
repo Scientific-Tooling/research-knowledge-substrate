@@ -24,9 +24,9 @@ Work items:
 - [x] add topic assessment, reading list, and evidence-gap structure to topic briefs
 - [x] add disagreement kind, possible causes, and review priorities to disagreement outputs
 - [x] add evidence basis, grounding strength, and validation plans to opportunity outputs
-- [ ] add benchmark-style fixtures for multiple topic patterns beyond the current sparse-attention test
-- [ ] improve claim clustering and duplicate evidence reduction
-- [ ] prefer reviewed relations and stronger evidence when ranking findings
+- [x] add benchmark-style fixtures for multiple topic patterns beyond the current sparse-attention test
+- [x] improve claim clustering and duplicate evidence reduction
+- [x] prefer reviewed relations and stronger evidence when ranking findings
 
 Exit criteria:
 
@@ -45,10 +45,10 @@ Work items:
 
 - [x] define paper readiness levels such as `ingested`, `claims_ready`, `output_ready`, and `review_pending`
 - [x] enrich `status paper` with missing steps, blockers, and suggested next commands
-- [ ] introduce higher-level operations such as `prepare_paper_for_output`
-- [ ] persist agent execution reports as artifacts
-- [ ] add clearer failure-recovery guidance for queued or partially completed tasks
-- [ ] add batch-level audit summaries across ingest, extract, summarize, and output workflows
+- [x] introduce higher-level operations such as `prepare_paper_for_output`
+- [x] persist agent execution reports as artifacts
+- [x] add clearer failure-recovery guidance for queued or partially completed tasks
+- [x] add batch-level audit summaries across ingest, extract, summarize, and output workflows
 
 Exit criteria:
 
@@ -100,13 +100,16 @@ Exit criteria:
 
 ## Current Round
 
-This round completed the first output-quality contract upgrade and the installed skill export milestone.
+This round completed the focused optimization plan end to end.
 
 Delivered now:
 
 - stronger answer, brief, disagreement, and opportunity payload structure
-- bundled skills export from installed CLI distributions
+- clustered and evidence-ranked research output findings with broader fixture coverage
+- readiness-aware paper status, prepare-for-output planning/execution, and persisted agent task reports
+- batch audit summaries across ingest, extract, and output workflows
+- bundled skills export from installed CLI distributions with install-time self-checks
 
 Next recommended implementation step:
 
-- extend output-quality fixtures so multiple research-topic patterns are covered, not just the current sparse-attention scenario
+- continue hardening real-world provider fixtures and larger-scale corpora
