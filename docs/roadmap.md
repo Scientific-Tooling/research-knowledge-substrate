@@ -7,7 +7,7 @@ Status as of 2026-03-12:
 - [x] Phase 1: Quality Hardening
 - [x] Phase 2: Research Graph Expansion
 - [x] Phase 3: Retrieval and Reasoning Upgrade
-- [ ] Phase 4: Agent Workflow Maturity
+- [x] Phase 4: Agent Workflow Maturity
 - [ ] Phase 5: Productization Layer
 
 ## Goal
@@ -98,16 +98,16 @@ Make RKS a better substrate for long-running agent work.
 
 Priority work:
 
-- [ ] formalize more agent-facing skills for ingestion, query, and maintenance workflows
-- [ ] add batch operations for repeated paper ingestion and extraction
-- [ ] add queue-like request/result management for agent-mode tasks
-- [ ] add extraction status reporting and failure visibility
-- [ ] add schema/version tracking for all dual-track LLM tasks
+- [x] formalize more agent-facing skills for ingestion, query, and maintenance workflows
+- [x] add batch operations for repeated paper ingestion and extraction
+- [x] add queue-like request/result management for agent-mode tasks
+- [x] add extraction status reporting and failure visibility
+- [x] add schema/version tracking for all dual-track LLM tasks
 
 Exit criteria:
 
-- [ ] an external agent can operate RKS repeatedly without repository-specific improvisation
-- [ ] failures and replays are explicit and auditable
+- [x] an external agent can operate RKS repeatedly without repository-specific improvisation
+- [x] failures and replays are explicit and auditable
 
 ## Phase 5: Productization Layer
 

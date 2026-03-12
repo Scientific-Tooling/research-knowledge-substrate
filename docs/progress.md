@@ -25,6 +25,10 @@ The repository now has a hardened post-MVP base for extraction quality:
 - artifact lineage metadata including extractor version and mode
 - local embeddings for papers, claims, and concepts
 - paper summaries with explicit claim and paper citations
+- batch ingest and extraction workflows through manifest files
+- task queue tracking for all agent-mode request/result loops
+- paper-level status reporting with failure visibility
+- dual-track request and result schema/version tracking
 
 ## Implemented Milestones
 
@@ -36,10 +40,10 @@ The repository now has a hardened post-MVP base for extraction quality:
 - Phase 1: Quality Hardening
 - Phase 2: Research Graph Expansion
 - Phase 3: Retrieval and Reasoning Upgrade
+- Phase 4: Agent Workflow Maturity
 
 ## Remaining Work
 
-- add batch and queue-based agent workflows
 - add config, migrations, export/import, and service surfaces
 
 ## Latest Architectural Direction

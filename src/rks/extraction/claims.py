@@ -108,7 +108,12 @@ def persist_claims_for_paper(
         artifact_type="structured_claims",
         path=structured_claims_path,
         format_name="json",
-        metadata={"count": len(claims), "extractor": extractor, "extractor_version": CLAIM_EXTRACTOR_VERSION},
+        metadata={
+            "count": len(claims),
+            "extractor": extractor,
+            "extractor_version": CLAIM_EXTRACTOR_VERSION,
+            "schema_version": _claims_schema_version(claims),
+        },
     )
 
     stored_claims = claim_repo.replace_claims_for_paper(
@@ -339,3 +344,11 @@ def _normalized_evidence(candidate_entry: dict, paper_id: str) -> dict:
 
 def _claim_key(sentence: str) -> str:
     return hashlib.sha1(sentence.encode("utf-8")).hexdigest()[:12]
+
+
+def _claims_schema_version(claims: list[dict]) -> str | None:
+    for claim in claims:
+        evidence = claim.get("evidence", {})
+        if evidence.get("schema_version"):
+            return evidence["schema_version"]
+    return None

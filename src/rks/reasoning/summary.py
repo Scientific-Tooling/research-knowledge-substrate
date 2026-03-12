@@ -101,7 +101,11 @@ def persist_summary_artifact(
         artifact_type=artifact_type,
         path=summary_path,
         format_name="json",
-        metadata={"mode": payload.get("mode"), "evidence_claim_count": len(payload.get("evidence_claim_ids", []))},
+        metadata={
+            "mode": payload.get("mode"),
+            "schema_version": payload.get("schema_version"),
+            "evidence_claim_count": len(payload.get("evidence_claim_ids", [])),
+        },
     )
     return {
         "paper_id": paper_id,

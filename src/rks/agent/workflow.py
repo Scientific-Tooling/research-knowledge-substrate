@@ -16,6 +16,10 @@ from rks.reasoning.summary import build_summary_input, persist_summary_artifact
 from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
 from rks.utils import ensure_dir
 
+TEXT_SCHEMA_VERSION = "text.v1"
+CLAIMS_SCHEMA_VERSION = "claims.v1"
+SUMMARY_SCHEMA_VERSION = "summary.v1"
+
 
 def create_text_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -> dict:
     paper = repo.get_paper(paper_id)
@@ -32,6 +36,7 @@ def create_text_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -
             "paragraphs": ["string"],
             "warnings": ["string"],
         },
+        schema_version=TEXT_SCHEMA_VERSION,
     )
     return _write_request_artifact(repo, paths, paper_id, "agent_text_request", "agent_text_request.json", request)
 
@@ -67,6 +72,7 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
                 }
             ]
         },
+        schema_version=CLAIMS_SCHEMA_VERSION,
     )
     return _write_request_artifact(
         repo,
@@ -101,6 +107,7 @@ def create_summary_request(
             "citations": [{"claim_id": "string", "paper_id": "string"}],
             "open_questions": ["string"],
         },
+        schema_version=SUMMARY_SCHEMA_VERSION,
     )
     return _write_request_artifact(
         repo,
@@ -118,6 +125,7 @@ def import_text_result(repo: PaperRepository, paths: AppPaths, paper_id: str, js
     payload.setdefault("warnings", [])
     payload.setdefault("source_pdf", None)
     payload.setdefault("paragraphs", [payload.get("text", "")] if payload.get("text") else [])
+    payload.setdefault("schema_version", TEXT_SCHEMA_VERSION)
     return write_text_artifact(repo=repo, paths=paths, paper_id=paper_id, payload=payload)
 
 
@@ -131,6 +139,10 @@ def import_claims_result(
     json_path: Path,
 ):
     claims = validate_claims_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
+    for claim in claims:
+        evidence = dict(claim.get("evidence", {}))
+        evidence.setdefault("schema_version", CLAIMS_SCHEMA_VERSION)
+        claim["evidence"] = evidence
     return persist_claims_for_paper(
         paths=paths,
         paper_repo=paper_repo,
@@ -146,6 +158,7 @@ def import_claims_result(
 def import_summary_result(repo: PaperRepository, paths: AppPaths, paper_id: str, json_path: Path):
     payload = validate_summary_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
     payload.setdefault("mode", "agent")
+    payload.setdefault("schema_version", SUMMARY_SCHEMA_VERSION)
     return persist_summary_artifact(
         paper_repo=repo,
         paths=paths,
@@ -172,12 +185,19 @@ def _write_request_artifact(
         artifact_type=artifact_type,
         path=request_path,
         format_name="json",
-        metadata={"task": payload["task"], "spec_version": payload["spec_version"]},
+        metadata={
+            "task": payload["task"],
+            "spec_version": payload["spec_version"],
+            "schema_version": payload["schema_version"],
+        },
     )
     return {
         "paper_id": paper_id,
         "artifact_id": artifact.id,
         "artifact_type": artifact.artifact_type,
         "path": artifact.path,
+        "task": payload["task"],
+        "spec_version": payload["spec_version"],
+        "schema_version": payload["schema_version"],
         "instruction": payload["instruction"],
     }

@@ -74,6 +74,22 @@ class DatasetRecord:
 
 
 @dataclass(frozen=True)
+class TaskRecord:
+    id: str
+    task_type: str
+    paper_id: str
+    mode: str
+    status: str
+    request_artifact_id: Optional[str]
+    result_artifact_id: Optional[str]
+    spec_version: Optional[str]
+    schema_version: Optional[str]
+    error_json: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class ConceptRecord:
     id: str
     name: str

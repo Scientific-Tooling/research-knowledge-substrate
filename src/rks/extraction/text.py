@@ -57,6 +57,7 @@ def write_text_artifact(
     normalized_payload["paragraphs"] = [paragraph for paragraph in normalized_payload.get("paragraphs", []) if paragraph]
     normalized_payload["extractor_version"] = normalized_payload.get("extractor_version") or PDF_EXTRACTOR_VERSION
     normalized_payload["extraction_mode"] = normalized_payload.get("extraction_mode") or "heuristic"
+    normalized_payload["schema_version"] = normalized_payload.get("schema_version")
     normalized_payload["paragraph_records"] = _normalize_paragraph_records(normalized_payload)
     normalized_payload["lineage"] = {
         "paper_id": paper_id,
@@ -78,6 +79,7 @@ def write_text_artifact(
             "extractor": normalized_payload["extractor"],
             "extractor_version": normalized_payload["extractor_version"],
             "mode": normalized_payload["extraction_mode"],
+            "schema_version": normalized_payload.get("schema_version"),
             "paragraph_count": len(normalized_payload["paragraph_records"]),
             "text_length": len(normalized_payload["text"]),
             "warnings": normalized_payload["warnings"],

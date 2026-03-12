@@ -12,9 +12,11 @@ def build_dual_track_request(
     instruction: str,
     input_payload: dict,
     expected_output_schema: dict,
+    schema_version: str,
 ) -> dict:
     return {
         "spec_version": DUAL_TRACK_SPEC_VERSION,
+        "schema_version": schema_version,
         "task": task,
         "paper_id": paper_id,
         "instruction": instruction,

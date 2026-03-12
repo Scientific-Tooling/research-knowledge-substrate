@@ -10,6 +10,7 @@ ID_PREFIXES = {
     "dataset": "d",
     "concept": "k",
     "note": "n",
+    "task": "t",
     "edge": "e",
     "artifact": "a",
 }

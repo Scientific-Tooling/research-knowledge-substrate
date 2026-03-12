@@ -34,6 +34,14 @@ Purpose:
 - guide repository development work
 - ensure docs, tests, and commits stay synchronized with code changes
 
+### `rks-agent-operations`
+
+Purpose:
+
+- run batch ingest and extraction workflows
+- inspect queued/completed/failed agent tasks
+- audit paper-level workflow status and failure states
+
 ## Why These Skills Exist
 
 Without explicit repository-specific skills, a general agent has to rediscover:

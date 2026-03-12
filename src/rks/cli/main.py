@@ -36,6 +36,7 @@ from rks.storage import (
     EdgeRepository,
     MethodRepository,
     PaperRepository,
+    TaskRepository,
     connect_db,
     initialize_db,
 )
@@ -63,6 +64,24 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_arxiv_parser = ingest_subparsers.add_parser("arxiv", help="Ingest an arXiv reference.")
     ingest_arxiv_parser.add_argument("arxiv_id", help="arXiv identifier, for example 1706.03762.")
     ingest_arxiv_parser.set_defaults(handler=handle_ingest_arxiv)
+
+    batch_parser = subparsers.add_parser("batch", help="Run repeated ingestion or extraction operations.")
+    batch_subparsers = batch_parser.add_subparsers(dest="batch_command", required=True)
+
+    batch_ingest_parser = batch_subparsers.add_parser("ingest", help="Ingest a batch manifest.")
+    batch_ingest_parser.add_argument("manifest_path", type=Path, help="Path to a JSON manifest file.")
+    batch_ingest_parser.set_defaults(handler=handle_batch_ingest)
+
+    batch_extract_parser = batch_subparsers.add_parser("extract", help="Extract a stage for a batch manifest.")
+    batch_extract_parser.add_argument("stage", choices=("text", "claims", "methods", "datasets", "summary"))
+    batch_extract_parser.add_argument("manifest_path", type=Path, help="Path to a JSON manifest file.")
+    batch_extract_parser.add_argument(
+        "--mode",
+        choices=ALL_EXTRACTION_MODES,
+        default="heuristic",
+        help="Execution mode for text, claims, or summary extraction.",
+    )
+    batch_extract_parser.set_defaults(handler=handle_batch_extract)
 
     show_parser = subparsers.add_parser("show", help="Inspect stored research objects.")
     show_subparsers = show_parser.add_subparsers(dest="show_command", required=True)
@@ -115,6 +134,13 @@ def build_parser() -> argparse.ArgumentParser:
     index_embeddings_parser = index_subparsers.add_parser("embeddings", help="Index local embeddings.")
     index_embeddings_parser.add_argument("--paper-id", help="Optional paper ID to index incrementally.")
     index_embeddings_parser.set_defaults(handler=handle_index_embeddings)
+
+    status_parser = subparsers.add_parser("status", help="Inspect workflow status.")
+    status_subparsers = status_parser.add_subparsers(dest="status_command", required=True)
+
+    status_paper_parser = status_subparsers.add_parser("paper", help="Show extraction and task status for a paper.")
+    status_paper_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    status_paper_parser.set_defaults(handler=handle_status_paper)
 
     summarize_parser = subparsers.add_parser("summarize", help="Generate or request reasoning outputs.")
     summarize_subparsers = summarize_parser.add_subparsers(dest="summarize_command", required=True)
@@ -177,6 +203,23 @@ def build_parser() -> argparse.ArgumentParser:
     import_summary_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     import_summary_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
     import_summary_parser.set_defaults(handler=handle_import_summary)
+
+    tasks_parser = subparsers.add_parser("tasks", help="Inspect or update queued agent tasks.")
+    tasks_subparsers = tasks_parser.add_subparsers(dest="tasks_command", required=True)
+
+    tasks_list_parser = tasks_subparsers.add_parser("list", help="List queued, completed, or failed tasks.")
+    tasks_list_parser.add_argument("--paper-id", help="Filter by paper ID.")
+    tasks_list_parser.add_argument("--status", help="Filter by status.")
+    tasks_list_parser.set_defaults(handler=handle_tasks_list)
+
+    tasks_show_parser = tasks_subparsers.add_parser("show", help="Show one task.")
+    tasks_show_parser.add_argument("task_id", help="Task ID, for example t_000001.")
+    tasks_show_parser.set_defaults(handler=handle_tasks_show)
+
+    tasks_fail_parser = tasks_subparsers.add_parser("fail", help="Mark a task as failed.")
+    tasks_fail_parser.add_argument("task_id", help="Task ID, for example t_000001.")
+    tasks_fail_parser.add_argument("message", help="Failure message to record.")
+    tasks_fail_parser.set_defaults(handler=handle_tasks_fail)
 
     query_parser = subparsers.add_parser("query", help="Run deterministic research graph queries.")
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
@@ -255,6 +298,51 @@ def handle_ingest_arxiv(args: argparse.Namespace) -> int:
             provider=ArxivMetadataProvider(),
         )
     print(json.dumps(_paper_to_payload(paper), indent=2))
+    return 0
+
+
+def handle_batch_ingest(args: argparse.Namespace) -> int:
+    manifest = _load_manifest(args.manifest_path)
+    results = []
+    with _open_repository() as repo:
+        for item in manifest:
+            source_type = item["source_type"]
+            if source_type == "pdf":
+                paper = ingest_pdf(
+                    repo=repo,
+                    paths=load_paths(),
+                    pdf_path=_resolve_manifest_path(args.manifest_path, item["path"]),
+                    title=item.get("title"),
+                )
+            elif source_type == "doi":
+                paper = ingest_doi_reference(
+                    repo=repo,
+                    paths=load_paths(),
+                    doi=item["source_ref"],
+                    provider=CrossrefMetadataProvider(),
+                )
+            elif source_type == "arxiv":
+                paper = ingest_arxiv_reference(
+                    repo=repo,
+                    paths=load_paths(),
+                    arxiv_id=item["source_ref"],
+                    provider=ArxivMetadataProvider(),
+                )
+            else:
+                raise ValueError(f"Unsupported batch source type: {source_type}")
+            results.append(_paper_to_payload(paper))
+    print(json.dumps({"count": len(results), "papers": results}, indent=2))
+    return 0
+
+
+def handle_batch_extract(args: argparse.Namespace) -> int:
+    manifest = _load_manifest(args.manifest_path)
+    results = []
+    for item in manifest:
+        paper_id = item["paper_id"] if isinstance(item, dict) else item
+        mode = item.get("mode", args.mode) if isinstance(item, dict) else args.mode
+        results.append(_run_batch_extract_item(args.stage, paper_id, mode))
+    print(json.dumps({"stage": args.stage, "count": len(results), "results": results}, indent=2))
     return 0
 
 
@@ -361,6 +449,37 @@ def handle_index_embeddings(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_status_paper(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        paper = session.papers.get_paper(args.paper_id)
+        artifacts = session.papers.get_artifacts_for_paper(args.paper_id)
+        tasks = session.tasks.list_tasks(paper_id=args.paper_id)
+    artifact_types = {artifact.artifact_type for artifact in artifacts}
+    task_summary = {}
+    for task in tasks:
+        task_summary[task.status] = task_summary.get(task.status, 0) + 1
+    print(
+        json.dumps(
+            {
+                "paper": _paper_to_payload(paper),
+                "artifacts": sorted(artifact_types),
+                "stages": {
+                    "text": "extracted_text" in artifact_types,
+                    "claims": "structured_claims" in artifact_types,
+                    "methods": "methods" in artifact_types,
+                    "datasets": "datasets" in artifact_types,
+                    "summary": "paper_summary" in artifact_types,
+                    "citations": "citations" in artifact_types,
+                },
+                "task_summary": task_summary,
+                "tasks": [_task_payload(task) for task in tasks],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def handle_summarize_paper(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = run_dual_track_mode(
@@ -396,6 +515,16 @@ def handle_summarize_paper(args: argparse.Namespace) -> int:
                 "mode": "agent",
             },
         )
+        if args.mode == "agent":
+            task = session.tasks.create_task(
+                task_type="summarize_paper",
+                paper_id=args.paper_id,
+                mode="agent",
+                request_artifact_id=payload["artifact_id"],
+                spec_version=payload["spec_version"],
+                schema_version=payload["schema_version"],
+            )
+            payload["task_id"] = task.id
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -455,30 +584,40 @@ def handle_show_dataset(args: argparse.Namespace) -> int:
 
 def handle_extract_text(args: argparse.Namespace) -> int:
     paths = load_paths()
-    with _open_repository() as repo:
-        paper = repo.get_paper(args.paper_id)
+    with _open_session() as session:
+        paper = session.papers.get_paper(args.paper_id)
         payload = run_dual_track_mode(
             args.mode,
             heuristic=lambda: _artifact_payload(
                 args.paper_id,
                 args.mode,
-                extract_text_for_paper(repo=repo, paths=paths, paper=paper),
+                extract_text_for_paper(repo=session.papers, paths=paths, paper=paper),
             ),
             llm_api=lambda: _artifact_payload(
                 args.paper_id,
                 args.mode,
                 extract_text_with_llm(
-                    repo=repo,
+                    repo=session.papers,
                     paths=paths,
                     paper=paper,
                     provider=OpenAICompatibleLlmProvider(load_llm_config()),
                 ),
             ),
             agent=lambda: {
-                **create_text_request(repo=repo, paths=paths, paper_id=args.paper_id),
+                **create_text_request(repo=session.papers, paths=paths, paper_id=args.paper_id),
                 "mode": args.mode,
             },
         )
+        if args.mode == "agent":
+            task = session.tasks.create_task(
+                task_type="extract_text",
+                paper_id=args.paper_id,
+                mode="agent",
+                request_artifact_id=payload["artifact_id"],
+                spec_version=payload["spec_version"],
+                schema_version=payload["schema_version"],
+            )
+            payload["task_id"] = task.id
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -528,7 +667,15 @@ def handle_extract_claims(args: argparse.Namespace) -> int:
             )
             payload = {**claims_payload, "embedding_index": index_payload}
         else:
-            payload = claims_payload
+            task = session.tasks.create_task(
+                task_type="extract_claims",
+                paper_id=args.paper_id,
+                mode="agent",
+                request_artifact_id=claims_payload["artifact_id"],
+                spec_version=claims_payload["spec_version"],
+                schema_version=claims_payload["schema_version"],
+            )
+            payload = {**claims_payload, "task_id": task.id}
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -583,8 +730,14 @@ def handle_extract_datasets(args: argparse.Namespace) -> int:
 
 
 def handle_import_text(args: argparse.Namespace) -> int:
-    with _open_repository() as repo:
-        artifact = import_text_result(repo=repo, paths=load_paths(), paper_id=args.paper_id, json_path=args.json_path)
+    with _open_session() as session:
+        artifact = import_text_result(
+            repo=session.papers,
+            paths=load_paths(),
+            paper_id=args.paper_id,
+            json_path=args.json_path,
+        )
+        session.tasks.complete_latest_task(args.paper_id, "extract_text", artifact.id)
     print(
         json.dumps(
             {
@@ -618,6 +771,8 @@ def handle_import_claims(args: argparse.Namespace) -> int:
             paper_id=args.paper_id,
             provider=LocalHashEmbeddingProvider(),
         )
+        structured_claims_artifact = _artifact_id_for_type(session.papers, args.paper_id, "structured_claims")
+        session.tasks.complete_latest_task(args.paper_id, "extract_claims", structured_claims_artifact)
     print(
         json.dumps(
             {
@@ -633,9 +788,36 @@ def handle_import_claims(args: argparse.Namespace) -> int:
 
 
 def handle_import_summary(args: argparse.Namespace) -> int:
-    with _open_repository() as repo:
-        payload = import_summary_result(repo=repo, paths=load_paths(), paper_id=args.paper_id, json_path=args.json_path)
+    with _open_session() as session:
+        payload = import_summary_result(
+            repo=session.papers,
+            paths=load_paths(),
+            paper_id=args.paper_id,
+            json_path=args.json_path,
+        )
+        session.tasks.complete_latest_task(args.paper_id, "summarize_paper", payload["artifact_id"])
     print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_tasks_list(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        tasks = session.tasks.list_tasks(paper_id=args.paper_id, status=args.status)
+    print(json.dumps([_task_payload(task) for task in tasks], indent=2))
+    return 0
+
+
+def handle_tasks_show(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        task = session.tasks.get_task(args.task_id)
+    print(json.dumps(_task_payload(task), indent=2))
+    return 0
+
+
+def handle_tasks_fail(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        task = session.tasks.fail_task(args.task_id, args.message)
+    print(json.dumps(_task_payload(task), indent=2))
     return 0
 
 
@@ -768,6 +950,7 @@ class _Session:
         methods: MethodRepository,
         datasets: DatasetRepository,
         embeddings: EmbeddingRepository,
+        tasks: TaskRepository,
     ):
         self.papers = papers
         self.claims = claims
@@ -776,6 +959,7 @@ class _Session:
         self.methods = methods
         self.datasets = datasets
         self.embeddings = embeddings
+        self.tasks = tasks
 
 
 class _SessionContext:
@@ -791,6 +975,7 @@ class _SessionContext:
             methods=MethodRepository(self.conn),
             datasets=DatasetRepository(self.conn),
             embeddings=EmbeddingRepository(self.conn),
+            tasks=TaskRepository(self.conn),
         )
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -887,3 +1072,138 @@ def _edge_payload(edge) -> dict:
         "target_type": edge.target_type,
         "metadata": json.loads(edge.metadata_json or "{}"),
     }
+
+
+def _task_payload(task) -> dict:
+    return {
+        "id": task.id,
+        "task_type": task.task_type,
+        "paper_id": task.paper_id,
+        "mode": task.mode,
+        "status": task.status,
+        "request_artifact_id": task.request_artifact_id,
+        "result_artifact_id": task.result_artifact_id,
+        "spec_version": task.spec_version,
+        "schema_version": task.schema_version,
+        "error": json.loads(task.error_json) if task.error_json else None,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+    }
+
+
+def _load_manifest(manifest_path: Path):
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("Batch manifest must be a JSON array.")
+    return payload
+
+
+def _resolve_manifest_path(manifest_path: Path, candidate: str) -> Path:
+    path = Path(candidate)
+    if path.is_absolute():
+        return path
+    return (manifest_path.parent / path).resolve()
+
+
+def _run_batch_extract_item(stage: str, paper_id: str, mode: str) -> dict:
+    with _open_session() as session:
+        if stage == "text":
+            paper = session.papers.get_paper(paper_id)
+            if mode == "heuristic":
+                artifact = extract_text_for_paper(session.papers, load_paths(), paper)
+                return _artifact_payload(paper_id, mode, artifact)
+            if mode == "llm-api":
+                artifact = extract_text_with_llm(
+                    repo=session.papers,
+                    paths=load_paths(),
+                    paper=paper,
+                    provider=OpenAICompatibleLlmProvider(load_llm_config()),
+                )
+                return _artifact_payload(paper_id, mode, artifact)
+            request = create_text_request(session.papers, load_paths(), paper_id)
+            task = session.tasks.create_task(
+                "extract_text", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
+            )
+            return {**request, "mode": "agent", "task_id": task.id}
+
+        if stage == "claims":
+            if mode == "heuristic":
+                claims = extract_claims_for_paper(
+                    load_paths(), session.papers, session.claims, session.concepts, session.edges, paper_id
+                )
+                return _claims_payload(paper_id, mode, claims)
+            if mode == "llm-api":
+                claims = extract_claims_with_llm(
+                    load_paths(),
+                    session.papers,
+                    session.claims,
+                    session.concepts,
+                    session.edges,
+                    paper_id,
+                    OpenAICompatibleLlmProvider(load_llm_config()),
+                )
+                return _claims_payload(paper_id, mode, claims)
+            request = create_claims_request(session.papers, load_paths(), paper_id)
+            task = session.tasks.create_task(
+                "extract_claims", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
+            )
+            return {**request, "mode": "agent", "task_id": task.id}
+
+        if stage == "methods":
+            methods = extract_methods_for_paper(
+                load_paths(),
+                session.papers,
+                session.claims,
+                session.concepts,
+                session.edges,
+                session.methods,
+                session.datasets,
+                paper_id,
+            )
+            return {"paper_id": paper_id, "method_count": len(methods), "method_ids": [method.id for method in methods]}
+
+        if stage == "datasets":
+            datasets = extract_datasets_for_paper(
+                load_paths(),
+                session.papers,
+                session.claims,
+                session.edges,
+                session.datasets,
+                session.methods,
+                paper_id,
+            )
+            return {"paper_id": paper_id, "dataset_count": len(datasets), "dataset_ids": [dataset.id for dataset in datasets]}
+
+        if stage == "summary":
+            if mode == "heuristic":
+                return summarize_paper_heuristic(load_paths(), session.papers, session.claims, session.concepts, paper_id)
+            if mode == "llm-api":
+                return persist_summary_artifact(
+                    session.papers,
+                    load_paths(),
+                    paper_id,
+                    {
+                        **OpenAICompatibleLlmProvider(load_llm_config()).summarize_paper(
+                            build_summary_input(session.papers, session.claims, session.concepts, paper_id)
+                        ),
+                        "mode": "llm-api",
+                    },
+                    "paper_summary",
+                    "paper_summary.json",
+                )
+            request = create_summary_request(
+                session.papers, session.claims, session.concepts, load_paths(), paper_id
+            )
+            task = session.tasks.create_task(
+                "summarize_paper", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
+            )
+            return {**request, "mode": "agent", "task_id": task.id}
+
+    raise ValueError(f"Unsupported batch stage: {stage}")
+
+
+def _artifact_id_for_type(repo: PaperRepository, paper_id: str, artifact_type: str) -> str | None:
+    for artifact in repo.get_artifacts_for_paper(paper_id):
+        if artifact.artifact_type == artifact_type:
+            return artifact.id
+    return None
