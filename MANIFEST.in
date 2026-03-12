@@ -1,2 +1,3 @@
 include README-PYPI.md
 recursive-include src/rks/migrations *.sql
+recursive-include src/rks/agent_skills/bundle */SKILL.md

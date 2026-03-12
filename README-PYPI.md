@@ -56,6 +56,13 @@ rks note add paper p_000001 --content "Revisit the evaluation protocol."
 rks review promote-claim-relation c_000001 supports c_000014 --reviewed-by agent:review
 ```
 
+Export bundled skills for Codex, Claude Code, or other agent tools:
+
+```bash
+rks skills list
+rks skills export ./rks-agent-kit
+```
+
 Serve the local API:
 
 ```bash

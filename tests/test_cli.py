@@ -26,6 +26,28 @@ def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 class CliSmokeTest(unittest.TestCase):
+    def test_skills_list_and_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            list_result = run_cli("skills", "list", cwd=tmp_path)
+            self.assertEqual(list_result.returncode, 0, list_result.stderr)
+            list_payload = json.loads(list_result.stdout)
+            skill_names = [entry["name"] for entry in list_payload]
+            self.assertIn("rks-codex-operator", skill_names)
+            self.assertIn("rks-query-substrate", skill_names)
+
+            export_dir = tmp_path / "rks-agent-kit"
+            export_result = run_cli("skills", "export", str(export_dir), cwd=tmp_path)
+            self.assertEqual(export_result.returncode, 0, export_result.stderr)
+            export_payload = json.loads(export_result.stdout)
+            self.assertEqual(export_payload["skill_count"], len(list_payload))
+            self.assertTrue((export_dir / "skills-index.json").exists())
+            self.assertTrue((export_dir / "AGENTS.md").exists())
+            self.assertTrue((export_dir / "CLAUDE.md").exists())
+            self.assertTrue((export_dir / "README.md").exists())
+            self.assertTrue((export_dir / "skills" / "rks-codex-operator" / "SKILL.md").exists())
+
     def test_init_db_and_ingest_pdf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

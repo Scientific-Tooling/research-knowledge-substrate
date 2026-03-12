@@ -53,3 +53,4 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "rks.migrations" = ["*.sql"]
+"rks.agent_skills" = ["bundle/*/SKILL.md"]

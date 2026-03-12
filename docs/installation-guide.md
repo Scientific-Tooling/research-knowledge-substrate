@@ -162,6 +162,15 @@ rks summarize paper <paper_id> --mode agent
 
 Then import the agent-produced results through the documented `import` flows.
 
+If the installed environment should also pass repository-specific skills to an external agent runtime, export them with:
+
+```bash
+rks skills list
+rks skills export ./rks-agent-kit
+```
+
+The exported bundle is intended for Codex, Claude Code, or any other agent tool that can consume project instructions and markdown runbooks.
+
 ## 8. Recommended Install Shapes
 
 ### 7.1 Regular users

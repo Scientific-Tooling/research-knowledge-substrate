@@ -50,6 +50,26 @@ agent 需要特别关注：
 - `reference_pdf_acquisition`
 - `llm` 配置
 
+如果还需要把仓库专用 skills 一并交给 agent，安装后可以直接导出：
+
+```bash
+rks skills list
+rks skills export ./rks-agent-kit
+```
+
+导出目录会包含：
+
+- `./rks-agent-kit/skills/`
+- `./rks-agent-kit/skills-index.json`
+- `./rks-agent-kit/AGENTS.md`
+- `./rks-agent-kit/CLAUDE.md`
+
+推荐交付方式：
+
+- Codex：使用 `AGENTS.md` 和 `skills/`
+- Claude Code：使用 `CLAUDE.md` 和 `skills/`
+- 其他 agent 工具：读取 `skills-index.json` 和原始 `SKILL.md`
+
 ## 4. Agent 的标准操作路径
 
 一个通用的 agent 工作流通常如下：

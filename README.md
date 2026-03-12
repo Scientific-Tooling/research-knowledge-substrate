@@ -27,6 +27,7 @@ The current implementation supports:
 - task queue and paper status inspection for agent-mode operations
 - config initialization, migration/version reporting, and graph snapshot export/import
 - stable agent-facing operations for paper status and claim-relation review over CLI and HTTP
+- bundled skill export for Codex, Claude Code, and other external agent tools
 - a local HTTP service and lightweight UI
 
 Progress is tracked in [docs/progress.md](docs/progress.md).
@@ -77,6 +78,13 @@ rks extract text p_000001 --mode agent
 rks import text p_000001 path/to/agent_text.json
 rks extract claims p_000001 --mode agent
 rks import claims p_000001 path/to/agent_claims.json
+```
+
+Export bundled skills for an external agent runtime:
+
+```bash
+rks skills list
+rks skills export ./rks-agent-kit
 ```
 
 Inspect the graph:

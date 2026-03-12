@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from rks.service import dispatch_get_request, dispatch_post_request
+from rks.agent_skills import list_bundled_skills
 from rks.storage.db import _packaged_migration_files
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,15 @@ def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 class ProductizationTest(unittest.TestCase):
+    def test_packaged_skills_match_repository_skill_docs(self) -> None:
+        bundled = {skill.name: skill.content for skill in list_bundled_skills()}
+        repo_skills_dir = ROOT / "skills"
+        repo_skill_paths = sorted(repo_skills_dir.glob("*/SKILL.md"))
+        self.assertEqual(set(bundled), {path.parent.name for path in repo_skill_paths})
+
+        for skill_path in repo_skill_paths:
+            self.assertEqual(bundled[skill_path.parent.name], skill_path.read_text(encoding="utf-8"))
+
     def test_packaged_migrations_exist_for_distributions(self) -> None:
         packaged = _packaged_migration_files()
         self.assertEqual([path.name for path in packaged], ["0001_init.sql"])

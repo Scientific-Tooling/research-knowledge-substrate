@@ -2,6 +2,8 @@
 
 The repository now includes dedicated skills for agents that operate or modify RKS.
 
+These skills are also bundled into the installed CLI distribution, so users can export them even after installing from PyPI.
+
 ## Available Skills
 
 ### `rks-build-paper-graph`
@@ -90,3 +92,26 @@ Without explicit repository-specific skills, a general agent has to rediscover:
 - which docs and tests must move with code changes
 
 These skills make that behavior explicit and reusable.
+
+## Export For Installed Agents
+
+After installing RKS, users can inspect and export the bundled skill set directly:
+
+```bash
+rks skills list
+rks skills export ./rks-agent-kit
+```
+
+The export directory contains:
+
+- `skills/<skill-name>/SKILL.md`
+- `skills-index.json`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `README.md`
+
+Recommended handoff:
+
+- Codex: use `AGENTS.md` and the exported `skills/`
+- Claude Code: use `CLAUDE.md` and the exported `skills/`
+- other agent tools: ingest `skills-index.json` plus the raw markdown files under `skills/`

@@ -162,6 +162,15 @@ rks summarize paper <paper_id> --mode agent
 
 然后通过 `import` 路径导入 agent 结果。
 
+如果安装后的环境还需要把仓库专用 skills 一起交给外部 agent，可以执行：
+
+```bash
+rks skills list
+rks skills export ./rks-agent-kit
+```
+
+这个导出目录就是给 Codex、Claude Code 或其他能够读取项目说明和 markdown runbook 的 agent 工具准备的。
+
 ## 8. 推荐安装形态
 
 ### 7.1 普通用户

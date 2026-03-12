@@ -50,6 +50,26 @@ Important fields for agents:
 - `reference_pdf_acquisition`
 - `llm` configuration
 
+If the installed environment should also hand repository-specific skills to the agent runtime, export them immediately:
+
+```bash
+rks skills list
+rks skills export ./rks-agent-kit
+```
+
+This creates:
+
+- `./rks-agent-kit/skills/`
+- `./rks-agent-kit/skills-index.json`
+- `./rks-agent-kit/AGENTS.md`
+- `./rks-agent-kit/CLAUDE.md`
+
+Recommended handoff:
+
+- Codex: use `AGENTS.md` plus `skills/`
+- Claude Code: use `CLAUDE.md` plus `skills/`
+- other agent tools: consume `skills-index.json` and the raw `SKILL.md` files
+
 ## 4. Standard Agent Workflow
 
 A normal agent workflow is:

@@ -12,6 +12,7 @@ from rks.agent import (
     import_summary_result,
     import_text_result,
 )
+from rks.agent_skills import export_bundled_skills, list_bundled_skills
 from rks.config import config_path, load_app_config, load_llm_config, load_paths, write_default_config
 from rks.extraction import (
     extract_claims_for_paper,
@@ -62,6 +63,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_show_parser = config_subparsers.add_parser("show", help="Show the effective merged config.")
     config_show_parser.set_defaults(handler=handle_config_show)
+
+    skills_parser = subparsers.add_parser("skills", help="Inspect or export bundled agent skills.")
+    skills_subparsers = skills_parser.add_subparsers(dest="skills_command", required=True)
+
+    skills_list_parser = skills_subparsers.add_parser("list", help="List bundled agent skills.")
+    skills_list_parser.set_defaults(handler=handle_skills_list)
+
+    skills_export_parser = skills_subparsers.add_parser("export", help="Export bundled agent skills to a directory.")
+    skills_export_parser.add_argument("destination", type=Path, help="Directory to write the exported skill bundle into.")
+    skills_export_parser.set_defaults(handler=handle_skills_export)
 
     migrate_parser = subparsers.add_parser("migrate", help="Apply schema migrations and report the current version.")
     migrate_parser.set_defaults(handler=handle_migrate)
@@ -395,6 +406,22 @@ def handle_config_show(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
+    return 0
+
+
+def handle_skills_list(args: argparse.Namespace) -> int:
+    del args
+    payload = [
+        {"name": skill.name, "description": skill.description}
+        for skill in list_bundled_skills()
+    ]
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_skills_export(args: argparse.Namespace) -> int:
+    payload = export_bundled_skills(args.destination)
+    print(json.dumps(payload, indent=2))
     return 0
 
 
