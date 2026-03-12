@@ -294,6 +294,14 @@ rks status paper <paper_id>
 
 For agents, `status paper` is one of the most important overview surfaces.
 
+Read these fields first:
+
+- `readiness.current_level`
+- `missing_steps`
+- `blockers`
+- `suggested_next_commands`
+- `task_summary`
+
 ## 10. HTTP Usage
 
 ### 10.1 Start the service

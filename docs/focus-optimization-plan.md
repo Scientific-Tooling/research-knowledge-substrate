@@ -43,8 +43,8 @@ Goal:
 
 Work items:
 
-- [ ] define paper readiness levels such as `ingested`, `claims_ready`, `output_ready`, and `review_pending`
-- [ ] enrich `status paper` with missing steps, blockers, and suggested next commands
+- [x] define paper readiness levels such as `ingested`, `claims_ready`, `output_ready`, and `review_pending`
+- [x] enrich `status paper` with missing steps, blockers, and suggested next commands
 - [ ] introduce higher-level operations such as `prepare_paper_for_output`
 - [ ] persist agent execution reports as artifacts
 - [ ] add clearer failure-recovery guidance for queued or partially completed tasks

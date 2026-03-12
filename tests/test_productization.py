@@ -170,6 +170,15 @@ class ProductizationTest(unittest.TestCase):
                 self.assertIn("structured_claims", status_payload["artifacts"])
                 self.assertIn("source_pdf", status_payload)
                 self.assertEqual(status_payload["note_count"], 0)
+                self.assertEqual(status_payload["readiness"]["current_level"], "review_pending")
+                self.assertTrue(status_payload["readiness"]["levels"]["claims_ready"])
+                self.assertFalse(status_payload["readiness"]["levels"]["output_ready"])
+                self.assertEqual(status_payload["review"]["claim_count"], 1)
+                self.assertEqual(status_payload["review"]["inferred_relation_count"], 1)
+                self.assertIn("methods_missing", {item["code"] for item in status_payload["missing_steps"]})
+                self.assertIn("summary_missing", {item["code"] for item in status_payload["missing_steps"]})
+                self.assertIn(f"rks extract methods {paper_id}", status_payload["suggested_next_commands"])
+                self.assertIn(f"rks summarize paper {paper_id}", status_payload["suggested_next_commands"])
 
                 _, _, add_note_body = dispatch_post_request(
                     f"/api/papers/{paper_id}/notes",
@@ -194,6 +203,7 @@ class ProductizationTest(unittest.TestCase):
                 _, _, reviewed_status_body = dispatch_get_request(f"/api/status/{paper_id}")
                 reviewed_status_payload = json.loads(reviewed_status_body.decode("utf-8"))
                 self.assertEqual(reviewed_status_payload["note_count"], 1)
+                self.assertEqual(reviewed_status_payload["readiness"]["current_level"], "review_pending")
 
                 claims_payload = json.loads(run_cli("claims", paper_id, cwd=tmp_path).stdout)
                 claim_id = claims_payload[0]["id"]
@@ -223,6 +233,10 @@ class ProductizationTest(unittest.TestCase):
                 _, _, reviewed_relations_body = dispatch_get_request(f"/api/claims/{claim_id}/relations")
                 reviewed_relations_payload = json.loads(reviewed_relations_body.decode("utf-8"))
                 self.assertEqual(len(reviewed_relations_payload["reviewed_relations"]), 1)
+
+                _, _, after_review_status_body = dispatch_get_request(f"/api/status/{paper_id}")
+                after_review_status_payload = json.loads(after_review_status_body.decode("utf-8"))
+                self.assertEqual(after_review_status_payload["review"]["reviewed_relation_count"], 1)
 
                 _, _, retract_body = dispatch_post_request(
                     "/api/review/claim-relations/retract",

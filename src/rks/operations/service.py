@@ -49,23 +49,40 @@ class ResearchOperations:
     def paper_status(self, paper_id: str) -> dict:
         paper = self.papers.get_paper(paper_id)
         artifacts = self.papers.get_artifacts_for_paper(paper_id)
+        claims = self.claims.list_claims_for_paper(paper_id)
         notes = self.notes.list_notes_for_target(target_id=paper_id, target_type="paper")
         tasks = self.tasks.list_tasks(paper_id=paper_id)
         artifact_types = {artifact.artifact_type for artifact in artifacts}
         task_summary = {}
         for task in tasks:
             task_summary[task.status] = task_summary.get(task.status, 0) + 1
+        stages = {
+            "text": "extracted_text" in artifact_types,
+            "claims": "structured_claims" in artifact_types,
+            "methods": "methods" in artifact_types,
+            "datasets": "datasets" in artifact_types,
+            "summary": "paper_summary" in artifact_types,
+            "citations": "citations" in artifact_types,
+        }
+        review = _review_status(self.query, claims)
+        readiness = _paper_readiness(stages, review)
+        blockers = _status_blockers(paper, stages, tasks)
+        missing_steps = _missing_steps(paper, stages, review)
+        suggested_next_commands = _suggested_next_commands(
+            paper=paper,
+            stages=stages,
+            review=review,
+            tasks=tasks,
+        )
         return {
             "paper": _paper_payload(paper),
             "artifacts": sorted(artifact_types),
-            "stages": {
-                "text": "extracted_text" in artifact_types,
-                "claims": "structured_claims" in artifact_types,
-                "methods": "methods" in artifact_types,
-                "datasets": "datasets" in artifact_types,
-                "summary": "paper_summary" in artifact_types,
-                "citations": "citations" in artifact_types,
-            },
+            "stages": stages,
+            "readiness": readiness,
+            "review": review,
+            "missing_steps": missing_steps,
+            "blockers": blockers,
+            "suggested_next_commands": suggested_next_commands,
             "source_pdf": _source_pdf_status(paper, artifacts),
             "note_count": len(notes),
             "task_summary": task_summary,
@@ -220,3 +237,174 @@ def _source_pdf_status(paper, artifacts) -> dict:
         "path": paper.pdf_path,
         "acquisition": acquisition,
     }
+
+
+def _review_status(query: QueryService, claims: list) -> dict:
+    reviewed_keys = set()
+    inferred_keys = set()
+    pending_claim_ids = []
+    for claim in claims:
+        relations = query.claim_relations(claim.id)
+        if relations["inferred_relations"]:
+            pending_claim_ids.append(claim.id)
+        for relation in relations["reviewed_relations"]:
+            reviewed_keys.add(_relation_key(claim.id, relation))
+        for relation in relations["inferred_relations"]:
+            inferred_keys.add(_relation_key(claim.id, relation))
+    return {
+        "claim_count": len(claims),
+        "reviewed_relation_count": len(reviewed_keys),
+        "inferred_relation_count": len(inferred_keys),
+        "pending_claim_ids": pending_claim_ids[:5],
+        "review_pending": bool(inferred_keys),
+    }
+
+
+def _paper_readiness(stages: dict, review: dict) -> dict:
+    levels = {
+        "ingested": True,
+        "text_ready": stages["text"],
+        "claims_ready": stages["claims"],
+        "graph_ready": stages["claims"] and (stages["methods"] or stages["datasets"] or stages["citations"]),
+        "output_ready": stages["claims"] and stages["summary"],
+        "review_pending": review["review_pending"],
+    }
+    current_level = "ingested"
+    if levels["review_pending"]:
+        current_level = "review_pending"
+    elif levels["output_ready"]:
+        current_level = "output_ready"
+    elif levels["graph_ready"]:
+        current_level = "graph_ready"
+    elif levels["claims_ready"]:
+        current_level = "claims_ready"
+    elif levels["text_ready"]:
+        current_level = "text_ready"
+    return {
+        "current_level": current_level,
+        "levels": levels,
+    }
+
+
+def _missing_steps(paper, stages: dict, review: dict) -> list[dict]:
+    missing = []
+    if not stages["text"]:
+        missing.append(
+            {
+                "code": "text_artifact_missing",
+                "message": "No extracted text artifact is stored for this paper yet.",
+            }
+        )
+    if not stages["claims"]:
+        missing.append(
+            {
+                "code": "claims_missing",
+                "message": "No structured claim artifact is stored for this paper yet.",
+            }
+        )
+    if stages["claims"] and not stages["methods"]:
+        missing.append(
+            {
+                "code": "methods_missing",
+                "message": "Method structure is still missing for this paper.",
+            }
+        )
+    if stages["claims"] and not stages["datasets"]:
+        missing.append(
+            {
+                "code": "datasets_missing",
+                "message": "Dataset structure is still missing for this paper.",
+            }
+        )
+    if stages["claims"] and not stages["summary"]:
+        missing.append(
+            {
+                "code": "summary_missing",
+                "message": "No paper summary artifact is stored yet.",
+            }
+        )
+    if not paper.pdf_path and not stages["text"]:
+        missing.append(
+            {
+                "code": "source_pdf_unavailable",
+                "message": "No local source PDF is attached, so text extraction may be blocked.",
+            }
+        )
+    if review["review_pending"]:
+        missing.append(
+            {
+                "code": "relation_review_pending",
+                "message": "The paper has inferred claim relations that have not been reviewed yet.",
+            }
+        )
+    return missing
+
+
+def _status_blockers(paper, stages: dict, tasks: list) -> list[dict]:
+    blockers = []
+    if not paper.pdf_path and not stages["text"]:
+        blockers.append(
+            {
+                "severity": "warning",
+                "code": "no_local_source_pdf",
+                "message": "No local PDF or extracted text is available, which blocks local text extraction.",
+            }
+        )
+    for task in tasks:
+        if task.status == "failed":
+            blockers.append(
+                {
+                    "severity": "error",
+                    "code": "task_failed",
+                    "message": f"{task.task_type} failed and should be inspected before continuing.",
+                    "task_id": task.id,
+                }
+            )
+        elif task.status in {"queued", "running"}:
+            blockers.append(
+                {
+                    "severity": "info",
+                    "code": "task_in_progress",
+                    "message": f"{task.task_type} is still {task.status}. Wait for the result or import it when ready.",
+                    "task_id": task.id,
+                }
+            )
+    return blockers
+
+
+def _suggested_next_commands(*, paper, stages: dict, review: dict, tasks: list) -> list[str]:
+    commands: list[str] = []
+    if not stages["text"]:
+        if paper.pdf_path:
+            commands.append(f"rks extract text {paper.id}")
+        elif paper.doi:
+            commands.append(f"rks ingest doi {paper.doi}")
+        elif paper.arxiv_id:
+            commands.append(f"rks ingest arxiv {paper.arxiv_id}")
+    if stages["text"] and not stages["claims"]:
+        commands.append(f"rks extract claims {paper.id}")
+    if stages["claims"] and not stages["methods"]:
+        commands.append(f"rks extract methods {paper.id}")
+    if stages["claims"] and not stages["datasets"]:
+        commands.append(f"rks extract datasets {paper.id}")
+    if stages["claims"] and not stages["summary"]:
+        commands.append(f"rks summarize paper {paper.id}")
+    if review["review_pending"]:
+        commands.append(f"rks claims {paper.id}")
+    for task in tasks:
+        if task.status in {"queued", "running", "failed"}:
+            commands.append(f"rks tasks show {task.id}")
+    deduped = []
+    seen = set()
+    for command in commands:
+        if command in seen:
+            continue
+        seen.add(command)
+        deduped.append(command)
+    return deduped[:8]
+
+
+def _relation_key(anchor_claim_id: str, relation: dict) -> tuple[str, tuple[str, str]]:
+    other_claim_id = relation["claim"]["id"]
+    pair = tuple(sorted((anchor_claim_id, other_claim_id)))
+    return relation["relation_type"], pair

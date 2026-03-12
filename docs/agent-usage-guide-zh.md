@@ -299,6 +299,14 @@ rks status paper <paper_id>
 
 对 agent 来说，`status paper` 是最重要的综合检查入口之一。
 
+优先看这些字段：
+
+- `readiness.current_level`
+- `missing_steps`
+- `blockers`
+- `suggested_next_commands`
+- `task_summary`
+
 ## 10. HTTP 接口使用方式
 
 ### 10.1 启动服务

@@ -121,6 +121,17 @@ class ReferenceIngestionTest(unittest.TestCase):
             payload = json.loads(acquisition_artifact.metadata_json)
             self.assertEqual(payload["status"], "skipped")
             self.assertFalse(repo.get_paper(paper.id).pdf_path)
+            previous_cwd = Path.cwd()
+            os.chdir(root)
+            try:
+                _, _, status_body = dispatch_get_request(f"/api/status/{paper.id}")
+            finally:
+                os.chdir(previous_cwd)
+            status_payload = json.loads(status_body.decode("utf-8"))
+            self.assertEqual(status_payload["readiness"]["current_level"], "ingested")
+            self.assertIn("source_pdf_unavailable", {item["code"] for item in status_payload["missing_steps"]})
+            self.assertIn("no_local_source_pdf", {item["code"] for item in status_payload["blockers"]})
+            self.assertIn(f"rks ingest arxiv {paper.arxiv_id}", status_payload["suggested_next_commands"])
             conn.close()
 
 

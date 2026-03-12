@@ -374,6 +374,10 @@ rks status paper <paper_id>
 
 - artifacts
 - stages
+- readiness level
+- missing steps
+- blockers
+- suggested next commands
 - source PDF 状态
 - 任务状态
 
