@@ -37,6 +37,8 @@ def summarize_paper_heuristic(
     payload = {
         "summary": " ".join(sentences).strip() or f"{paper.title} has no available summary yet.",
         "evidence_claim_ids": [claim.id for claim in claims[:5]],
+        "evidence_paper_ids": [paper.id],
+        "citations": [{"claim_id": claim.id, "paper_id": paper.id} for claim in claims[:5]],
         "open_questions": [] if claims else ["No extracted claims are available yet."],
         "mode": "heuristic",
     }
@@ -108,6 +110,8 @@ def persist_summary_artifact(
         "path": artifact.path,
         "summary": payload["summary"],
         "evidence_claim_ids": payload.get("evidence_claim_ids", []),
+        "evidence_paper_ids": payload.get("evidence_paper_ids", []),
+        "citations": payload.get("citations", []),
         "open_questions": payload.get("open_questions", []),
     }
 

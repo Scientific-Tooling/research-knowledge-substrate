@@ -90,12 +90,15 @@ def create_summary_request(
         paper_id=paper_id,
         instruction=(
             "Write a concise research summary grounded in the input claims and concepts. "
-            "Return JSON with keys `summary`, `evidence_claim_ids`, and `open_questions`."
+            "Return JSON with keys `summary`, `evidence_claim_ids`, `evidence_paper_ids`, "
+            "`citations`, and `open_questions`."
         ),
         input_payload=build_summary_input(repo, claim_repo, concept_repo, paper_id),
         expected_output_schema={
             "summary": "string",
             "evidence_claim_ids": ["string"],
+            "evidence_paper_ids": ["string"],
+            "citations": [{"claim_id": "string", "paper_id": "string"}],
             "open_questions": ["string"],
         },
     )

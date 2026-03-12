@@ -6,7 +6,7 @@ Status as of 2026-03-12:
 
 - [x] Phase 1: Quality Hardening
 - [x] Phase 2: Research Graph Expansion
-- [ ] Phase 3: Retrieval and Reasoning Upgrade
+- [x] Phase 3: Retrieval and Reasoning Upgrade
 - [ ] Phase 4: Agent Workflow Maturity
 - [ ] Phase 5: Productization Layer
 
@@ -77,18 +77,18 @@ Make the substrate genuinely useful for research questions rather than only insp
 
 Priority work:
 
-- [ ] add embeddings for papers, claims, and concepts
-- [ ] add semantic retrieval alongside lexical search
-- [ ] implement more deterministic query templates
-- [ ] add contradiction, refinement, and support patterns between claims
-- [ ] improve summary and synthesis artifacts to cite specific claims and papers
-- [ ] add evidence aggregation views for concept- or claim-level questions
+- [x] add embeddings for papers, claims, and concepts
+- [x] add semantic retrieval alongside lexical search
+- [x] implement more deterministic query templates
+- [x] add contradiction, refinement, and support patterns between claims
+- [x] improve summary and synthesis artifacts to cite specific claims and papers
+- [x] add evidence aggregation views for concept- or claim-level questions
 
 Exit criteria:
 
-- [ ] local search combines lexical and semantic retrieval
-- [ ] users can answer more research-shaped questions without manual graph inspection
-- [ ] reasoning outputs are traceable back to stored objects
+- [x] local search combines lexical and semantic retrieval
+- [x] users can answer more research-shaped questions without manual graph inspection
+- [x] reasoning outputs are traceable back to stored objects
 
 ## Phase 4: Agent Workflow Maturity
 

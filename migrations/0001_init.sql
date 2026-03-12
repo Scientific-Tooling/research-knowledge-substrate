@@ -117,5 +117,6 @@ CREATE INDEX IF NOT EXISTS idx_claims_paper_id ON claims(paper_id);
 CREATE INDEX IF NOT EXISTS idx_methods_paper_id ON methods(paper_id);
 CREATE INDEX IF NOT EXISTS idx_datasets_paper_id ON datasets(paper_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_paper_id ON artifacts(paper_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_object ON embeddings(object_type, object_id);
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id, relation_type);
 CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id, relation_type);

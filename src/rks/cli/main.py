@@ -24,14 +24,15 @@ from rks.extraction import (
 )
 from rks.ingestion import ingest_arxiv_reference, ingest_doi_reference, ingest_pdf
 from rks.llm import ALL_EXTRACTION_MODES, run_dual_track_mode
-from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, OpenAICompatibleLlmProvider
-from rks.query import QueryService
+from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, LocalHashEmbeddingProvider, OpenAICompatibleLlmProvider
+from rks.query import QueryService, index_embeddings
 from rks.reasoning import summarize_paper_heuristic
 from rks.reasoning.summary import build_summary_input, persist_summary_artifact
 from rks.storage import (
     ClaimRepository,
     ConceptRepository,
     DatasetRepository,
+    EmbeddingRepository,
     EdgeRepository,
     MethodRepository,
     PaperRepository,
@@ -100,7 +101,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     search_parser = subparsers.add_parser("search", help="Run local text search across papers, claims, and concepts.")
     search_parser.add_argument("query", help="Search query text.")
+    search_parser.add_argument(
+        "--mode",
+        choices=("lexical", "semantic", "hybrid"),
+        default="hybrid",
+        help="Search mode. Hybrid combines lexical and local semantic retrieval.",
+    )
     search_parser.set_defaults(handler=handle_search)
+
+    index_parser = subparsers.add_parser("index", help="Build local derived indexes.")
+    index_subparsers = index_parser.add_subparsers(dest="index_command", required=True)
+
+    index_embeddings_parser = index_subparsers.add_parser("embeddings", help="Index local embeddings.")
+    index_embeddings_parser.add_argument("--paper-id", help="Optional paper ID to index incrementally.")
+    index_embeddings_parser.set_defaults(handler=handle_index_embeddings)
 
     summarize_parser = subparsers.add_parser("summarize", help="Generate or request reasoning outputs.")
     summarize_subparsers = summarize_parser.add_subparsers(dest="summarize_command", required=True)
@@ -177,6 +191,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     query_papers_supporting_parser.add_argument("claim_id", help="Claim ID, for example c_000001.")
     query_papers_supporting_parser.set_defaults(handler=handle_query_papers_supporting)
+
+    query_evidence_for_parser = query_subparsers.add_parser("evidence-for", help="Aggregate evidence for a concept or claim.")
+    query_evidence_for_parser.add_argument("target", help="Concept name, concept ID, or claim ID.")
+    query_evidence_for_parser.set_defaults(handler=handle_query_evidence_for)
+
+    query_claim_relations_parser = query_subparsers.add_parser(
+        "claim-relations",
+        help="List support/refinement/contradiction patterns around a claim.",
+    )
+    query_claim_relations_parser.add_argument("claim_id", help="Claim ID, for example c_000001.")
+    query_claim_relations_parser.set_defaults(handler=handle_query_claim_relations)
+
+    query_methods_for_parser = query_subparsers.add_parser("methods-for", help="List methods for a paper or concept.")
+    query_methods_for_parser.add_argument("target", help="Paper ID or concept name.")
+    query_methods_for_parser.set_defaults(handler=handle_query_methods_for)
+
+    query_datasets_for_parser = query_subparsers.add_parser("datasets-for", help="List datasets for a paper or method.")
+    query_datasets_for_parser.add_argument("target", help="Paper ID or method ID.")
+    query_datasets_for_parser.set_defaults(handler=handle_query_datasets_for)
 
     return parser
 
@@ -289,6 +322,8 @@ def handle_concepts(args: argparse.Namespace) -> int:
             edges=session.edges,
             methods=session.methods,
             datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
         )
         payload = query.concepts_for_paper(args.paper_id)
     print(json.dumps(payload, indent=2))
@@ -304,8 +339,24 @@ def handle_search(args: argparse.Namespace) -> int:
             edges=session.edges,
             methods=session.methods,
             datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
         )
-        payload = query.search(args.query)
+        payload = query.search(args.query, mode=args.mode)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_index_embeddings(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = index_embeddings(
+            papers=session.papers,
+            claims=session.claims,
+            concepts=session.concepts,
+            embeddings=session.embeddings,
+            paper_id=args.paper_id,
+            provider=LocalHashEmbeddingProvider(),
+        )
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -434,7 +485,7 @@ def handle_extract_text(args: argparse.Namespace) -> int:
 
 def handle_extract_claims(args: argparse.Namespace) -> int:
     with _open_session() as session:
-        payload = run_dual_track_mode(
+        claims_payload = run_dual_track_mode(
             args.mode,
             heuristic=lambda: _claims_payload(
                 args.paper_id,
@@ -466,6 +517,18 @@ def handle_extract_claims(args: argparse.Namespace) -> int:
                 "mode": args.mode,
             },
         )
+        if args.mode != "agent":
+            index_payload = index_embeddings(
+                papers=session.papers,
+                claims=session.claims,
+                concepts=session.concepts,
+                embeddings=session.embeddings,
+                paper_id=args.paper_id,
+                provider=LocalHashEmbeddingProvider(),
+            )
+            payload = {**claims_payload, "embedding_index": index_payload}
+        else:
+            payload = claims_payload
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -547,12 +610,21 @@ def handle_import_claims(args: argparse.Namespace) -> int:
             paper_id=args.paper_id,
             json_path=args.json_path,
         )
+        index_payload = index_embeddings(
+            papers=session.papers,
+            claims=session.claims,
+            concepts=session.concepts,
+            embeddings=session.embeddings,
+            paper_id=args.paper_id,
+            provider=LocalHashEmbeddingProvider(),
+        )
     print(
         json.dumps(
             {
                 "paper_id": args.paper_id,
                 "claim_count": len(claims),
                 "claim_ids": [claim.id for claim in claims],
+                "embedding_index": index_payload,
             },
             indent=2,
         )
@@ -576,6 +648,8 @@ def handle_query_claims_about(args: argparse.Namespace) -> int:
             edges=session.edges,
             methods=session.methods,
             datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
         )
         payload = query.claims_about(args.concept)
     print(json.dumps(payload, indent=2))
@@ -591,8 +665,78 @@ def handle_query_papers_supporting(args: argparse.Namespace) -> int:
             edges=session.edges,
             methods=session.methods,
             datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
         )
         payload = query.papers_supporting(args.claim_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_query_evidence_for(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        query = QueryService(
+            papers=session.papers,
+            claims=session.claims,
+            concepts=session.concepts,
+            edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
+        )
+        payload = query.evidence_for(args.target)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_query_claim_relations(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        query = QueryService(
+            papers=session.papers,
+            claims=session.claims,
+            concepts=session.concepts,
+            edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
+        )
+        payload = query.claim_relations(args.claim_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_query_methods_for(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        query = QueryService(
+            papers=session.papers,
+            claims=session.claims,
+            concepts=session.concepts,
+            edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
+        )
+        payload = query.methods_for(args.target)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_query_datasets_for(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        query = QueryService(
+            papers=session.papers,
+            claims=session.claims,
+            concepts=session.concepts,
+            edges=session.edges,
+            methods=session.methods,
+            datasets=session.datasets,
+            embeddings=session.embeddings,
+            embedding_provider=LocalHashEmbeddingProvider(),
+        )
+        payload = query.datasets_for(args.target)
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -623,6 +767,7 @@ class _Session:
         edges: EdgeRepository,
         methods: MethodRepository,
         datasets: DatasetRepository,
+        embeddings: EmbeddingRepository,
     ):
         self.papers = papers
         self.claims = claims
@@ -630,6 +775,7 @@ class _Session:
         self.edges = edges
         self.methods = methods
         self.datasets = datasets
+        self.embeddings = embeddings
 
 
 class _SessionContext:
@@ -644,6 +790,7 @@ class _SessionContext:
             edges=EdgeRepository(self.conn),
             methods=MethodRepository(self.conn),
             datasets=DatasetRepository(self.conn),
+            embeddings=EmbeddingRepository(self.conn),
         )
 
     def __exit__(self, exc_type, exc, tb) -> None:

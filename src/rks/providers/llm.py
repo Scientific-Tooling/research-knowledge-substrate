@@ -51,7 +51,7 @@ class OpenAICompatibleLlmProvider:
             "task": "summarize_paper",
             "instructions": [
                 "Return only JSON.",
-                "Return keys: summary, evidence_claim_ids, open_questions.",
+                "Return keys: summary, evidence_claim_ids, evidence_paper_ids, citations, open_questions.",
                 "The summary should be concise and grounded in the input evidence.",
             ],
             "input": summary_input,

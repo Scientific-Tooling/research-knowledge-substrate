@@ -232,3 +232,7 @@ class PaperRepository:
             (like, like, like),
         ).fetchall()
         return [PaperRecord(**dict(row)) for row in rows]
+
+    def list_papers(self) -> list[PaperRecord]:
+        rows = self.conn.execute("SELECT * FROM papers ORDER BY created_at ASC, id ASC").fetchall()
+        return [PaperRecord(**dict(row)) for row in rows]

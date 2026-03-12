@@ -18,10 +18,13 @@ The repository now has a hardened post-MVP base for extraction quality:
 - first-class `Method` and `Dataset` persistence
 - graph edge persistence for `proposes`, `uses`, `evaluated_on`, and `cites`
 - deterministic CLI queries for `claims-about` and `papers-supporting`
-- local search across papers, claims, and concepts
+- deterministic reasoning queries for evidence aggregation, claim relations, methods, and datasets
+- local hybrid search across papers, claims, concepts, methods, and datasets
 - normalized evidence payloads with section and character offsets
 - replay-stable claim IDs when extraction output is unchanged
 - artifact lineage metadata including extractor version and mode
+- local embeddings for papers, claims, and concepts
+- paper summaries with explicit claim and paper citations
 
 ## Implemented Milestones
 
@@ -32,10 +35,10 @@ The repository now has a hardened post-MVP base for extraction quality:
 - Milestone 4: first deterministic query templates
 - Phase 1: Quality Hardening
 - Phase 2: Research Graph Expansion
+- Phase 3: Retrieval and Reasoning Upgrade
 
 ## Remaining Work
 
-- add semantic retrieval and claim-relation reasoning
 - add batch and queue-based agent workflows
 - add config, migrations, export/import, and service surfaces
 

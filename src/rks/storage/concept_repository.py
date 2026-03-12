@@ -93,6 +93,10 @@ class ConceptRepository:
                 matches.append(record)
         return matches
 
+    def list_concepts(self) -> list[ConceptRecord]:
+        rows = self.conn.execute("SELECT * FROM concepts ORDER BY created_at ASC, id ASC").fetchall()
+        return [ConceptRecord(**dict(row)) for row in rows]
+
 
 def _infer_parent_term(term: str) -> str | None:
     parts = term.split()
