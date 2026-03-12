@@ -104,6 +104,20 @@ If acquisition succeeds, also verify:
 
 - `data/papers/<paper_id>/source.pdf` exists
 
+If the paper needs operator context or a pending follow-up, persist that as a paper note instead of leaving it only in the agent transcript:
+
+```bash
+rks note add paper <paper_id> --content "Need manual comparison against the follow-up reproduction." --created-by agent:review
+rks note list paper <paper_id>
+```
+
+The HTTP equivalents are:
+
+```bash
+curl -s http://127.0.0.1:8765/api/papers/<paper_id>/notes
+curl -s -X POST http://127.0.0.1:8765/api/papers/<paper_id>/notes -H 'Content-Type: application/json' -d '{"content":"Need manual comparison against the follow-up reproduction.","created_by":"agent:review"}'
+```
+
 ## 6. Agent Request / Import Loops
 
 For tasks that rely on an external agent, RKS exposes an `agent` mode with a request/import boundary.

@@ -103,6 +103,16 @@ class ConceptRecord:
 
 
 @dataclass(frozen=True)
+class NoteRecord:
+    id: str
+    target_id: str
+    target_type: str
+    content: str
+    created_by: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class EdgeRecord:
     id: str
     source_id: str

@@ -78,11 +78,20 @@ HTTP inspection and review endpoints:
 
 ```bash
 curl -s http://127.0.0.1:8765/api/status/<paper_id>
+curl -s http://127.0.0.1:8765/api/papers/<paper_id>/notes
 curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
 curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
 curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=<encoded-topic>"
+curl -s -X POST http://127.0.0.1:8765/api/papers/<paper_id>/notes -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/promote -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/retract -H 'Content-Type: application/json' -d '{...}'
+```
+
+Persist operator context as a paper note when it needs to survive beyond the current session:
+
+```bash
+rks note add paper <paper_id> --content "Needs manual review of the benchmark split." --created-by agent:review
+rks note list paper <paper_id>
 ```
 
 Generate direct output surfaces:

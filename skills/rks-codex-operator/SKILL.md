@@ -78,6 +78,13 @@ For DOI or arXiv ingestion, explicitly inspect:
 - `source_pdf.acquisition.status`
 - `source_pdf_acquisition` artifact
 
+When a paper needs follow-up context, persist it as a paper note instead of leaving it only in the chat transcript:
+
+```bash
+rks note add paper <paper_id> --content "Need manual comparison with the contradiction case." --created-by agent:review
+rks note list paper <paper_id>
+```
+
 ### 4. Run query and review flows
 
 Inspect graph state:

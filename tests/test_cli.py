@@ -56,6 +56,29 @@ class CliSmokeTest(unittest.TestCase):
             self.assertIn("source_pdf", artifact_types)
             self.assertIn("extracted_text", artifact_types)
             self.assertIn("sections", artifact_types)
+            self.assertEqual(show_payload["notes"], [])
+
+            note_result = run_cli(
+                "note",
+                "add",
+                "paper",
+                payload["id"],
+                "--content",
+                "Focus on benchmark setup",
+                "--created-by",
+                "human:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(note_result.returncode, 0, note_result.stderr)
+            note_payload = json.loads(note_result.stdout)
+            self.assertEqual(note_payload["target_id"], payload["id"])
+            self.assertEqual(note_payload["created_by"], "human:test")
+
+            notes_result = run_cli("note", "list", "paper", payload["id"], cwd=tmp_path)
+            self.assertEqual(notes_result.returncode, 0, notes_result.stderr)
+            notes_payload = json.loads(notes_result.stdout)
+            self.assertEqual(len(notes_payload), 1)
+            self.assertEqual(notes_payload[0]["content"], "Focus on benchmark setup")
 
             extract_claims_result = run_cli("extract", "claims", payload["id"], cwd=tmp_path)
             self.assertEqual(extract_claims_result.returncode, 0, extract_claims_result.stderr)
@@ -112,6 +135,7 @@ class CliSmokeTest(unittest.TestCase):
             self.assertEqual(final_artifact_types.count("structured_claims"), 1)
             self.assertEqual(final_artifact_types.count("claim_candidates"), 1)
             self.assertEqual(final_artifact_types.count("normalized_claims"), 1)
+            self.assertEqual(len(final_show_payload["notes"]), 1)
 
 
 if __name__ == "__main__":

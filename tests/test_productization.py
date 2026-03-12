@@ -46,6 +46,16 @@ class ProductizationTest(unittest.TestCase):
             ingest_result = run_cli("ingest", "pdf", str(pdf_path), cwd=source)
             self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
             paper_id = json.loads(ingest_result.stdout)["id"]
+            add_note_result = run_cli(
+                "note",
+                "add",
+                "paper",
+                paper_id,
+                "--content",
+                "Recheck baseline numbers before export",
+                cwd=source,
+            )
+            self.assertEqual(add_note_result.returncode, 0, add_note_result.stderr)
             self.assertEqual(run_cli("extract", "claims", paper_id, cwd=source).returncode, 0)
 
             migrate_result = run_cli("migrate", cwd=source)
@@ -65,6 +75,8 @@ class ProductizationTest(unittest.TestCase):
             self.assertEqual(show_result.returncode, 0, show_result.stderr)
             show_payload = json.loads(show_result.stdout)
             self.assertEqual(show_payload["id"], paper_id)
+            self.assertEqual(len(show_payload["notes"]), 1)
+            self.assertEqual(show_payload["notes"][0]["content"], "Recheck baseline numbers before export")
 
             claims_result = run_cli("claims", paper_id, cwd=target)
             self.assertEqual(claims_result.returncode, 0, claims_result.stderr)
@@ -141,6 +153,31 @@ class ProductizationTest(unittest.TestCase):
                 status_payload = json.loads(status_body.decode("utf-8"))
                 self.assertIn("structured_claims", status_payload["artifacts"])
                 self.assertIn("source_pdf", status_payload)
+                self.assertEqual(status_payload["note_count"], 0)
+
+                _, _, add_note_body = dispatch_post_request(
+                    f"/api/papers/{paper_id}/notes",
+                    json.dumps(
+                        {
+                            "content": "Compare with the contradicted follow-up paper",
+                            "created_by": "agent:http",
+                        }
+                    ).encode("utf-8"),
+                )
+                add_note_payload = json.loads(add_note_body.decode("utf-8"))
+                self.assertEqual(add_note_payload["created_by"], "agent:http")
+
+                _, _, paper_body = dispatch_get_request(f"/api/papers/{paper_id}")
+                paper_payload = json.loads(paper_body.decode("utf-8"))
+                self.assertEqual(len(paper_payload["notes"]), 1)
+
+                _, _, notes_body = dispatch_get_request(f"/api/papers/{paper_id}/notes")
+                notes_payload = json.loads(notes_body.decode("utf-8"))
+                self.assertEqual(notes_payload[0]["content"], "Compare with the contradicted follow-up paper")
+
+                _, _, reviewed_status_body = dispatch_get_request(f"/api/status/{paper_id}")
+                reviewed_status_payload = json.loads(reviewed_status_body.decode("utf-8"))
+                self.assertEqual(reviewed_status_payload["note_count"], 1)
 
                 claims_payload = json.loads(run_cli("claims", paper_id, cwd=tmp_path).stdout)
                 claim_id = claims_payload[0]["id"]

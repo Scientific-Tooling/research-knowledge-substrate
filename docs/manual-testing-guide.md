@@ -130,6 +130,22 @@ Filesystem checks:
 - `data/papers/<paper_id>/source_pdf_acquisition.json`
 - `data/papers/<paper_id>/source.pdf` when acquisition succeeded
 
+## 4.5 Optional: Paper notes
+
+After any paper is ingested, verify note entry and retrieval:
+
+```bash
+rks note add paper <paper_id> --content "Manual test note" --created-by human:test
+rks note list paper <paper_id>
+rks show paper <paper_id>
+```
+
+Expected result:
+
+- `note add` returns a new `n_...` ID
+- `note list` returns the stored note
+- `show paper` includes the note under `notes`
+
 ## 5. Scenario 3: Claim Relation Candidate and Review Loop
 
 Use two or three papers to build comparable claims.

@@ -19,6 +19,7 @@ class ResearchOperations:
         papers,
         claims,
         concepts,
+        notes,
         edges,
         methods,
         datasets,
@@ -28,6 +29,7 @@ class ResearchOperations:
         self.papers = papers
         self.claims = claims
         self.concepts = concepts
+        self.notes = notes
         self.edges = edges
         self.methods = methods
         self.datasets = datasets
@@ -47,6 +49,7 @@ class ResearchOperations:
     def paper_status(self, paper_id: str) -> dict:
         paper = self.papers.get_paper(paper_id)
         artifacts = self.papers.get_artifacts_for_paper(paper_id)
+        notes = self.notes.list_notes_for_target(target_id=paper_id, target_type="paper")
         tasks = self.tasks.list_tasks(paper_id=paper_id)
         artifact_types = {artifact.artifact_type for artifact in artifacts}
         task_summary = {}
@@ -64,12 +67,32 @@ class ResearchOperations:
                 "citations": "citations" in artifact_types,
             },
             "source_pdf": _source_pdf_status(paper, artifacts),
+            "note_count": len(notes),
             "task_summary": task_summary,
             "tasks": [_task_payload(task) for task in tasks],
         }
 
     def claim_relations(self, claim_id: str) -> dict:
         return self.query.claim_relations(claim_id)
+
+    def list_paper_notes(self, paper_id: str) -> list[dict]:
+        self.papers.get_paper(paper_id)
+        notes = self.notes.list_notes_for_target(target_id=paper_id, target_type="paper")
+        return [_note_payload(note) for note in notes]
+
+    def add_paper_note(self, paper_id: str, *, content: str, created_by: str = "human:user") -> dict:
+        self.papers.get_paper(paper_id)
+        normalized_content = content.strip()
+        if not normalized_content:
+            raise ValueError("content must not be empty")
+        note = self.notes.add_note(
+            target_id=paper_id,
+            target_type="paper",
+            content=normalized_content,
+            created_by=created_by,
+        )
+        self.papers.touch_paper(paper_id)
+        return _note_payload(note)
 
     def answer_question(self, question: str) -> dict:
         return build_research_answer(self.query, question)
@@ -172,6 +195,17 @@ def _edge_payload(edge) -> dict:
         "confidence": edge.confidence,
         "created_by": edge.created_by,
         "metadata": json.loads(edge.metadata_json or "{}"),
+    }
+
+
+def _note_payload(note) -> dict:
+    return {
+        "id": note.id,
+        "target_id": note.target_id,
+        "target_type": note.target_type,
+        "content": note.content,
+        "created_by": note.created_by,
+        "created_at": note.created_at,
     }
 
 

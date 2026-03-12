@@ -81,6 +81,8 @@ Inspect the graph:
 
 ```bash
 rks show paper p_000001
+rks note add paper p_000001 --content "Revisit the evaluation protocol."
+rks note list paper p_000001
 rks claims p_000001
 rks concepts p_000001
 rks show claim c_000001

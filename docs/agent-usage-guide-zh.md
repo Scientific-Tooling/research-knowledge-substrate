@@ -104,6 +104,20 @@ rks status paper <paper_id>
 
 - `data/papers/<paper_id>/source.pdf` 存在
 
+如果需要把人工判断或后续动作挂到 paper 上，不要只留在 agent 对话里，直接写成 paper note：
+
+```bash
+rks note add paper <paper_id> --content "需要人工对照 follow-up reproduction。" --created-by agent:review
+rks note list paper <paper_id>
+```
+
+对应的 HTTP 入口：
+
+```bash
+curl -s http://127.0.0.1:8765/api/papers/<paper_id>/notes
+curl -s -X POST http://127.0.0.1:8765/api/papers/<paper_id>/notes -H 'Content-Type: application/json' -d '{"content":"需要人工对照 follow-up reproduction。","created_by":"agent:review"}'
+```
+
 ## 6. Agent 模式的 request / import 闭环
 
 对于需要外部 agent 产出的任务，RKS 用 `agent` 模式暴露 request/import 边界。

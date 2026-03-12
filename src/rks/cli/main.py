@@ -35,6 +35,7 @@ from rks.storage import (
     EmbeddingRepository,
     EdgeRepository,
     MethodRepository,
+    NoteRepository,
     PaperRepository,
     TaskRepository,
     connect_db,
@@ -117,6 +118,23 @@ def build_parser() -> argparse.ArgumentParser:
     show_dataset_parser = show_subparsers.add_parser("dataset", help="Show a stored dataset with edges.")
     show_dataset_parser.add_argument("dataset_id", help="Dataset ID, for example d_000001.")
     show_dataset_parser.set_defaults(handler=handle_show_dataset)
+
+    note_parser = subparsers.add_parser("note", help="Add or inspect user and agent notes.")
+    note_subparsers = note_parser.add_subparsers(dest="note_command", required=True)
+
+    note_add_parser = note_subparsers.add_parser("add", help="Add a note to a stored object.")
+    note_add_subparsers = note_add_parser.add_subparsers(dest="note_target", required=True)
+    note_add_paper_parser = note_add_subparsers.add_parser("paper", help="Add a note to a paper.")
+    note_add_paper_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    note_add_paper_parser.add_argument("--content", required=True, help="Note text to store.")
+    note_add_paper_parser.add_argument("--created-by", default="human:user", help="Note author label.")
+    note_add_paper_parser.set_defaults(handler=handle_note_add_paper)
+
+    note_list_parser = note_subparsers.add_parser("list", help="List notes for a stored object.")
+    note_list_subparsers = note_list_parser.add_subparsers(dest="note_target", required=True)
+    note_list_paper_parser = note_list_subparsers.add_parser("paper", help="List notes for a paper.")
+    note_list_paper_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    note_list_paper_parser.set_defaults(handler=handle_note_list_paper)
 
     claims_parser = subparsers.add_parser("claims", help="List extracted claims for a paper.")
     claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
@@ -478,9 +496,10 @@ def handle_batch_extract(args: argparse.Namespace) -> int:
 
 
 def handle_show_paper(args: argparse.Namespace) -> int:
-    with _open_repository() as repo:
-        paper = repo.get_paper(args.paper_id)
-        artifacts = repo.get_artifacts_for_paper(args.paper_id)
+    with _open_session() as session:
+        paper = session.papers.get_paper(args.paper_id)
+        artifacts = session.papers.get_artifacts_for_paper(args.paper_id)
+        notes = session.notes.list_notes_for_target(target_id=args.paper_id, target_type="paper")
     payload = _paper_to_payload(paper)
     payload["artifacts"] = [
         {
@@ -493,6 +512,25 @@ def handle_show_paper(args: argparse.Namespace) -> int:
         }
         for artifact in artifacts
     ]
+    payload["notes"] = [_note_payload(note) for note in notes]
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_note_add_paper(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).add_paper_note(
+            args.paper_id,
+            content=args.content,
+            created_by=args.created_by,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_note_list_paper(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_paper_notes(args.paper_id)
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -1128,6 +1166,7 @@ class _Session:
         papers: PaperRepository,
         claims: ClaimRepository,
         concepts: ConceptRepository,
+        notes: NoteRepository,
         edges: EdgeRepository,
         methods: MethodRepository,
         datasets: DatasetRepository,
@@ -1137,6 +1176,7 @@ class _Session:
         self.papers = papers
         self.claims = claims
         self.concepts = concepts
+        self.notes = notes
         self.edges = edges
         self.methods = methods
         self.datasets = datasets
@@ -1153,6 +1193,7 @@ class _SessionContext:
             papers=PaperRepository(self.conn),
             claims=ClaimRepository(self.conn),
             concepts=ConceptRepository(self.conn),
+            notes=NoteRepository(self.conn),
             edges=EdgeRepository(self.conn),
             methods=MethodRepository(self.conn),
             datasets=DatasetRepository(self.conn),
@@ -1175,6 +1216,7 @@ def _operations(session: _Session) -> ResearchOperations:
         papers=session.papers,
         claims=session.claims,
         concepts=session.concepts,
+        notes=session.notes,
         edges=session.edges,
         methods=session.methods,
         datasets=session.datasets,
@@ -1268,6 +1310,17 @@ def _edge_payload(edge) -> dict:
         "confidence": edge.confidence,
         "created_by": edge.created_by,
         "metadata": json.loads(edge.metadata_json or "{}"),
+    }
+
+
+def _note_payload(note) -> dict:
+    return {
+        "id": note.id,
+        "target_id": note.target_id,
+        "target_type": note.target_type,
+        "content": note.content,
+        "created_by": note.created_by,
+        "created_at": note.created_at,
     }
 
 

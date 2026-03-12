@@ -15,6 +15,7 @@ from rks.storage import (
     EmbeddingRepository,
     EdgeRepository,
     MethodRepository,
+    NoteRepository,
     PaperRepository,
     TaskRepository,
     connect_db,
@@ -73,6 +74,7 @@ class _RepositoryContext:
             "papers": PaperRepository(self.conn),
             "claims": ClaimRepository(self.conn),
             "concepts": ConceptRepository(self.conn),
+            "notes": NoteRepository(self.conn),
             "edges": EdgeRepository(self.conn),
             "methods": MethodRepository(self.conn),
             "datasets": DatasetRepository(self.conn),
@@ -119,6 +121,7 @@ class _OperationsContext:
             papers=repos["papers"],
             claims=repos["claims"],
             concepts=repos["concepts"],
+            notes=repos["notes"],
             edges=repos["edges"],
             methods=repos["methods"],
             datasets=repos["datasets"],
@@ -222,11 +225,17 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_operations() as operations:
             payload = operations.claim_relations(claim_id)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/notes"):
+        paper_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            payload = operations.list_paper_notes(paper_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/papers/"):
         paper_id = parsed.path.rsplit("/", 1)[-1]
         with _open_repositories() as repos:
             paper = repos["papers"].get_paper(paper_id)
             artifacts = repos["papers"].get_artifacts_for_paper(paper_id)
+            notes = repos["notes"].list_notes_for_target(target_id=paper_id, target_type="paper")
             payload = {
                 "id": paper.id,
                 "title": paper.title,
@@ -234,6 +243,17 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
                 "source_ref": paper.source_ref,
                 "pdf_path": paper.pdf_path,
                 "artifacts": [artifact.artifact_type for artifact in artifacts],
+                "notes": [
+                    {
+                        "id": note.id,
+                        "target_id": note.target_id,
+                        "target_type": note.target_type,
+                        "content": note.content,
+                        "created_by": note.created_by,
+                        "created_at": note.created_at,
+                    }
+                    for note in notes
+                ],
                 "source_pdf": _source_pdf_status(paper, artifacts),
             }
         return 200, "application/json", json.dumps(payload).encode("utf-8")
@@ -275,4 +295,26 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
                 target_claim_id=payload["target_claim_id"],
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/notes"):
+        paper_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            response = operations.add_paper_note(
+                paper_id,
+                content=payload["content"],
+                created_by=payload.get("created_by", "human:http"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
     raise KeyError(path)
+
+
+def _source_pdf_status(paper, artifacts) -> dict:
+    acquisition = None
+    for artifact in artifacts:
+        if artifact.artifact_type == "source_pdf_acquisition":
+            acquisition = json.loads(artifact.metadata_json or "{}")
+            break
+    return {
+        "available": bool(paper.pdf_path),
+        "path": paper.pdf_path,
+        "acquisition": acquisition,
+    }

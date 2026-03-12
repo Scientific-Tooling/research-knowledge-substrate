@@ -227,6 +227,22 @@ rks status paper <paper_id>
 - `data/papers/<paper_id>/source_pdf_acquisition.json`
 - 如果成功下载，还应有 `data/papers/<paper_id>/source.pdf`
 
+## 4.5 可选：paper 笔记
+
+任意 paper ingest 完成后，可以顺手验证笔记能力：
+
+```bash
+rks note add paper <paper_id> --content "manual test note" --created-by human:test
+rks note list paper <paper_id>
+rks show paper <paper_id>
+```
+
+预期结果：
+
+- `note add` 返回新的 `n_...` ID
+- `note list` 能看到刚写入的内容
+- `show paper` 的 `notes` 字段包含这条笔记
+
 ## 5. 场景三：claim relation 的候选与审阅闭环
 
 这个场景建议用两到三个 paper 构造可对比的 claim。

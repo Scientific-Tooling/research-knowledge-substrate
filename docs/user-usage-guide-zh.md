@@ -72,6 +72,15 @@ rks show paper <paper_id>
 rks status paper <paper_id>
 ```
 
+如果你想把阅读判断直接挂在 paper 上，可以立刻写笔记：
+
+```bash
+rks note add paper <paper_id> --content "重点核对 benchmark split 和评估口径。"
+rks note list paper <paper_id>
+```
+
+`show paper` 现在也会返回 `notes` 字段，方便把 paper 记录和笔记一起看。
+
 ### 4.2 导入 DOI
 
 ```bash

@@ -72,6 +72,15 @@ rks show paper <paper_id>
 rks status paper <paper_id>
 ```
 
+Add a user note when you want to keep reading context with the paper:
+
+```bash
+rks note add paper <paper_id> --content "Focus on the benchmark split and evaluation caveats."
+rks note list paper <paper_id>
+```
+
+`show paper` also includes a `notes` field so you can review the paper record and your notes together.
+
 ### 4.2 DOI
 
 ```bash
