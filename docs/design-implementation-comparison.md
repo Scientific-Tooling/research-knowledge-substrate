@@ -37,6 +37,7 @@ What is intentionally different:
 - the implementation remains much more pragmatic than some design docs suggest
 - several “logical layers” are still collapsed into a local `SQLite + filesystem` deployment model
 - the stack differs from the original MVP recommendations in several places, especially CLI, validation, HTTP, and test tooling
+- reference ingestion is intentionally bounded to stable identifiers, canonical reference URLs, direct PDF URLs, and local files rather than general web crawling
 
 ## Comparison Scale
 

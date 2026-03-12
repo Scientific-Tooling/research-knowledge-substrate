@@ -24,10 +24,22 @@ from rks.extraction import (
     extract_text_for_paper,
     extract_text_with_llm,
 )
-from rks.ingestion import ingest_arxiv_reference, ingest_doi_reference, ingest_pdf
+from rks.ingestion import (
+    ingest_arxiv_reference,
+    ingest_doi_reference,
+    ingest_pdf,
+    ingest_pmid_reference,
+    ingest_url_reference,
+)
 from rks.llm import ALL_EXTRACTION_MODES, run_dual_track_mode
 from rks.operations import ResearchOperations
-from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, LocalHashEmbeddingProvider, OpenAICompatibleLlmProvider
+from rks.providers import (
+    ArxivMetadataProvider,
+    CrossrefMetadataProvider,
+    LocalHashEmbeddingProvider,
+    OpenAICompatibleLlmProvider,
+    PubmedMetadataProvider,
+)
 from rks.query import QueryService, index_embeddings
 from rks.reasoning import summarize_paper_heuristic
 from rks.reasoning.summary import build_summary_input, persist_summary_artifact
@@ -99,6 +111,17 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_arxiv_parser = ingest_subparsers.add_parser("arxiv", help="Ingest an arXiv reference.")
     ingest_arxiv_parser.add_argument("arxiv_id", help="arXiv identifier, for example 1706.03762.")
     ingest_arxiv_parser.set_defaults(handler=handle_ingest_arxiv)
+
+    ingest_pmid_parser = ingest_subparsers.add_parser("pmid", help="Ingest a PubMed reference by PMID.")
+    ingest_pmid_parser.add_argument("pmid", help="PubMed identifier, for example 31452104.")
+    ingest_pmid_parser.set_defaults(handler=handle_ingest_pmid)
+
+    ingest_url_parser = ingest_subparsers.add_parser(
+        "url",
+        help="Ingest a paper from a canonical reference URL or direct PDF URL.",
+    )
+    ingest_url_parser.add_argument("url", help="DOI, arXiv, PubMed, or direct PDF URL.")
+    ingest_url_parser.set_defaults(handler=handle_ingest_url)
 
     batch_parser = subparsers.add_parser("batch", help="Run repeated ingestion or extraction operations.")
     batch_subparsers = batch_parser.add_subparsers(dest="batch_command", required=True)
@@ -736,6 +759,36 @@ def handle_ingest_arxiv(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_ingest_pmid(args: argparse.Namespace) -> int:
+    app_config = load_app_config()
+    with _open_repository() as repo:
+        paper = ingest_pmid_reference(
+            repo=repo,
+            paths=load_paths(),
+            pmid=args.pmid,
+            provider=PubmedMetadataProvider(),
+            acquire_pdf=app_config.reference_pdf_acquisition == "auto",
+        )
+    print(json.dumps(_paper_to_payload(paper), indent=2))
+    return 0
+
+
+def handle_ingest_url(args: argparse.Namespace) -> int:
+    app_config = load_app_config()
+    with _open_repository() as repo:
+        paper = ingest_url_reference(
+            repo=repo,
+            paths=load_paths(),
+            url=args.url,
+            crossref_provider=CrossrefMetadataProvider(),
+            arxiv_provider=ArxivMetadataProvider(),
+            pubmed_provider=PubmedMetadataProvider(),
+            acquire_pdf=app_config.reference_pdf_acquisition == "auto",
+        )
+    print(json.dumps(_paper_to_payload(paper), indent=2))
+    return 0
+
+
 def handle_batch_ingest(args: argparse.Namespace) -> int:
     manifest = _load_manifest(args.manifest_path)
     results = []
@@ -766,6 +819,24 @@ def handle_batch_ingest(args: argparse.Namespace) -> int:
                         paths=load_paths(),
                         arxiv_id=item["source_ref"],
                         provider=ArxivMetadataProvider(),
+                        acquire_pdf=app_config.reference_pdf_acquisition == "auto",
+                    )
+                elif source_type == "pmid":
+                    paper = ingest_pmid_reference(
+                        repo=repo,
+                        paths=load_paths(),
+                        pmid=item["source_ref"],
+                        provider=PubmedMetadataProvider(),
+                        acquire_pdf=app_config.reference_pdf_acquisition == "auto",
+                    )
+                elif source_type == "url":
+                    paper = ingest_url_reference(
+                        repo=repo,
+                        paths=load_paths(),
+                        url=item["source_ref"],
+                        crossref_provider=CrossrefMetadataProvider(),
+                        arxiv_provider=ArxivMetadataProvider(),
+                        pubmed_provider=PubmedMetadataProvider(),
                         acquire_pdf=app_config.reference_pdf_acquisition == "auto",
                     )
                 else:

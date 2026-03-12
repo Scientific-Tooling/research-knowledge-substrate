@@ -8,6 +8,7 @@ This document turns the current product direction into an execution checklist. T
 - Persist only reviewed or explicitly promoted semantic facts.
 - Keep the system agent-friendly through stable CLI and HTTP operations.
 - Avoid spending roadmap capacity on richer frontend presentation unless it directly supports review, recovery, or evidence inspection.
+- Keep literature discovery and non-canonical retrieval outside RKS. External agents should resolve messy web inputs into stable identifiers, canonical URLs, direct PDF URLs, or local files before ingestion.
 
 ## Priority 0: Input Completeness and Failure Visibility
 

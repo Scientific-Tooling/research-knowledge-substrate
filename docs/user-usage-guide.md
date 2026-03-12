@@ -6,7 +6,7 @@ This document explains how a human user can operate RKS directly through the CLI
 
 This guide is suitable when you want to:
 
-- ingest local PDFs, DOI references, or arXiv references
+- ingest local PDFs, DOI/arXiv/PubMed references, or canonical paper URLs
 - inspect papers, claims, concepts, methods, and datasets
 - run search, query, and summarization flows
 - manually review claim relations
@@ -123,7 +123,30 @@ This path can create:
 rks ingest arxiv 1706.03762
 ```
 
-After DOI or arXiv ingestion, inspect:
+### 4.4 PMID
+
+```bash
+rks ingest pmid 31452104
+```
+
+This path stores PubMed metadata as XML and creates a paper from the PubMed record.
+
+### 4.5 URL
+
+```bash
+rks ingest url https://doi.org/10.48550/arXiv.1706.03762
+rks ingest url https://pubmed.ncbi.nlm.nih.gov/31452104/
+rks ingest url https://example.org/paper.pdf
+```
+
+Supported URL classes are:
+
+- DOI resolver URLs
+- arXiv abstract or PDF URLs
+- PubMed paper URLs
+- direct PDF URLs
+
+After DOI, arXiv, PMID, or URL ingestion, inspect:
 
 ```bash
 rks status paper <paper_id>
@@ -447,7 +470,9 @@ Example manifest:
 ```json
 [
   {"source_type": "pdf", "path": "paper-1.pdf"},
-  {"source_type": "doi", "source_ref": "10.48550/arXiv.1706.03762"}
+  {"source_type": "doi", "source_ref": "10.48550/arXiv.1706.03762"},
+  {"source_type": "pmid", "source_ref": "31452104"},
+  {"source_type": "url", "source_ref": "https://pubmed.ncbi.nlm.nih.gov/31452104/"}
 ]
 ```
 

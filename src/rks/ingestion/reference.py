@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import re
+import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 from rks.config import AppPaths
 from rks.extraction import persist_citations_for_paper
 from rks.extraction.text import write_text_artifact
+from rks.ingestion.pdf import ingest_pdf_url
 from rks.storage import EdgeRepository, PaperRepository
 from rks.utils import ensure_dir
 
@@ -47,6 +51,76 @@ def ingest_arxiv_reference(
         metadata_payload=metadata.get("raw", metadata),
         acquire_pdf=acquire_pdf,
         downloader=downloader or _download_binary,
+    )
+
+
+def ingest_pmid_reference(
+    repo: PaperRepository,
+    paths: AppPaths,
+    pmid: str,
+    provider,
+    acquire_pdf: bool = True,
+    downloader=None,
+) -> object:
+    metadata = provider.fetch(pmid)
+    return _ingest_reference(
+        repo=repo,
+        edge_repo=EdgeRepository(repo.conn),
+        paths=paths,
+        source_type="pmid",
+        source_ref=pmid,
+        metadata=metadata,
+        metadata_format="xml" if isinstance(metadata.get("raw"), str) else "json",
+        metadata_payload=metadata.get("raw", metadata),
+        acquire_pdf=acquire_pdf,
+        downloader=downloader or _download_binary,
+    )
+
+
+def ingest_url_reference(
+    repo: PaperRepository,
+    paths: AppPaths,
+    url: str,
+    *,
+    crossref_provider,
+    arxiv_provider,
+    pubmed_provider,
+    acquire_pdf: bool = True,
+    downloader=None,
+):
+    resolved = resolve_reference_url(url)
+    if resolved.kind == "doi":
+        return ingest_doi_reference(
+            repo=repo,
+            paths=paths,
+            doi=resolved.value,
+            provider=crossref_provider,
+            acquire_pdf=acquire_pdf,
+            downloader=downloader,
+        )
+    if resolved.kind == "arxiv":
+        return ingest_arxiv_reference(
+            repo=repo,
+            paths=paths,
+            arxiv_id=resolved.value,
+            provider=arxiv_provider,
+            acquire_pdf=acquire_pdf,
+            downloader=downloader,
+        )
+    if resolved.kind == "pmid":
+        return ingest_pmid_reference(
+            repo=repo,
+            paths=paths,
+            pmid=resolved.value,
+            provider=pubmed_provider,
+            acquire_pdf=acquire_pdf,
+            downloader=downloader,
+        )
+    return ingest_pdf_url(
+        repo=repo,
+        paths=paths,
+        url=resolved.value,
+        downloader=downloader,
     )
 
 
@@ -225,3 +299,58 @@ def _download_binary(url: str) -> bytes:
 
 def _looks_like_pdf(content: bytes) -> bool:
     return b"%PDF" in content[:1024]
+
+
+@dataclass(frozen=True)
+class ResolvedReferenceUrl:
+    kind: str
+    value: str
+
+
+def resolve_reference_url(url: str) -> ResolvedReferenceUrl:
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Unsupported URL scheme for reference ingestion: {url}")
+
+    host = parsed.netloc.lower()
+    path = parsed.path or ""
+
+    doi = _extract_doi_from_url(host, path)
+    if doi:
+        return ResolvedReferenceUrl(kind="doi", value=doi)
+
+    arxiv_id = _extract_arxiv_id_from_url(host, path)
+    if arxiv_id:
+        return ResolvedReferenceUrl(kind="arxiv", value=arxiv_id)
+
+    pmid = _extract_pmid_from_url(host, path)
+    if pmid:
+        return ResolvedReferenceUrl(kind="pmid", value=pmid)
+
+    return ResolvedReferenceUrl(kind="pdf", value=url)
+
+
+def _extract_doi_from_url(host: str, path: str) -> str | None:
+    if host not in {"doi.org", "dx.doi.org", "www.doi.org"}:
+        return None
+    doi = urllib.parse.unquote(path.lstrip("/")).strip()
+    return doi or None
+
+
+def _extract_arxiv_id_from_url(host: str, path: str) -> str | None:
+    if host not in {"arxiv.org", "www.arxiv.org"}:
+        return None
+    match = re.match(r"^/(abs|pdf)/(.+?)(?:\.pdf)?/?$", path, re.IGNORECASE)
+    if not match:
+        return None
+    return urllib.parse.unquote(match.group(2)).strip() or None
+
+
+def _extract_pmid_from_url(host: str, path: str) -> str | None:
+    if host == "pubmed.ncbi.nlm.nih.gov":
+        match = re.match(r"^/(\d+)/?$", path)
+        return match.group(1) if match else None
+    if host in {"ncbi.nlm.nih.gov", "www.ncbi.nlm.nih.gov"}:
+        match = re.match(r"^/pubmed/(\d+)/?$", path)
+        return match.group(1) if match else None
+    return None

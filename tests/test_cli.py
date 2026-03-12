@@ -10,6 +10,7 @@ from pathlib import Path
 
 from rks import __version__
 from rks.agent_skills import SKILL_BUNDLE_VERSION
+from rks.cli.main import build_parser
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,17 @@ def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 class CliSmokeTest(unittest.TestCase):
+    def test_parser_supports_pmid_and_url_ingest(self) -> None:
+        parser = build_parser()
+
+        pmid_args = parser.parse_args(["ingest", "pmid", "31452104"])
+        self.assertEqual(pmid_args.ingest_command, "pmid")
+        self.assertEqual(pmid_args.pmid, "31452104")
+
+        url_args = parser.parse_args(["ingest", "url", "https://pubmed.ncbi.nlm.nih.gov/31452104/"])
+        self.assertEqual(url_args.ingest_command, "url")
+        self.assertEqual(url_args.url, "https://pubmed.ncbi.nlm.nih.gov/31452104/")
+
     def test_skills_list_and_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

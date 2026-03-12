@@ -6,7 +6,7 @@
 
 适合下面几类使用方式：
 
-- 手动导入 PDF、DOI、arXiv 文献
+- 手动导入 PDF、DOI / arXiv / PMID 文献，或者规范 URL
 - 手动查看论文、claim、concept、method、dataset
 - 手动运行查询、搜索和总结
 - 手动审阅 claim relation
@@ -100,7 +100,30 @@ rks ingest doi 10.48550/arXiv.1706.03762
 rks ingest arxiv 1706.03762
 ```
 
-导入 DOI / arXiv 后建议重点检查：
+### 4.4 导入 PMID
+
+```bash
+rks ingest pmid 31452104
+```
+
+这条路径会把 PubMed 元数据以 XML artifact 落盘，并据此创建 paper。
+
+### 4.5 通过 URL 导入
+
+```bash
+rks ingest url https://doi.org/10.48550/arXiv.1706.03762
+rks ingest url https://pubmed.ncbi.nlm.nih.gov/31452104/
+rks ingest url https://example.org/paper.pdf
+```
+
+当前支持的 URL 类型：
+
+- DOI 解析 URL
+- arXiv 摘要页或 PDF URL
+- PubMed 论文 URL
+- 直链 PDF URL
+
+导入 DOI / arXiv / PMID / URL 后建议重点检查：
 
 ```bash
 rks status paper <paper_id>
@@ -405,7 +428,9 @@ manifest 示例：
 ```json
 [
   {"source_type": "pdf", "path": "paper-1.pdf"},
-  {"source_type": "doi", "source_ref": "10.48550/arXiv.1706.03762"}
+  {"source_type": "doi", "source_ref": "10.48550/arXiv.1706.03762"},
+  {"source_type": "pmid", "source_ref": "31452104"},
+  {"source_type": "url", "source_ref": "https://pubmed.ncbi.nlm.nih.gov/31452104/"}
 ]
 ```
 

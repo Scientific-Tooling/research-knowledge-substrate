@@ -9,8 +9,9 @@ The repository is now packaged for formal PyPI distribution, including a PyPI-sp
 The current implementation supports:
 
 - ingesting local PDFs
-- ingesting DOI and arXiv references
-- attempting source PDF acquisition during DOI and arXiv ingestion when provider metadata exposes PDF candidates
+- ingesting DOI, arXiv, and PMID references
+- ingesting canonical paper URLs for DOI, arXiv, PubMed, and direct PDF sources
+- attempting source PDF acquisition during DOI, arXiv, and PMID ingestion when provider metadata exposes PDF candidates
 - persisting papers and extraction artifacts to SQLite plus local disk
 - generating inspectable pipeline artifacts such as extracted text, sections, and structured claims
 - extracting heuristic structured claims, methods, and datasets
@@ -175,14 +176,33 @@ The CLI can also ingest metadata references:
 ```bash
 rks ingest doi 10.48550/arXiv.1706.03762
 rks ingest arxiv 1706.03762
+rks ingest pmid 31452104
+rks ingest url https://pubmed.ncbi.nlm.nih.gov/31452104/
+rks ingest url https://example.org/paper.pdf
 ```
 
 These flows create paper records and metadata artifacts and, when an abstract is available, generate text artifacts that can feed claim extraction.
 When a provider exposes PDF candidates, RKS also attempts to persist a local `source.pdf` and records acquisition status for later inspection.
 
+## Reference Acquisition Boundary
+
+RKS treats external literature discovery and ad hoc web retrieval as agent responsibilities, not substrate responsibilities.
+
+The ingest layer should accept only stable, explicit inputs such as:
+
+- local PDF files
+- DOI, arXiv ID, and PMID identifiers
+- canonical DOI/arXiv/PubMed URLs
+- direct PDF URLs
+
+RKS should not grow into a general web crawler or landing-page scraper. If an input must be discovered, resolved, or fetched from a non-canonical page, the external agent should do that work first and then pass a stable identifier, canonical URL, direct PDF URL, or local file into RKS.
+
+For the broader architectural boundaries that should remain stable as RKS evolves, see [docs/system-constraints.md](docs/system-constraints.md).
+
 ## Design Docs
 
 - [docs/README.md](docs/README.md)
+- [docs/system-constraints.md](docs/system-constraints.md)
 - [docs/design-implementation-comparison.md](docs/design-implementation-comparison.md)
 - [docs/research-output-roadmap.md](docs/research-output-roadmap.md)
 - [docs/focus-optimization-plan.md](docs/focus-optimization-plan.md)

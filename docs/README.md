@@ -6,6 +6,7 @@ This directory now separates active documentation from archived design history.
 
 These documents describe the current product, architecture direction, operations, or usage:
 
+- `system-constraints.md`
 - `progress.md`
 - `product-priorities.md`
 - `design-implementation-comparison.md`

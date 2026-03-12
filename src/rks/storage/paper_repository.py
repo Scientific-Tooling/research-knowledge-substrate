@@ -19,11 +19,13 @@ class PaperRepository:
         source_pdf: Path,
         stored_pdf: Path,
         title: Optional[str] = None,
+        source_ref: Optional[str] = None,
     ) -> PaperRecord:
         timestamp = utc_now()
         paper_id = next_id(self.conn, "paper")
         artifact_id = next_id(self.conn, "artifact")
         paper_title = title or source_pdf.stem
+        effective_source_ref = source_ref or str(source_pdf.resolve())
 
         self.conn.execute(
             """
@@ -42,7 +44,7 @@ class PaperRepository:
                 None,
                 None,
                 "pdf",
-                str(source_pdf.resolve()),
+                effective_source_ref,
                 str(stored_pdf),
                 None,
                 timestamp,
@@ -61,7 +63,7 @@ class PaperRepository:
                 "source_pdf",
                 str(stored_pdf),
                 "pdf",
-                json.dumps({"source_ref": str(source_pdf.resolve())}, sort_keys=True),
+                json.dumps({"source_ref": effective_source_ref}, sort_keys=True),
                 timestamp,
             ),
         )

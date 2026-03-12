@@ -1178,10 +1178,10 @@ def _suggested_next_commands(*, paper, stages: dict, review: dict, tasks: list) 
     if not stages["text"]:
         if paper.pdf_path:
             commands.append(f"rks extract text {paper.id}")
-        elif paper.doi:
-            commands.append(f"rks ingest doi {paper.doi}")
-        elif paper.arxiv_id:
-            commands.append(f"rks ingest arxiv {paper.arxiv_id}")
+        else:
+            reingest_command = _paper_reingest_command(paper)
+            if reingest_command:
+                commands.append(reingest_command)
     if stages["text"] and not stages["claims"]:
         commands.append(f"rks extract claims {paper.id}")
     if stages["claims"] and not stages["methods"]:
@@ -1240,10 +1240,26 @@ def _recovery_guidance(*, paper, stages: dict, tasks: list) -> list[dict]:
             {
                 "status": "blocked",
                 "message": "Text extraction is blocked until a local PDF or external text result is available.",
-                "commands": [command for command in (f"rks ingest doi {paper.doi}" if paper.doi else None, f"rks ingest arxiv {paper.arxiv_id}" if paper.arxiv_id else None) if command],
+                "commands": [command for command in (_paper_reingest_command(paper),) if command],
             }
         )
     return guidance
+
+
+def _paper_reingest_command(paper) -> str | None:
+    if paper.source_type == "doi" and paper.source_ref:
+        return f"rks ingest doi {paper.source_ref}"
+    if paper.source_type == "arxiv" and paper.source_ref:
+        return f"rks ingest arxiv {paper.source_ref}"
+    if paper.source_type == "pmid" and paper.source_ref:
+        return f"rks ingest pmid {paper.source_ref}"
+    if paper.source_ref and str(paper.source_ref).startswith(("http://", "https://")):
+        return f"rks ingest url {paper.source_ref}"
+    if paper.doi:
+        return f"rks ingest doi {paper.doi}"
+    if paper.arxiv_id:
+        return f"rks ingest arxiv {paper.arxiv_id}"
+    return None
 
 
 def _relation_key(anchor_claim_id: str, relation: dict) -> tuple[str, tuple[str, str]]:
