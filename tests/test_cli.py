@@ -62,6 +62,9 @@ class CliSmokeTest(unittest.TestCase):
             extract_claims_payload = json.loads(extract_claims_result.stdout)
             self.assertGreaterEqual(extract_claims_payload["claim_count"], 1)
 
+            rerun_claims_result = run_cli("extract", "claims", payload["id"], cwd=tmp_path)
+            self.assertEqual(rerun_claims_result.returncode, 0, rerun_claims_result.stderr)
+
             claims_result = run_cli("claims", payload["id"], cwd=tmp_path)
             self.assertEqual(claims_result.returncode, 0, claims_result.stderr)
             claims_payload = json.loads(claims_result.stdout)
@@ -101,6 +104,14 @@ class CliSmokeTest(unittest.TestCase):
             search_payload = json.loads(search_result.stdout)
             self.assertGreaterEqual(len(search_payload["claims"]), 1)
             self.assertGreaterEqual(len(search_payload["concepts"]), 1)
+
+            final_show_result = run_cli("show", "paper", payload["id"], cwd=tmp_path)
+            self.assertEqual(final_show_result.returncode, 0, final_show_result.stderr)
+            final_show_payload = json.loads(final_show_result.stdout)
+            final_artifact_types = [artifact["artifact_type"] for artifact in final_show_payload["artifacts"]]
+            self.assertEqual(final_artifact_types.count("structured_claims"), 1)
+            self.assertEqual(final_artifact_types.count("claim_candidates"), 1)
+            self.assertEqual(final_artifact_types.count("normalized_claims"), 1)
 
 
 if __name__ == "__main__":

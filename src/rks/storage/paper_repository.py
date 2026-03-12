@@ -118,24 +118,47 @@ class PaperRepository:
         format_name: str,
         metadata: dict,
     ) -> ArtifactRecord:
-        artifact_id = next_id(self.conn, "artifact")
         timestamp = utc_now()
-        self.conn.execute(
-            """
-            INSERT INTO artifacts(
-                id, paper_id, artifact_type, path, format, metadata_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                artifact_id,
-                paper_id,
-                artifact_type,
-                str(path),
-                format_name,
-                json.dumps(metadata, sort_keys=True),
-                timestamp,
-            ),
-        )
+        existing = self.conn.execute(
+            "SELECT id FROM artifacts WHERE paper_id = ? AND artifact_type = ?",
+            (paper_id, artifact_type),
+        ).fetchone()
+        metadata_json = json.dumps(metadata, sort_keys=True)
+
+        if existing is None:
+            artifact_id = next_id(self.conn, "artifact")
+            self.conn.execute(
+                """
+                INSERT INTO artifacts(
+                    id, paper_id, artifact_type, path, format, metadata_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    artifact_id,
+                    paper_id,
+                    artifact_type,
+                    str(path),
+                    format_name,
+                    metadata_json,
+                    timestamp,
+                ),
+            )
+        else:
+            artifact_id = existing["id"]
+            self.conn.execute(
+                """
+                UPDATE artifacts
+                SET path = ?, format = ?, metadata_json = ?, created_at = ?
+                WHERE id = ?
+                """,
+                (
+                    str(path),
+                    format_name,
+                    metadata_json,
+                    timestamp,
+                    artifact_id,
+                ),
+            )
         self.conn.commit()
         return self.get_artifact(artifact_id)
 
