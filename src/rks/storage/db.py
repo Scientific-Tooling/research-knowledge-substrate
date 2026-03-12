@@ -1,0 +1,20 @@
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+from rks.storage.schema import SCHEMA_SQL
+from rks.utils import ensure_dir
+
+
+def connect_db(db_path: Path) -> sqlite3.Connection:
+    ensure_dir(db_path.parent)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = OFF")
+    return conn
+
+
+def initialize_db(conn: sqlite3.Connection) -> None:
+    conn.executescript(SCHEMA_SQL)
+    conn.commit()

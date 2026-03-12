@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-knowledge-substrate"
+version = "0.1.0"
+description = "Agent-first research knowledge substrate for structured paper ingestion and research graph construction."
+readme = "docs/project-positioning.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+rks = "rks.cli.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
