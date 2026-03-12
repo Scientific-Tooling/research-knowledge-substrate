@@ -27,6 +27,7 @@ Make sure the machine has:
 - Python `>=3.10`
 - `python3`
 - `pip`
+- optional: `uv`
 - the ability to create virtual environments
 
 You can check with:
@@ -34,6 +35,7 @@ You can check with:
 ```bash
 python3 --version
 python3 -m pip --version
+uv --version
 ```
 
 ## 3. Install From Source
@@ -52,10 +54,23 @@ python3 -m venv .venv
 . .venv/bin/activate
 ```
 
+Or with `uv`:
+
+```bash
+uv venv
+. .venv/bin/activate
+```
+
 ### 3.3 Install RKS
 
 ```bash
 python -m pip install -e .
+```
+
+Or with `uv`:
+
+```bash
+uv pip install -e .
 ```
 
 This uses an editable install, which fits the current stage of the project:
@@ -71,6 +86,14 @@ Once a release has been uploaded to PyPI, the standard install path becomes:
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install research-knowledge-substrate
+```
+
+With `uv`, the equivalent flow is:
+
+```bash
+uv venv
+. .venv/bin/activate
+uv pip install research-knowledge-substrate
 ```
 
 ## 5. Initialize the Workspace
@@ -151,6 +174,14 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
+If the user already prefers `uv`, this is also a good default:
+
+```bash
+uv venv
+. .venv/bin/activate
+uv pip install -e .
+```
+
 This is the most reliable option today.
 
 ### 7.2 Developers
@@ -192,6 +223,13 @@ Retry:
 ```bash
 . .venv/bin/activate
 python -m pip install -e .
+```
+
+If you are using `uv`, retry with:
+
+```bash
+. .venv/bin/activate
+uv pip install -e .
 ```
 
 ### 9.2 Python version too old

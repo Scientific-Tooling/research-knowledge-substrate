@@ -27,6 +27,7 @@ Homebrew 和独立桌面安装器目前仍不在范围内。
 - Python `>=3.10`
 - `python3`
 - `pip`
+- 可选：`uv`
 - 能正常创建虚拟环境
 
 你可以先检查：
@@ -34,6 +35,7 @@ Homebrew 和独立桌面安装器目前仍不在范围内。
 ```bash
 python3 --version
 python3 -m pip --version
+uv --version
 ```
 
 ## 3. 从源码安装
@@ -52,10 +54,23 @@ python3 -m venv .venv
 . .venv/bin/activate
 ```
 
+如果你习惯用 `uv`，也可以这样：
+
+```bash
+uv venv
+. .venv/bin/activate
+```
+
 ### 3.3 安装 RKS
 
 ```bash
 python -m pip install -e .
+```
+
+如果使用 `uv`：
+
+```bash
+uv pip install -e .
 ```
 
 这里使用的是 editable install，适合当前项目阶段：
@@ -71,6 +86,14 @@ python -m pip install -e .
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install research-knowledge-substrate
+```
+
+对应的 `uv` 安装方式：
+
+```bash
+uv venv
+. .venv/bin/activate
+uv pip install research-knowledge-substrate
 ```
 
 ## 5. 初始化工作区
@@ -151,6 +174,14 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
+如果用户本来就偏好 `uv`，也可以直接用：
+
+```bash
+uv venv
+. .venv/bin/activate
+uv pip install -e .
+```
+
 这是当前最稳妥的方式。
 
 ### 7.2 开发者
@@ -192,6 +223,13 @@ python -m pip install -e .
 ```bash
 . .venv/bin/activate
 python -m pip install -e .
+```
+
+如果你使用的是 `uv`，可以改成：
+
+```bash
+. .venv/bin/activate
+uv pip install -e .
 ```
 
 ### 9.2 Python 版本不够
