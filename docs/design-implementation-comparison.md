@@ -2,12 +2,12 @@
 
 ## Purpose
 
-This document compares the current RKS implementation against the original design documents in `docs/`.
+This document compares the current RKS implementation against the original design documents now archived under `docs/archive/original-design/`.
 
 Scope:
 
 - included: the original design and architecture documents
-- excluded as primary comparison targets: status/rollup documents such as `progress.md`, `mvp-status.md`, and `roadmap.md`
+- excluded as primary comparison targets: status/rollup documents such as `progress.md` and archived plan/status records under `docs/archive/completed-plans/`
 
 Reference date:
 
@@ -49,8 +49,8 @@ What is intentionally different:
 
 Primary docs:
 
-- `project-positioning.md`
-- `research-knowledge-substrate-overview.md`
+- `archive/original-design/project-positioning.md`
+- `archive/original-design/research-knowledge-substrate-overview.md`
 
 Status:
 
@@ -84,7 +84,7 @@ Conclusion:
 
 Primary doc:
 
-- `minimal-research-graph.md`
+- `archive/original-design/minimal-research-graph.md`
 
 Status:
 
@@ -117,7 +117,7 @@ Conclusion:
 
 Primary doc:
 
-- `structured-claim-model.md`
+- `archive/original-design/structured-claim-model.md`
 
 Status:
 
@@ -151,7 +151,7 @@ Conclusion:
 
 Primary doc:
 
-- `concept-system.md`
+- `archive/original-design/concept-system.md`
 
 Status:
 
@@ -183,7 +183,7 @@ Conclusion:
 
 Primary doc:
 
-- `claim-extraction-pipeline.md`
+- `archive/original-design/claim-extraction-pipeline.md`
 
 Status:
 
@@ -222,7 +222,7 @@ Conclusion:
 
 Primary doc:
 
-- `reasoning-engine.md`
+- `archive/original-design/reasoning-engine.md`
 
 Status:
 
@@ -259,7 +259,7 @@ Conclusion:
 
 Primary docs:
 
-- `rks-interaction-model.md`
+- `archive/original-design/rks-interaction-model.md`
 - `dual-track-llm-contract.md`
 - `agent-skills.md`
 
@@ -301,7 +301,7 @@ Conclusion:
 
 Primary doc:
 
-- `storage-architecture.md`
+- `archive/original-design/storage-architecture.md`
 
 Status:
 
@@ -336,9 +336,9 @@ Conclusion:
 
 Primary docs:
 
-- `implementation-plan.md`
-- `rks-mvp.md`
-- `mvp-status.md`
+- `archive/original-design/implementation-plan.md`
+- `archive/original-design/rks-mvp.md`
+- `archive/completed-plans/mvp-status.md`
 
 Status:
 
@@ -375,7 +375,7 @@ Code ahead of the MVP documents:
 
 Gaps relative to early conceptual framing:
 
-- DOI and arXiv ingestion still do not automatically fetch and persist source PDFs
+- DOI and arXiv ingestion can now attempt source PDF acquisition, but provider coverage and robustness still remain limited
 - early conceptual docs mention richer node families such as `Experiment` or `Idea`; these do not exist as first-class stored/queryable types
 - `Note` exists in schema but remains lightly surfaced in user-facing workflows
 
@@ -387,17 +387,17 @@ Conclusion:
 
 The following original design docs are directionally correct but now under-specify the real implementation:
 
-- `project-positioning.md`
+- `archive/original-design/project-positioning.md`
   because the code now includes a service/UI surface and stronger workflow machinery
-- `research-knowledge-substrate-overview.md`
+- `archive/original-design/research-knowledge-substrate-overview.md`
   because the code now has more than the original three-component picture
-- `concept-system.md`
+- `archive/original-design/concept-system.md`
   because it still describes a richer hierarchy than what was actually implemented
-- `reasoning-engine.md`
+- `archive/original-design/reasoning-engine.md`
   because it does not distinguish between implemented deterministic query templates and the still-missing planner layer
-- `implementation-plan.md`
+- `archive/original-design/implementation-plan.md`
   because the current toolchain and repo shape differ from the recommended MVP stack
-- `rks-mvp.md`
+- `archive/original-design/rks-mvp.md`
   because the project is no longer at MVP scope
 
 ## 11. Practical Conclusions
@@ -424,8 +424,8 @@ It is now:
 
 If the repository should keep its design docs authoritative, the next doc updates should be:
 
-1. rewrite `implementation-plan.md` from “recommended MVP stack” to “current architecture and next evolution path`
-2. split `reasoning-engine.md` into “implemented query/retrieval layer” and “future planner layer”
-3. revise `concept-system.md` to clearly separate current minimal hierarchy from future ontology ambitions
-4. rewrite `rks-mvp.md` and `mvp-status.md` into historical records rather than current-state guides
+1. rewrite `archive/original-design/implementation-plan.md` into a concise historical note plus a pointer to current architecture docs
+2. split the archived `archive/original-design/reasoning-engine.md` concept into “implemented query/retrieval layer” and “future planner layer” if it is ever promoted back to active docs
+3. revise `archive/original-design/concept-system.md` if it should become an active design reference again
+4. keep `archive/original-design/rks-mvp.md` and `archive/completed-plans/mvp-status.md` clearly marked as historical records
 5. add a single top-level architecture index that points readers to “design intent”, “current architecture”, and “progress status” separately

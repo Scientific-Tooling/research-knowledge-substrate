@@ -44,10 +44,11 @@ If the change affects CLI shape, also inspect:
 Update whichever of these applies:
 
 - `README.md`
+- `docs/README.md`
 - `docs/progress.md`
-- `docs/mvp-status.md`
+- `docs/product-priorities.md`
 - `docs/dual-track-llm-contract.md`
-- `docs/implementation-plan.md`
+- `docs/design-implementation-comparison.md`
 
 ## Commit Discipline
 
