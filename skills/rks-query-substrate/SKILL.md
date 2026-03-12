@@ -15,6 +15,7 @@ Use this skill for requests such as:
 - which papers support this claim
 - summarize this paper from stored evidence
 - inspect the evidence trail for this claim
+- inspect a project hypothesis and its linked evidence
 - search the local research graph
 - answer a question from already-ingested graph data
 
@@ -30,6 +31,18 @@ Inspect one claim:
 
 ```bash
 rks show claim <claim_id>
+```
+
+Inspect one project:
+
+```bash
+rks show project <project_id>
+```
+
+Inspect one hypothesis:
+
+```bash
+rks show hypothesis <hypothesis_id>
 ```
 
 List claims for a paper:
@@ -64,6 +77,13 @@ Generate a summary:
 rks summarize paper <paper_id>
 ```
 
+List project hypotheses or evidence:
+
+```bash
+rks hypothesis list <project_id>
+rks hypothesis evidence <hypothesis_id>
+```
+
 Generate direct research outputs:
 
 ```bash
@@ -81,8 +101,9 @@ For ambiguous research questions, prefer:
 2. `rks query claims-about <concept>`
 3. `rks show claim <claim_id>` for evidence validation
 4. `rks query claim-relations <claim_id>` when relationship structure matters
-5. `rks output answer "<question>"` or `rks output brief "<topic>"` for directly consumable synthesis
-6. `rks summarize paper <paper_id>` if a paper-specific synthesis is needed
+5. `rks show project <project_id>` or `rks show hypothesis <hypothesis_id>` when the task is project-scoped
+6. `rks output answer "<question>"` or `rks output brief "<topic>"` for directly consumable synthesis
+7. `rks summarize paper <paper_id>` if a paper-specific synthesis is needed
 
 ## Research Output Discipline
 
@@ -111,6 +132,7 @@ If the task is to modify relation state rather than inspect it, switch to `rks-a
 When reporting an answer back to the user:
 
 - prefer claim IDs and paper IDs over paraphrased memory
+- keep project hypotheses separate from extracted claims when discussing evidence
 - inspect `rks show claim <claim_id>` before asserting support
 - distinguish `reviewed_relations` from `inferred_relations` when discussing claim-to-claim structure
 - preserve uncertainty or disagreement signals instead of flattening them into a single confident answer

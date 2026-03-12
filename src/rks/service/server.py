@@ -14,9 +14,11 @@ from rks.storage import (
     DatasetRepository,
     EmbeddingRepository,
     EdgeRepository,
+    HypothesisRepository,
     MethodRepository,
     NoteRepository,
     PaperRepository,
+    ProjectRepository,
     TaskRepository,
     connect_db,
     initialize_db,
@@ -72,6 +74,8 @@ class _RepositoryContext:
         initialize_db(self.conn)
         return {
             "papers": PaperRepository(self.conn),
+            "projects": ProjectRepository(self.conn),
+            "hypotheses": HypothesisRepository(self.conn),
             "claims": ClaimRepository(self.conn),
             "concepts": ConceptRepository(self.conn),
             "notes": NoteRepository(self.conn),
@@ -119,6 +123,8 @@ class _OperationsContext:
         repos = self._repo_context.__enter__()
         return ResearchOperations(
             papers=repos["papers"],
+            projects=repos["projects"],
+            hypotheses=repos["hypotheses"],
             claims=repos["claims"],
             concepts=repos["concepts"],
             notes=repos["notes"],
@@ -189,6 +195,20 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         return 200, "text/html; charset=utf-8", _ui_html().encode("utf-8")
     if parsed.path == "/health":
         return 200, "application/json", json.dumps({"status": "ok"}).encode("utf-8")
+    if parsed.path == "/api/projects":
+        with _open_operations() as operations:
+            payload = operations.list_projects()
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/hypotheses/") and parsed.path.endswith("/evidence"):
+        hypothesis_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            payload = operations.list_hypothesis_evidence(hypothesis_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/hypotheses/"):
+        hypothesis_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.get_hypothesis(hypothesis_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path == "/api/search":
         params = parse_qs(parsed.query)
         query = params.get("q", [""])[0]
@@ -250,6 +270,26 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_operations() as operations:
             payload = operations.claim_relations(claim_id)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/notes"):
+        project_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            payload = operations.list_project_notes(project_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/hypotheses"):
+        project_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            payload = operations.list_project_hypotheses(project_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/papers"):
+        project_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            payload = operations.list_project_papers(project_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/projects/"):
+        project_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.get_project(project_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/notes"):
         paper_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
@@ -301,6 +341,28 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
 def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
     parsed = urlparse(path)
     payload = json.loads(body.decode("utf-8") or "{}")
+    if parsed.path == "/api/projects":
+        with _open_operations() as operations:
+            response = operations.create_project(
+                name=payload["name"],
+                description=payload.get("description"),
+                research_question=payload.get("research_question"),
+                status=payload.get("status", "active"),
+                created_by=payload.get("created_by", "human:http"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/hypotheses/") and parsed.path.endswith("/evidence"):
+        hypothesis_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            response = operations.add_hypothesis_evidence(
+                hypothesis_id,
+                payload["object_type"],
+                payload["object_id"],
+                relation_type=payload.get("relation_type", "supported_by"),
+                note=payload.get("note"),
+                created_by=payload.get("created_by", "human:http"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path == "/api/review/claim-relations/promote":
         with _open_operations() as operations:
             response = operations.promote_claim_relation(
@@ -318,6 +380,37 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
                 source_claim_id=payload["source_claim_id"],
                 relation_type=payload["relation_type"],
                 target_claim_id=payload["target_claim_id"],
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/notes"):
+        project_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            response = operations.add_project_note(
+                project_id,
+                content=payload["content"],
+                created_by=payload.get("created_by", "human:http"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/hypotheses"):
+        project_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            response = operations.create_hypothesis(
+                project_id,
+                text=payload["text"],
+                status=payload.get("status", "draft"),
+                confidence=payload.get("confidence"),
+                context=payload.get("context"),
+                created_by=payload.get("created_by", "human:http"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/papers"):
+        project_id = parsed.path.split("/")[3]
+        with _open_operations() as operations:
+            response = operations.add_project_paper(
+                project_id,
+                payload["paper_id"],
+                link_type=payload.get("link_type", "in_scope"),
+                created_by=payload.get("created_by", "human:http"),
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/notes"):

@@ -37,9 +37,11 @@ from rks.storage import (
     DatasetRepository,
     EmbeddingRepository,
     EdgeRepository,
+    HypothesisRepository,
     MethodRepository,
     NoteRepository,
     PaperRepository,
+    ProjectRepository,
     TaskRepository,
     connect_db,
     export_graph_snapshot,
@@ -158,6 +160,71 @@ def build_parser() -> argparse.ArgumentParser:
     show_dataset_parser.add_argument("dataset_id", help="Dataset ID, for example d_000001.")
     show_dataset_parser.set_defaults(handler=handle_show_dataset)
 
+    show_project_parser = show_subparsers.add_parser("project", help="Show a stored research project.")
+    show_project_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    show_project_parser.set_defaults(handler=handle_show_project)
+
+    show_hypothesis_parser = show_subparsers.add_parser("hypothesis", help="Show a stored project hypothesis.")
+    show_hypothesis_parser.add_argument("hypothesis_id", help="Hypothesis ID, for example h_000001.")
+    show_hypothesis_parser.set_defaults(handler=handle_show_hypothesis)
+
+    project_parser = subparsers.add_parser("project", help="Create and organize research projects.")
+    project_subparsers = project_parser.add_subparsers(dest="project_command", required=True)
+
+    project_create_parser = project_subparsers.add_parser("create", help="Create a research project.")
+    project_create_parser.add_argument("--name", required=True, help="Project name.")
+    project_create_parser.add_argument("--description", help="Optional project description.")
+    project_create_parser.add_argument("--research-question", help="Optional core research question.")
+    project_create_parser.add_argument("--status", default="active", help="Project status label.")
+    project_create_parser.add_argument("--created-by", default="human:user", help="Project creator label.")
+    project_create_parser.set_defaults(handler=handle_project_create)
+
+    project_list_parser = project_subparsers.add_parser("list", help="List research projects.")
+    project_list_parser.set_defaults(handler=handle_project_list)
+
+    project_add_paper_parser = project_subparsers.add_parser("add-paper", help="Link a paper to a project.")
+    project_add_paper_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    project_add_paper_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    project_add_paper_parser.add_argument("--link-type", default="in_scope", help="Project-paper link label.")
+    project_add_paper_parser.add_argument("--created-by", default="human:user", help="Actor label for the link.")
+    project_add_paper_parser.set_defaults(handler=handle_project_add_paper)
+
+    project_papers_parser = project_subparsers.add_parser("papers", help="List papers linked to a project.")
+    project_papers_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    project_papers_parser.set_defaults(handler=handle_project_papers)
+
+    hypothesis_parser = subparsers.add_parser("hypothesis", help="Create and inspect project hypotheses.")
+    hypothesis_subparsers = hypothesis_parser.add_subparsers(dest="hypothesis_command", required=True)
+
+    hypothesis_create_parser = hypothesis_subparsers.add_parser("create", help="Create a hypothesis for a project.")
+    hypothesis_create_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    hypothesis_create_parser.add_argument("--text", required=True, help="Hypothesis text.")
+    hypothesis_create_parser.add_argument("--status", default="draft", help="Hypothesis status label.")
+    hypothesis_create_parser.add_argument("--confidence", type=float, help="Optional confidence score.")
+    hypothesis_create_parser.add_argument("--context", help="Optional JSON object describing hypothesis context.")
+    hypothesis_create_parser.add_argument("--created-by", default="human:user", help="Hypothesis author label.")
+    hypothesis_create_parser.set_defaults(handler=handle_hypothesis_create)
+
+    hypothesis_list_parser = hypothesis_subparsers.add_parser("list", help="List hypotheses for a project.")
+    hypothesis_list_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    hypothesis_list_parser.set_defaults(handler=handle_hypothesis_list)
+
+    hypothesis_add_evidence_parser = hypothesis_subparsers.add_parser(
+        "add-evidence",
+        help="Link a paper or claim as evidence for a hypothesis.",
+    )
+    hypothesis_add_evidence_parser.add_argument("hypothesis_id", help="Hypothesis ID, for example h_000001.")
+    hypothesis_add_evidence_parser.add_argument("object_type", choices=("paper", "claim"))
+    hypothesis_add_evidence_parser.add_argument("object_id", help="Target object ID.")
+    hypothesis_add_evidence_parser.add_argument("--relation-type", default="supported_by", help="Evidence relation label.")
+    hypothesis_add_evidence_parser.add_argument("--note", help="Optional note stored on the evidence link.")
+    hypothesis_add_evidence_parser.add_argument("--created-by", default="human:user", help="Actor label for the evidence link.")
+    hypothesis_add_evidence_parser.set_defaults(handler=handle_hypothesis_add_evidence)
+
+    hypothesis_evidence_parser = hypothesis_subparsers.add_parser("evidence", help="List evidence linked to a hypothesis.")
+    hypothesis_evidence_parser.add_argument("hypothesis_id", help="Hypothesis ID, for example h_000001.")
+    hypothesis_evidence_parser.set_defaults(handler=handle_hypothesis_evidence)
+
     note_parser = subparsers.add_parser("note", help="Add or inspect user and agent notes.")
     note_subparsers = note_parser.add_subparsers(dest="note_command", required=True)
 
@@ -168,12 +235,20 @@ def build_parser() -> argparse.ArgumentParser:
     note_add_paper_parser.add_argument("--content", required=True, help="Note text to store.")
     note_add_paper_parser.add_argument("--created-by", default="human:user", help="Note author label.")
     note_add_paper_parser.set_defaults(handler=handle_note_add_paper)
+    note_add_project_parser = note_add_subparsers.add_parser("project", help="Add a note to a project.")
+    note_add_project_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    note_add_project_parser.add_argument("--content", required=True, help="Note text to store.")
+    note_add_project_parser.add_argument("--created-by", default="human:user", help="Note author label.")
+    note_add_project_parser.set_defaults(handler=handle_note_add_project)
 
     note_list_parser = note_subparsers.add_parser("list", help="List notes for a stored object.")
     note_list_subparsers = note_list_parser.add_subparsers(dest="note_target", required=True)
     note_list_paper_parser = note_list_subparsers.add_parser("paper", help="List notes for a paper.")
     note_list_paper_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     note_list_paper_parser.set_defaults(handler=handle_note_list_paper)
+    note_list_project_parser = note_list_subparsers.add_parser("project", help="List notes for a project.")
+    note_list_project_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    note_list_project_parser.set_defaults(handler=handle_note_list_project)
 
     claims_parser = subparsers.add_parser("claims", help="List extracted claims for a paper.")
     claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
@@ -720,6 +795,102 @@ def handle_show_paper(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_show_project(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).get_project(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_show_hypothesis(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).get_hypothesis(args.hypothesis_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_project_create(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).create_project(
+            name=args.name,
+            description=args.description,
+            research_question=args.research_question,
+            status=args.status,
+            created_by=args.created_by,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_project_list(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_projects()
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_project_add_paper(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).add_project_paper(
+            args.project_id,
+            args.paper_id,
+            link_type=args.link_type,
+            created_by=args.created_by,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_project_papers(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_project_papers(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_hypothesis_create(args: argparse.Namespace) -> int:
+    context = json.loads(args.context) if args.context else None
+    with _open_session() as session:
+        payload = _operations(session).create_hypothesis(
+            args.project_id,
+            text=args.text,
+            status=args.status,
+            confidence=args.confidence,
+            context=context,
+            created_by=args.created_by,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_hypothesis_list(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_project_hypotheses(args.project_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_hypothesis_add_evidence(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).add_hypothesis_evidence(
+            args.hypothesis_id,
+            args.object_type,
+            args.object_id,
+            relation_type=args.relation_type,
+            note=args.note,
+            created_by=args.created_by,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_hypothesis_evidence(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_hypothesis_evidence(args.hypothesis_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def handle_note_add_paper(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = _operations(session).add_paper_note(
@@ -731,9 +902,27 @@ def handle_note_add_paper(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_note_add_project(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).add_project_note(
+            args.project_id,
+            content=args.content,
+            created_by=args.created_by,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def handle_note_list_paper(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = _operations(session).list_paper_notes(args.paper_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_note_list_project(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_project_notes(args.project_id)
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -1405,6 +1594,8 @@ class _Session:
     def __init__(
         self,
         papers: PaperRepository,
+        projects: ProjectRepository,
+        hypotheses: HypothesisRepository,
         claims: ClaimRepository,
         concepts: ConceptRepository,
         notes: NoteRepository,
@@ -1415,6 +1606,8 @@ class _Session:
         tasks: TaskRepository,
     ):
         self.papers = papers
+        self.projects = projects
+        self.hypotheses = hypotheses
         self.claims = claims
         self.concepts = concepts
         self.notes = notes
@@ -1432,6 +1625,8 @@ class _SessionContext:
         initialize_db(self.conn)
         return _Session(
             papers=PaperRepository(self.conn),
+            projects=ProjectRepository(self.conn),
+            hypotheses=HypothesisRepository(self.conn),
             claims=ClaimRepository(self.conn),
             concepts=ConceptRepository(self.conn),
             notes=NoteRepository(self.conn),
@@ -1455,6 +1650,8 @@ def _open_session() -> _SessionContext:
 def _operations(session: _Session) -> ResearchOperations:
     return ResearchOperations(
         papers=session.papers,
+        projects=session.projects,
+        hypotheses=session.hypotheses,
         claims=session.claims,
         concepts=session.concepts,
         notes=session.notes,
@@ -1482,6 +1679,19 @@ def _paper_to_payload(paper) -> dict:
         "text_artifact_id": paper.text_artifact_id,
         "created_at": paper.created_at,
         "updated_at": paper.updated_at,
+    }
+
+
+def _project_to_payload(project) -> dict:
+    return {
+        "id": project.id,
+        "name": project.name,
+        "description": project.description,
+        "research_question": project.research_question,
+        "status": project.status,
+        "created_by": project.created_by,
+        "created_at": project.created_at,
+        "updated_at": project.updated_at,
     }
 
 

@@ -30,6 +30,8 @@ class ResearchOperations:
         self,
         *,
         papers,
+        projects,
+        hypotheses,
         claims,
         concepts,
         notes,
@@ -40,6 +42,8 @@ class ResearchOperations:
         tasks,
     ):
         self.papers = papers
+        self.projects = projects
+        self.hypotheses = hypotheses
         self.claims = claims
         self.concepts = concepts
         self.notes = notes
@@ -58,6 +62,168 @@ class ResearchOperations:
             embeddings=embeddings,
             embedding_provider=LocalHashEmbeddingProvider(),
         )
+
+    def create_project(
+        self,
+        *,
+        name: str,
+        description: str | None = None,
+        research_question: str | None = None,
+        status: str = "active",
+        created_by: str = "human:user",
+    ) -> dict:
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("name must not be empty")
+        normalized_status = status.strip() or "active"
+        project = self.projects.create_project(
+            name=normalized_name,
+            description=_optional_text(description),
+            research_question=_optional_text(research_question),
+            status=normalized_status,
+            created_by=created_by,
+        )
+        return _project_payload(project)
+
+    def list_projects(self) -> list[dict]:
+        return [_project_payload(project) for project in self.projects.list_projects()]
+
+    def get_project(self, project_id: str) -> dict:
+        project = self.projects.get_project(project_id)
+        notes = self.notes.list_notes_for_target(target_id=project_id, target_type="project")
+        paper_links = self.projects.list_links_for_project(project_id, object_type="paper")
+        return {
+            **_project_payload(project),
+            "notes": [_note_payload(note) for note in notes],
+            "papers": _project_paper_entries(self.papers, paper_links),
+            "hypotheses": [_hypothesis_payload(item) for item in self.hypotheses.list_hypotheses_for_project(project_id)],
+        }
+
+    def list_project_notes(self, project_id: str) -> list[dict]:
+        self.projects.get_project(project_id)
+        notes = self.notes.list_notes_for_target(target_id=project_id, target_type="project")
+        return [_note_payload(note) for note in notes]
+
+    def add_project_note(self, project_id: str, *, content: str, created_by: str = "human:user") -> dict:
+        self.projects.get_project(project_id)
+        normalized_content = content.strip()
+        if not normalized_content:
+            raise ValueError("content must not be empty")
+        note = self.notes.add_note(
+            target_id=project_id,
+            target_type="project",
+            content=normalized_content,
+            created_by=created_by,
+        )
+        self.projects.touch_project(project_id)
+        return _note_payload(note)
+
+    def list_project_papers(self, project_id: str) -> list[dict]:
+        self.projects.get_project(project_id)
+        links = self.projects.list_links_for_project(project_id, object_type="paper")
+        return _project_paper_entries(self.papers, links)
+
+    def add_project_paper(
+        self,
+        project_id: str,
+        paper_id: str,
+        *,
+        link_type: str = "in_scope",
+        created_by: str = "human:user",
+    ) -> dict:
+        self.projects.get_project(project_id)
+        paper = self.papers.get_paper(paper_id)
+        normalized_link_type = link_type.strip()
+        if not normalized_link_type:
+            raise ValueError("link_type must not be empty")
+        link = self.projects.add_link(
+            project_id=project_id,
+            object_id=paper.id,
+            object_type="paper",
+            link_type=normalized_link_type,
+            created_by=created_by,
+            metadata=None,
+        )
+        self.projects.touch_project(project_id)
+        return _project_paper_entry(link, paper)
+
+    def create_hypothesis(
+        self,
+        project_id: str,
+        *,
+        text: str,
+        status: str = "draft",
+        confidence: float | None = None,
+        context: dict | None = None,
+        created_by: str = "human:user",
+    ) -> dict:
+        self.projects.get_project(project_id)
+        normalized_text = text.strip()
+        if not normalized_text:
+            raise ValueError("text must not be empty")
+        normalized_status = status.strip() or "draft"
+        hypothesis = self.hypotheses.create_hypothesis(
+            project_id=project_id,
+            text=normalized_text,
+            status=normalized_status,
+            confidence=confidence,
+            context=context or {},
+            created_by=created_by,
+        )
+        self.projects.touch_project(project_id)
+        return _hypothesis_payload(hypothesis)
+
+    def list_project_hypotheses(self, project_id: str) -> list[dict]:
+        self.projects.get_project(project_id)
+        return [_hypothesis_payload(item) for item in self.hypotheses.list_hypotheses_for_project(project_id)]
+
+    def get_hypothesis(self, hypothesis_id: str) -> dict:
+        hypothesis = self.hypotheses.get_hypothesis(hypothesis_id)
+        evidence_links = self.hypotheses.list_evidence_links_for_hypothesis(hypothesis_id)
+        return {
+            **_hypothesis_payload(hypothesis),
+            "project": _project_payload(self.projects.get_project(hypothesis.project_id)),
+            "evidence_links": _hypothesis_evidence_entries(self.papers, self.claims, evidence_links),
+        }
+
+    def list_hypothesis_evidence(self, hypothesis_id: str) -> list[dict]:
+        self.hypotheses.get_hypothesis(hypothesis_id)
+        evidence_links = self.hypotheses.list_evidence_links_for_hypothesis(hypothesis_id)
+        return _hypothesis_evidence_entries(self.papers, self.claims, evidence_links)
+
+    def add_hypothesis_evidence(
+        self,
+        hypothesis_id: str,
+        object_type: str,
+        object_id: str,
+        *,
+        relation_type: str = "supported_by",
+        created_by: str = "human:user",
+        note: str | None = None,
+    ) -> dict:
+        hypothesis = self.hypotheses.get_hypothesis(hypothesis_id)
+        normalized_object_type = object_type.strip()
+        normalized_relation_type = relation_type.strip()
+        if normalized_object_type not in {"paper", "claim"}:
+            raise ValueError("object_type must be one of: paper, claim")
+        if not normalized_relation_type:
+            raise ValueError("relation_type must not be empty")
+
+        target_payload = _resolve_hypothesis_evidence_target(self.papers, self.claims, normalized_object_type, object_id)
+        metadata = {}
+        if note:
+            metadata["note"] = note.strip()
+        link = self.hypotheses.add_evidence_link(
+            hypothesis_id=hypothesis.id,
+            object_id=object_id,
+            object_type=normalized_object_type,
+            relation_type=normalized_relation_type,
+            created_by=created_by,
+            metadata=metadata,
+        )
+        self.hypotheses.touch_hypothesis(hypothesis_id)
+        self.projects.touch_project(hypothesis.project_id)
+        return _hypothesis_evidence_entry(link, target_payload)
 
     def paper_status(self, paper_id: str) -> dict:
         paper = self.papers.get_paper(paper_id)
@@ -311,6 +477,33 @@ def _paper_payload(paper) -> dict:
     }
 
 
+def _project_payload(project) -> dict:
+    return {
+        "id": project.id,
+        "name": project.name,
+        "description": project.description,
+        "research_question": project.research_question,
+        "status": project.status,
+        "created_by": project.created_by,
+        "created_at": project.created_at,
+        "updated_at": project.updated_at,
+    }
+
+
+def _hypothesis_payload(hypothesis) -> dict:
+    return {
+        "id": hypothesis.id,
+        "project_id": hypothesis.project_id,
+        "text": hypothesis.text,
+        "status": hypothesis.status,
+        "confidence": hypothesis.confidence,
+        "context": json.loads(hypothesis.context_json or "{}"),
+        "created_by": hypothesis.created_by,
+        "created_at": hypothesis.created_at,
+        "updated_at": hypothesis.updated_at,
+    }
+
+
 def _task_payload(task) -> dict:
     return {
         "id": task.id,
@@ -351,6 +544,84 @@ def _note_payload(note) -> dict:
         "created_by": note.created_by,
         "created_at": note.created_at,
     }
+
+
+def _project_link_payload(link) -> dict:
+    return {
+        "id": link.id,
+        "project_id": link.project_id,
+        "object_id": link.object_id,
+        "object_type": link.object_type,
+        "link_type": link.link_type,
+        "metadata": json.loads(link.metadata_json or "{}"),
+        "created_by": link.created_by,
+        "created_at": link.created_at,
+    }
+
+
+def _project_paper_entry(link, paper) -> dict:
+    return {
+        "link": _project_link_payload(link),
+        "paper": _paper_payload(paper),
+    }
+
+
+def _project_paper_entries(papers, links: list) -> list[dict]:
+    entries = []
+    for link in links:
+        if link.object_type != "paper":
+            continue
+        entries.append(_project_paper_entry(link, papers.get_paper(link.object_id)))
+    return entries
+
+
+def _hypothesis_evidence_link_payload(link) -> dict:
+    return {
+        "id": link.id,
+        "hypothesis_id": link.hypothesis_id,
+        "object_id": link.object_id,
+        "object_type": link.object_type,
+        "relation_type": link.relation_type,
+        "metadata": json.loads(link.metadata_json or "{}"),
+        "created_by": link.created_by,
+        "created_at": link.created_at,
+    }
+
+
+def _hypothesis_evidence_entry(link, target_payload: dict) -> dict:
+    return {
+        "link": _hypothesis_evidence_link_payload(link),
+        **target_payload,
+    }
+
+
+def _hypothesis_evidence_entries(papers, claims, links: list) -> list[dict]:
+    return [_hypothesis_evidence_entry(link, _resolve_hypothesis_evidence_target(papers, claims, link.object_type, link.object_id)) for link in links]
+
+
+def _resolve_hypothesis_evidence_target(papers, claims, object_type: str, object_id: str) -> dict:
+    if object_type == "paper":
+        return {"paper": _paper_payload(papers.get_paper(object_id))}
+    if object_type == "claim":
+        claim = claims.get_claim(object_id)
+        return {
+            "claim": {
+                "id": claim.id,
+                "paper_id": claim.paper_id,
+                "text": claim.text,
+                "predicate": claim.predicate,
+                "confidence": claim.confidence,
+                "evidence": json.loads(claim.evidence_json or "{}"),
+            }
+        }
+    raise ValueError(f"Unsupported hypothesis evidence object type: {object_type}")
+
+
+def _optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def _source_pdf_status(paper, artifacts) -> dict:

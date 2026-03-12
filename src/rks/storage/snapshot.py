@@ -8,6 +8,10 @@ from rks.utils import utc_now
 
 TABLES = [
     "counters",
+    "research_projects",
+    "project_links",
+    "hypotheses",
+    "hypothesis_evidence_links",
     "papers",
     "claims",
     "methods",

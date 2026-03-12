@@ -81,6 +81,23 @@ rks note list paper <paper_id>
 
 `show paper` also includes a `notes` field so you can review the paper record and your notes together.
 
+Create a research project when you want a durable investigation scope above individual papers:
+
+```bash
+rks project create --name "Sparse Attention Review" --research-question "Which sparse attention papers matter most for long-context evaluation?"
+rks note add project <project_id> --content "Track benchmark realism separately from headline wins."
+rks project add-paper <project_id> <paper_id> --link-type key_evidence
+rks project papers <project_id>
+rks hypothesis create <project_id> --text "Sparse attention gains hold only under realistic long-context benchmarks."
+rks hypothesis add-evidence <hypothesis_id> paper <paper_id> --relation-type supported_by
+rks hypothesis add-evidence <hypothesis_id> claim <claim_id> --relation-type refined_by
+rks hypothesis evidence <hypothesis_id>
+rks show hypothesis <hypothesis_id>
+rks show project <project_id>
+```
+
+Use projects for your working context and curated evidence set. Use hypotheses for your own research ideas. Keep extracted claims bound to papers so provenance remains explicit.
+
 ### 4.2 DOI
 
 ```bash

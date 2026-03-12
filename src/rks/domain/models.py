@@ -113,6 +113,55 @@ class NoteRecord:
 
 
 @dataclass(frozen=True)
+class ProjectRecord:
+    id: str
+    name: str
+    description: Optional[str]
+    research_question: Optional[str]
+    status: str
+    created_by: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class ProjectLinkRecord:
+    id: str
+    project_id: str
+    object_id: str
+    object_type: str
+    link_type: str
+    metadata_json: Optional[str]
+    created_by: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class HypothesisRecord:
+    id: str
+    project_id: str
+    text: str
+    status: str
+    confidence: Optional[float]
+    context_json: Optional[str]
+    created_by: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class HypothesisEvidenceLinkRecord:
+    id: str
+    hypothesis_id: str
+    object_id: str
+    object_type: str
+    relation_type: str
+    metadata_json: Optional[str]
+    created_by: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class EdgeRecord:
     id: str
     source_id: str

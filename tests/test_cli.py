@@ -131,6 +131,92 @@ class CliSmokeTest(unittest.TestCase):
             self.assertEqual(len(notes_payload), 1)
             self.assertEqual(notes_payload[0]["content"], "Focus on benchmark setup")
 
+            project_create_result = run_cli(
+                "project",
+                "create",
+                "--name",
+                "Sparse Attention Review",
+                "--description",
+                "Track the strongest long-context evidence.",
+                "--research-question",
+                "Which sparse attention papers matter most for long-context evaluation?",
+                "--created-by",
+                "human:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(project_create_result.returncode, 0, project_create_result.stderr)
+            project_payload = json.loads(project_create_result.stdout)
+            self.assertEqual(project_payload["id"], "rp_000001")
+            self.assertEqual(project_payload["created_by"], "human:test")
+
+            project_list_result = run_cli("project", "list", cwd=tmp_path)
+            self.assertEqual(project_list_result.returncode, 0, project_list_result.stderr)
+            project_list_payload = json.loads(project_list_result.stdout)
+            self.assertEqual(len(project_list_payload), 1)
+            self.assertEqual(project_list_payload[0]["name"], "Sparse Attention Review")
+
+            project_note_result = run_cli(
+                "note",
+                "add",
+                "project",
+                project_payload["id"],
+                "--content",
+                "Keep a separate view of benchmark realism.",
+                "--created-by",
+                "human:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(project_note_result.returncode, 0, project_note_result.stderr)
+            self.assertEqual(json.loads(project_note_result.stdout)["target_type"], "project")
+
+            project_link_result = run_cli(
+                "project",
+                "add-paper",
+                project_payload["id"],
+                payload["id"],
+                "--link-type",
+                "key_evidence",
+                "--created-by",
+                "human:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(project_link_result.returncode, 0, project_link_result.stderr)
+            project_link_payload = json.loads(project_link_result.stdout)
+            self.assertEqual(project_link_payload["link"]["link_type"], "key_evidence")
+            self.assertEqual(project_link_payload["paper"]["id"], payload["id"])
+
+            duplicate_project_link_result = run_cli(
+                "project",
+                "add-paper",
+                project_payload["id"],
+                payload["id"],
+                "--link-type",
+                "key_evidence",
+                cwd=tmp_path,
+            )
+            self.assertEqual(duplicate_project_link_result.returncode, 0, duplicate_project_link_result.stderr)
+            duplicate_project_link_payload = json.loads(duplicate_project_link_result.stdout)
+            self.assertEqual(duplicate_project_link_payload["link"]["id"], project_link_payload["link"]["id"])
+
+            project_notes_result = run_cli("note", "list", "project", project_payload["id"], cwd=tmp_path)
+            self.assertEqual(project_notes_result.returncode, 0, project_notes_result.stderr)
+            project_notes_payload = json.loads(project_notes_result.stdout)
+            self.assertEqual(len(project_notes_payload), 1)
+            self.assertEqual(project_notes_payload[0]["content"], "Keep a separate view of benchmark realism.")
+
+            project_papers_result = run_cli("project", "papers", project_payload["id"], cwd=tmp_path)
+            self.assertEqual(project_papers_result.returncode, 0, project_papers_result.stderr)
+            project_papers_payload = json.loads(project_papers_result.stdout)
+            self.assertEqual(len(project_papers_payload), 1)
+            self.assertEqual(project_papers_payload[0]["paper"]["id"], payload["id"])
+
+            show_project_result = run_cli("show", "project", project_payload["id"], cwd=tmp_path)
+            self.assertEqual(show_project_result.returncode, 0, show_project_result.stderr)
+            show_project_payload = json.loads(show_project_result.stdout)
+            self.assertEqual(show_project_payload["id"], project_payload["id"])
+            self.assertEqual(len(show_project_payload["notes"]), 1)
+            self.assertEqual(len(show_project_payload["papers"]), 1)
+
             extract_claims_result = run_cli("extract", "claims", payload["id"], cwd=tmp_path)
             self.assertEqual(extract_claims_result.returncode, 0, extract_claims_result.stderr)
             extract_claims_payload = json.loads(extract_claims_result.stdout)
@@ -173,6 +259,80 @@ class CliSmokeTest(unittest.TestCase):
             self.assertGreaterEqual(len(show_claim_payload["edges"]), 2)
             self.assertIn("section", show_claim_payload["evidence"])
 
+            hypothesis_create_result = run_cli(
+                "hypothesis",
+                "create",
+                project_payload["id"],
+                "--text",
+                "Sparse attention gains hold only under realistic long-context benchmarks.",
+                "--status",
+                "active",
+                "--confidence",
+                "0.7",
+                "--context",
+                json.dumps({"scope": "long-context evaluation", "owner": "human:test"}),
+                "--created-by",
+                "human:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(hypothesis_create_result.returncode, 0, hypothesis_create_result.stderr)
+            hypothesis_payload = json.loads(hypothesis_create_result.stdout)
+            self.assertEqual(hypothesis_payload["id"], "h_000001")
+            self.assertEqual(hypothesis_payload["project_id"], project_payload["id"])
+            self.assertEqual(hypothesis_payload["status"], "active")
+
+            hypothesis_list_result = run_cli("hypothesis", "list", project_payload["id"], cwd=tmp_path)
+            self.assertEqual(hypothesis_list_result.returncode, 0, hypothesis_list_result.stderr)
+            hypothesis_list_payload = json.loads(hypothesis_list_result.stdout)
+            self.assertEqual(len(hypothesis_list_payload), 1)
+            self.assertEqual(hypothesis_list_payload[0]["text"], hypothesis_payload["text"])
+
+            hypothesis_paper_evidence_result = run_cli(
+                "hypothesis",
+                "add-evidence",
+                hypothesis_payload["id"],
+                "paper",
+                payload["id"],
+                "--relation-type",
+                "supported_by",
+                "--note",
+                "Primary benchmark anchor.",
+                "--created-by",
+                "human:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(hypothesis_paper_evidence_result.returncode, 0, hypothesis_paper_evidence_result.stderr)
+            hypothesis_paper_evidence_payload = json.loads(hypothesis_paper_evidence_result.stdout)
+            self.assertEqual(hypothesis_paper_evidence_payload["paper"]["id"], payload["id"])
+
+            hypothesis_claim_evidence_result = run_cli(
+                "hypothesis",
+                "add-evidence",
+                hypothesis_payload["id"],
+                "claim",
+                claim_id,
+                "--relation-type",
+                "refined_by",
+                "--created-by",
+                "human:test",
+                cwd=tmp_path,
+            )
+            self.assertEqual(hypothesis_claim_evidence_result.returncode, 0, hypothesis_claim_evidence_result.stderr)
+            hypothesis_claim_evidence_payload = json.loads(hypothesis_claim_evidence_result.stdout)
+            self.assertEqual(hypothesis_claim_evidence_payload["claim"]["id"], claim_id)
+
+            hypothesis_evidence_result = run_cli("hypothesis", "evidence", hypothesis_payload["id"], cwd=tmp_path)
+            self.assertEqual(hypothesis_evidence_result.returncode, 0, hypothesis_evidence_result.stderr)
+            hypothesis_evidence_payload = json.loads(hypothesis_evidence_result.stdout)
+            self.assertEqual(len(hypothesis_evidence_payload), 2)
+
+            show_hypothesis_result = run_cli("show", "hypothesis", hypothesis_payload["id"], cwd=tmp_path)
+            self.assertEqual(show_hypothesis_result.returncode, 0, show_hypothesis_result.stderr)
+            show_hypothesis_payload = json.loads(show_hypothesis_result.stdout)
+            self.assertEqual(show_hypothesis_payload["id"], hypothesis_payload["id"])
+            self.assertEqual(show_hypothesis_payload["project"]["id"], project_payload["id"])
+            self.assertEqual(len(show_hypothesis_payload["evidence_links"]), 2)
+
             search_result = run_cli("search", "Transformer", cwd=tmp_path)
             self.assertEqual(search_result.returncode, 0, search_result.stderr)
             search_payload = json.loads(search_result.stdout)
@@ -187,6 +347,11 @@ class CliSmokeTest(unittest.TestCase):
             self.assertEqual(final_artifact_types.count("claim_candidates"), 1)
             self.assertEqual(final_artifact_types.count("normalized_claims"), 1)
             self.assertEqual(len(final_show_payload["notes"]), 1)
+
+            final_project_result = run_cli("show", "project", project_payload["id"], cwd=tmp_path)
+            self.assertEqual(final_project_result.returncode, 0, final_project_result.stderr)
+            final_project_payload = json.loads(final_project_result.stdout)
+            self.assertEqual(len(final_project_payload["hypotheses"]), 1)
 
 
 if __name__ == "__main__":

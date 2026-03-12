@@ -93,6 +93,13 @@ Inspect the graph:
 rks show paper p_000001
 rks note add paper p_000001 --content "Revisit the evaluation protocol."
 rks note list paper p_000001
+rks project create --name "Sparse Attention Review" --research-question "Which papers matter most for long-context evaluation?"
+rks note add project rp_000001 --content "Track benchmark realism separately from raw headline results."
+rks project add-paper rp_000001 p_000001 --link-type key_evidence
+rks hypothesis create rp_000001 --text "Sparse attention gains hold only under realistic long-context benchmarks."
+rks hypothesis add-evidence h_000001 paper p_000001 --relation-type supported_by
+rks show project rp_000001
+rks show hypothesis h_000001
 rks claims p_000001
 rks concepts p_000001
 rks show claim c_000001

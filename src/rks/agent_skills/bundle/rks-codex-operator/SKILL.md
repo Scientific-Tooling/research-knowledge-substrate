@@ -85,6 +85,16 @@ rks note add paper <paper_id> --content "Need manual comparison with the contrad
 rks note list paper <paper_id>
 ```
 
+When the task is organized around a concrete research investigation, create a project and keep working hypotheses there:
+
+```bash
+rks project create --name "Sparse Attention Review" --research-question "Which papers matter most for realistic long-context evaluation?"
+rks note add project <project_id> --content "Separate benchmark realism from headline wins." --created-by agent:review
+rks project add-paper <project_id> <paper_id> --link-type key_evidence --created-by agent:review
+rks hypothesis create <project_id> --text "Sparse attention gains shrink under realistic evaluation." --status active --created-by agent:review
+rks hypothesis add-evidence <hypothesis_id> paper <paper_id> --relation-type supported_by --created-by agent:review
+```
+
 ### 4. Run query and review flows
 
 Inspect graph state:
@@ -126,6 +136,9 @@ Then inspect:
 curl -s http://127.0.0.1:8765/health
 curl -s http://127.0.0.1:8765/api/status/<paper_id>
 curl -s http://127.0.0.1:8765/api/claims/<claim_id>/relations
+curl -s http://127.0.0.1:8765/api/projects
+curl -s http://127.0.0.1:8765/api/projects/<project_id>
+curl -s http://127.0.0.1:8765/api/hypotheses/<hypothesis_id>
 curl -s "http://127.0.0.1:8765/api/output/answer?q=<encoded-question>"
 curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
 curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=<encoded-topic>"
@@ -137,6 +150,9 @@ For relation writes:
 ```bash
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/promote -H 'Content-Type: application/json' -d '{...}'
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/retract -H 'Content-Type: application/json' -d '{...}'
+curl -s -X POST http://127.0.0.1:8765/api/projects -H 'Content-Type: application/json' -d '{...}'
+curl -s -X POST http://127.0.0.1:8765/api/projects/<project_id>/hypotheses -H 'Content-Type: application/json' -d '{...}'
+curl -s -X POST http://127.0.0.1:8765/api/hypotheses/<hypothesis_id>/evidence -H 'Content-Type: application/json' -d '{...}'
 ```
 
 ## Required Output Discipline

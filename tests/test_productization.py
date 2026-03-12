@@ -40,8 +40,10 @@ class ProductizationTest(unittest.TestCase):
 
     def test_packaged_migrations_exist_for_distributions(self) -> None:
         packaged = _packaged_migration_files()
-        self.assertEqual([path.name for path in packaged], ["0001_init.sql"])
+        self.assertEqual([path.name for path in packaged], ["0001_init.sql", "0002_research_projects.sql", "0003_project_hypotheses.sql"])
         self.assertIn("CREATE TABLE IF NOT EXISTS papers", packaged[0].read_text(encoding="utf-8"))
+        self.assertIn("CREATE TABLE IF NOT EXISTS research_projects", packaged[1].read_text(encoding="utf-8"))
+        self.assertIn("CREATE TABLE IF NOT EXISTS hypotheses", packaged[2].read_text(encoding="utf-8"))
 
     def test_config_migrate_and_graph_snapshot_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as target_dir:
@@ -72,12 +74,49 @@ class ProductizationTest(unittest.TestCase):
                 cwd=source,
             )
             self.assertEqual(add_note_result.returncode, 0, add_note_result.stderr)
+            create_project_result = run_cli(
+                "project",
+                "create",
+                "--name",
+                "Export Validation Project",
+                "--research-question",
+                "Does the snapshot preserve project state?",
+                cwd=source,
+            )
+            self.assertEqual(create_project_result.returncode, 0, create_project_result.stderr)
+            project_id = json.loads(create_project_result.stdout)["id"]
+            self.assertEqual(
+                run_cli("note", "add", "project", project_id, "--content", "Project note for snapshot coverage", cwd=source).returncode,
+                0,
+            )
+            self.assertEqual(run_cli("project", "add-paper", project_id, paper_id, cwd=source).returncode, 0)
             self.assertEqual(run_cli("extract", "claims", paper_id, cwd=source).returncode, 0)
+            claim_id = json.loads(run_cli("claims", paper_id, cwd=source).stdout)[0]["id"]
+            create_hypothesis_result = run_cli(
+                "hypothesis",
+                "create",
+                project_id,
+                "--text",
+                "Snapshot import preserves hypothesis evidence.",
+                "--status",
+                "active",
+                cwd=source,
+            )
+            self.assertEqual(create_hypothesis_result.returncode, 0, create_hypothesis_result.stderr)
+            hypothesis_id = json.loads(create_hypothesis_result.stdout)["id"]
+            self.assertEqual(
+                run_cli("hypothesis", "add-evidence", hypothesis_id, "paper", paper_id, cwd=source).returncode,
+                0,
+            )
+            self.assertEqual(
+                run_cli("hypothesis", "add-evidence", hypothesis_id, "claim", claim_id, "--relation-type", "refined_by", cwd=source).returncode,
+                0,
+            )
 
             migrate_result = run_cli("migrate", cwd=source)
             self.assertEqual(migrate_result.returncode, 0, migrate_result.stderr)
             migrate_payload = json.loads(migrate_result.stdout)
-            self.assertEqual(migrate_payload["current_version"], "0001_init.sql")
+            self.assertEqual(migrate_payload["current_version"], "0003_project_hypotheses.sql")
 
             snapshot_path = source / "snapshot.json"
             export_result = run_cli("export", "graph", str(snapshot_path), cwd=source)
@@ -93,6 +132,20 @@ class ProductizationTest(unittest.TestCase):
             self.assertEqual(show_payload["id"], paper_id)
             self.assertEqual(len(show_payload["notes"]), 1)
             self.assertEqual(show_payload["notes"][0]["content"], "Recheck baseline numbers before export")
+
+            show_project_result = run_cli("show", "project", project_id, cwd=target)
+            self.assertEqual(show_project_result.returncode, 0, show_project_result.stderr)
+            show_project_payload = json.loads(show_project_result.stdout)
+            self.assertEqual(show_project_payload["id"], project_id)
+            self.assertEqual(len(show_project_payload["notes"]), 1)
+            self.assertEqual(show_project_payload["papers"][0]["paper"]["id"], paper_id)
+            self.assertEqual(len(show_project_payload["hypotheses"]), 1)
+
+            show_hypothesis_result = run_cli("show", "hypothesis", hypothesis_id, cwd=target)
+            self.assertEqual(show_hypothesis_result.returncode, 0, show_hypothesis_result.stderr)
+            show_hypothesis_payload = json.loads(show_hypothesis_result.stdout)
+            self.assertEqual(show_hypothesis_payload["id"], hypothesis_id)
+            self.assertEqual(len(show_hypothesis_payload["evidence_links"]), 2)
 
             claims_result = run_cli("claims", paper_id, cwd=target)
             self.assertEqual(claims_result.returncode, 0, claims_result.stderr)
@@ -205,6 +258,100 @@ class ProductizationTest(unittest.TestCase):
                 self.assertEqual(reviewed_status_payload["note_count"], 1)
                 self.assertEqual(reviewed_status_payload["readiness"]["current_level"], "review_pending")
 
+                _, _, create_project_body = dispatch_post_request(
+                    "/api/projects",
+                    json.dumps(
+                        {
+                            "name": "Service Project",
+                            "description": "Validate project HTTP flows.",
+                            "research_question": "Can the service persist project state cleanly?",
+                            "created_by": "agent:http",
+                        }
+                    ).encode("utf-8"),
+                )
+                create_project_payload = json.loads(create_project_body.decode("utf-8"))
+                project_id = create_project_payload["id"]
+                self.assertEqual(create_project_payload["created_by"], "agent:http")
+
+                _, _, add_project_note_body = dispatch_post_request(
+                    f"/api/projects/{project_id}/notes",
+                    json.dumps(
+                        {
+                            "content": "Keep this project focused on service-backed workflows.",
+                            "created_by": "agent:http",
+                        }
+                    ).encode("utf-8"),
+                )
+                add_project_note_payload = json.loads(add_project_note_body.decode("utf-8"))
+                self.assertEqual(add_project_note_payload["target_type"], "project")
+
+                _, _, add_project_paper_body = dispatch_post_request(
+                    f"/api/projects/{project_id}/papers",
+                    json.dumps(
+                        {
+                            "paper_id": paper_id,
+                            "link_type": "key_evidence",
+                            "created_by": "agent:http",
+                        }
+                    ).encode("utf-8"),
+                )
+                add_project_paper_payload = json.loads(add_project_paper_body.decode("utf-8"))
+                self.assertEqual(add_project_paper_payload["paper"]["id"], paper_id)
+                self.assertEqual(add_project_paper_payload["link"]["link_type"], "key_evidence")
+
+                _, _, projects_body = dispatch_get_request("/api/projects")
+                projects_payload = json.loads(projects_body.decode("utf-8"))
+                self.assertEqual(len(projects_payload), 1)
+
+                _, _, project_body = dispatch_get_request(f"/api/projects/{project_id}")
+                project_payload = json.loads(project_body.decode("utf-8"))
+                self.assertEqual(project_payload["id"], project_id)
+                self.assertEqual(len(project_payload["notes"]), 1)
+                self.assertEqual(len(project_payload["papers"]), 1)
+
+                _, _, create_hypothesis_body = dispatch_post_request(
+                    f"/api/projects/{project_id}/hypotheses",
+                    json.dumps(
+                        {
+                            "text": "Only some sparse attention results survive realistic evaluation.",
+                            "status": "active",
+                            "confidence": 0.68,
+                            "context": {"scope": "service test"},
+                            "created_by": "agent:http",
+                        }
+                    ).encode("utf-8"),
+                )
+                create_hypothesis_payload = json.loads(create_hypothesis_body.decode("utf-8"))
+                hypothesis_id = create_hypothesis_payload["id"]
+                self.assertEqual(create_hypothesis_payload["status"], "active")
+
+                _, _, project_hypotheses_body = dispatch_get_request(f"/api/projects/{project_id}/hypotheses")
+                project_hypotheses_payload = json.loads(project_hypotheses_body.decode("utf-8"))
+                self.assertEqual(len(project_hypotheses_payload), 1)
+
+                _, _, add_hypothesis_paper_evidence_body = dispatch_post_request(
+                    f"/api/hypotheses/{hypothesis_id}/evidence",
+                    json.dumps(
+                        {
+                            "object_type": "paper",
+                            "object_id": paper_id,
+                            "relation_type": "supported_by",
+                            "created_by": "agent:http",
+                            "note": "primary service anchor",
+                        }
+                    ).encode("utf-8"),
+                )
+                add_hypothesis_paper_evidence_payload = json.loads(add_hypothesis_paper_evidence_body.decode("utf-8"))
+                self.assertEqual(add_hypothesis_paper_evidence_payload["paper"]["id"], paper_id)
+
+                _, _, project_notes_body = dispatch_get_request(f"/api/projects/{project_id}/notes")
+                project_notes_payload = json.loads(project_notes_body.decode("utf-8"))
+                self.assertEqual(project_notes_payload[0]["content"], "Keep this project focused on service-backed workflows.")
+
+                _, _, project_papers_body = dispatch_get_request(f"/api/projects/{project_id}/papers")
+                project_papers_payload = json.loads(project_papers_body.decode("utf-8"))
+                self.assertEqual(project_papers_payload[0]["paper"]["id"], paper_id)
+
                 claims_payload = json.loads(run_cli("claims", paper_id, cwd=tmp_path).stdout)
                 claim_id = claims_payload[0]["id"]
                 related_claim_payload = json.loads(run_cli("claims", related_paper_id, cwd=tmp_path).stdout)
@@ -229,6 +376,29 @@ class ProductizationTest(unittest.TestCase):
                 )
                 promote_payload = json.loads(promote_body.decode("utf-8"))
                 self.assertEqual(promote_payload["created_by"], "agent:http")
+
+                _, _, add_hypothesis_claim_evidence_body = dispatch_post_request(
+                    f"/api/hypotheses/{hypothesis_id}/evidence",
+                    json.dumps(
+                        {
+                            "object_type": "claim",
+                            "object_id": claim_id,
+                            "relation_type": "refined_by",
+                            "created_by": "agent:http",
+                        }
+                    ).encode("utf-8"),
+                )
+                add_hypothesis_claim_evidence_payload = json.loads(add_hypothesis_claim_evidence_body.decode("utf-8"))
+                self.assertEqual(add_hypothesis_claim_evidence_payload["claim"]["id"], claim_id)
+
+                _, _, hypothesis_body = dispatch_get_request(f"/api/hypotheses/{hypothesis_id}")
+                hypothesis_payload = json.loads(hypothesis_body.decode("utf-8"))
+                self.assertEqual(hypothesis_payload["id"], hypothesis_id)
+                self.assertEqual(len(hypothesis_payload["evidence_links"]), 2)
+
+                _, _, hypothesis_evidence_body = dispatch_get_request(f"/api/hypotheses/{hypothesis_id}/evidence")
+                hypothesis_evidence_payload = json.loads(hypothesis_evidence_body.decode("utf-8"))
+                self.assertEqual(len(hypothesis_evidence_payload), 2)
 
                 _, _, reviewed_relations_body = dispatch_get_request(f"/api/claims/{claim_id}/relations")
                 reviewed_relations_payload = json.loads(reviewed_relations_body.decode("utf-8"))
