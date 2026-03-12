@@ -15,6 +15,33 @@ def extract_text_for_paper(repo: PaperRepository, paths: AppPaths, paper: PaperR
     return write_text_artifact(repo=repo, paths=paths, paper_id=paper.id, payload=payload)
 
 
+def extract_text_with_llm(repo: PaperRepository, paths: AppPaths, paper: PaperRecord, provider) -> ArtifactRecord:
+    payload = provider.extract_text(build_text_source_input(paper))
+    return write_text_artifact(repo=repo, paths=paths, paper_id=paper.id, payload=payload)
+
+
+def build_text_source_input(paper: PaperRecord) -> dict:
+    if paper.pdf_path:
+        rough_payload = _build_text_payload(Path(paper.pdf_path))
+        return {
+            "paper_id": paper.id,
+            "source_type": paper.source_type,
+            "source_pdf": paper.pdf_path,
+            "rough_text": rough_payload["text"],
+            "rough_paragraphs": rough_payload["paragraphs"],
+            "warnings": rough_payload["warnings"],
+        }
+
+    return {
+        "paper_id": paper.id,
+        "source_type": paper.source_type,
+        "source_pdf": None,
+        "rough_text": paper.abstract or paper.title,
+        "rough_paragraphs": [value for value in (paper.abstract, paper.title) if value],
+        "warnings": [],
+    }
+
+
 def write_text_artifact(
     repo: PaperRepository,
     paths: AppPaths,

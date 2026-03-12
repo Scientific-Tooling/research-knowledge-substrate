@@ -4,10 +4,17 @@ import argparse
 import json
 from pathlib import Path
 
+from rks.agent import create_claims_request, create_text_request, import_claims_result, import_text_result
 from rks.config import load_paths
-from rks.extraction import extract_claims_for_paper, extract_text_for_paper
+from rks.config import load_llm_config
+from rks.extraction import (
+    extract_claims_for_paper,
+    extract_claims_with_llm,
+    extract_text_for_paper,
+    extract_text_with_llm,
+)
 from rks.ingestion import ingest_arxiv_reference, ingest_doi_reference, ingest_pdf
-from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider
+from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, OpenAICompatibleLlmProvider
 from rks.query import QueryService
 from rks.storage import (
     ClaimRepository,
@@ -66,11 +73,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     extract_text_parser = extract_subparsers.add_parser("text", help="Extract text artifacts for a paper.")
     extract_text_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_text_parser.add_argument(
+        "--mode",
+        choices=("heuristic", "llm-api", "agent"),
+        default="heuristic",
+        help="Execution mode for text extraction.",
+    )
     extract_text_parser.set_defaults(handler=handle_extract_text)
 
     extract_claims_parser = extract_subparsers.add_parser("claims", help="Extract heuristic claims for a paper.")
     extract_claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_claims_parser.add_argument(
+        "--mode",
+        choices=("heuristic", "llm-api", "agent"),
+        default="heuristic",
+        help="Execution mode for claim extraction.",
+    )
     extract_claims_parser.set_defaults(handler=handle_extract_claims)
+
+    import_parser = subparsers.add_parser("import", help="Import externally produced extraction results.")
+    import_subparsers = import_parser.add_subparsers(dest="import_command", required=True)
+
+    import_text_parser = import_subparsers.add_parser("text", help="Import extracted text JSON for a paper.")
+    import_text_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    import_text_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
+    import_text_parser.set_defaults(handler=handle_import_text)
+
+    import_claims_parser = import_subparsers.add_parser("claims", help="Import structured claims JSON for a paper.")
+    import_claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    import_claims_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
+    import_claims_parser.set_defaults(handler=handle_import_claims)
 
     query_parser = subparsers.add_parser("query", help="Run deterministic research graph queries.")
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
@@ -220,7 +252,76 @@ def handle_extract_text(args: argparse.Namespace) -> int:
     paths = load_paths()
     with _open_repository() as repo:
         paper = repo.get_paper(args.paper_id)
-        artifact = extract_text_for_paper(repo=repo, paths=paths, paper=paper)
+        if args.mode == "heuristic":
+            artifact = extract_text_for_paper(repo=repo, paths=paths, paper=paper)
+            payload = {
+                "paper_id": args.paper_id,
+                "mode": args.mode,
+                "artifact_id": artifact.id,
+                "artifact_type": artifact.artifact_type,
+                "path": artifact.path,
+            }
+        elif args.mode == "llm-api":
+            provider = OpenAICompatibleLlmProvider(load_llm_config())
+            artifact = extract_text_with_llm(repo=repo, paths=paths, paper=paper, provider=provider)
+            payload = {
+                "paper_id": args.paper_id,
+                "mode": args.mode,
+                "artifact_id": artifact.id,
+                "artifact_type": artifact.artifact_type,
+                "path": artifact.path,
+            }
+        else:
+            payload = create_text_request(repo=repo, paths=paths, paper_id=args.paper_id)
+            payload["mode"] = args.mode
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_extract_claims(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        if args.mode == "heuristic":
+            claims = extract_claims_for_paper(
+                paths=load_paths(),
+                paper_repo=session.papers,
+                claim_repo=session.claims,
+                concept_repo=session.concepts,
+                edge_repo=session.edges,
+                paper_id=args.paper_id,
+            )
+            payload = {
+                "paper_id": args.paper_id,
+                "mode": args.mode,
+                "claim_count": len(claims),
+                "claim_ids": [claim.id for claim in claims],
+            }
+        elif args.mode == "llm-api":
+            provider = OpenAICompatibleLlmProvider(load_llm_config())
+            claims = extract_claims_with_llm(
+                paths=load_paths(),
+                paper_repo=session.papers,
+                claim_repo=session.claims,
+                concept_repo=session.concepts,
+                edge_repo=session.edges,
+                paper_id=args.paper_id,
+                provider=provider,
+            )
+            payload = {
+                "paper_id": args.paper_id,
+                "mode": args.mode,
+                "claim_count": len(claims),
+                "claim_ids": [claim.id for claim in claims],
+            }
+        else:
+            payload = create_claims_request(repo=session.papers, paths=load_paths(), paper_id=args.paper_id)
+            payload["mode"] = args.mode
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_import_text(args: argparse.Namespace) -> int:
+    with _open_repository() as repo:
+        artifact = import_text_result(repo=repo, paths=load_paths(), paper_id=args.paper_id, json_path=args.json_path)
     print(
         json.dumps(
             {
@@ -235,15 +336,16 @@ def handle_extract_text(args: argparse.Namespace) -> int:
     return 0
 
 
-def handle_extract_claims(args: argparse.Namespace) -> int:
+def handle_import_claims(args: argparse.Namespace) -> int:
     with _open_session() as session:
-        claims = extract_claims_for_paper(
+        claims = import_claims_result(
             paths=load_paths(),
             paper_repo=session.papers,
             claim_repo=session.claims,
             concept_repo=session.concepts,
             edge_repo=session.edges,
             paper_id=args.paper_id,
+            json_path=args.json_path,
         )
     print(
         json.dumps(

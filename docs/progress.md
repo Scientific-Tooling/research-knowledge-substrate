@@ -8,6 +8,8 @@ The repository now has a working local MVP spine:
 - PDF ingestion into stable paper IDs
 - metadata and extracted text artifacts on disk
 - heuristic structured claim extraction
+- optional `llm-api` claim/text extraction when the user provides an API key
+- optional `agent` extraction workflow for Codex, Claude Code, or other external agents
 - concept normalization and persistence
 - graph edge persistence for `contains`, `supported_by`, and `about`
 - deterministic CLI queries for `claims-about` and `papers-supporting`

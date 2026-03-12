@@ -47,31 +47,68 @@ def extract_claims_for_paper(
     claim_candidates = _extract_candidate_sentences(text=text)
     normalized_claims = [_normalize_sentence(candidate) for candidate in claim_candidates]
     claims = _extract_claim_dicts(text=text, paper_id=paper_id)
+    _write_claim_stage_artifact(paper_repo, artifact.path, paper_id, "claim_candidates", claim_candidates)
+    _write_claim_stage_artifact(paper_repo, artifact.path, paper_id, "normalized_claims", normalized_claims)
+    return persist_claims_for_paper(
+        paths=paths,
+        paper_repo=paper_repo,
+        claim_repo=claim_repo,
+        concept_repo=concept_repo,
+        edge_repo=edge_repo,
+        paper_id=paper_id,
+        claims=claims,
+        extractor="heuristic",
+    )
 
-    paper_dir = Path(artifact.path).parent
-    (paper_dir / "claim_candidates.json").write_text(json.dumps(claim_candidates, indent=2), encoding="utf-8")
-    paper_repo.create_artifact(
+
+def extract_claims_with_llm(
+    paths: AppPaths,
+    paper_repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    concept_repo: ConceptRepository,
+    edge_repo: EdgeRepository,
+    paper_id: str,
+    provider,
+) -> list:
+    paper = paper_repo.get_paper(paper_id)
+    if not paper.text_artifact_id:
+        return []
+    artifact = paper_repo.get_artifact(paper.text_artifact_id)
+    text_payload = json.loads(Path(artifact.path).read_text(encoding="utf-8"))
+    claims = provider.parse_claims(text_payload)
+    return persist_claims_for_paper(
+        paths=paths,
+        paper_repo=paper_repo,
+        claim_repo=claim_repo,
+        concept_repo=concept_repo,
+        edge_repo=edge_repo,
         paper_id=paper_id,
-        artifact_type="claim_candidates",
-        path=paper_dir / "claim_candidates.json",
-        format_name="json",
-        metadata={"count": len(claim_candidates)},
+        claims=claims,
+        extractor="llm_api",
     )
-    (paper_dir / "normalized_claims.json").write_text(json.dumps(normalized_claims, indent=2), encoding="utf-8")
-    paper_repo.create_artifact(
-        paper_id=paper_id,
-        artifact_type="normalized_claims",
-        path=paper_dir / "normalized_claims.json",
-        format_name="json",
-        metadata={"count": len(normalized_claims)},
-    )
-    (paper_dir / "structured_claims.json").write_text(json.dumps(claims, indent=2), encoding="utf-8")
+
+
+def persist_claims_for_paper(
+    paths: AppPaths,
+    paper_repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    concept_repo: ConceptRepository,
+    edge_repo: EdgeRepository,
+    paper_id: str,
+    claims: list[dict],
+    extractor: str,
+) -> list:
+    paper = paper_repo.get_paper(paper_id)
+    paper_dir = Path(paths.papers_dir / paper.id)
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    structured_claims_path = paper_dir / "structured_claims.json"
+    structured_claims_path.write_text(json.dumps(claims, indent=2), encoding="utf-8")
     paper_repo.create_artifact(
         paper_id=paper_id,
         artifact_type="structured_claims",
-        path=paper_dir / "structured_claims.json",
+        path=structured_claims_path,
         format_name="json",
-        metadata={"count": len(claims)},
+        metadata={"count": len(claims), "extractor": extractor},
     )
 
     stored_claims = claim_repo.replace_claims_for_paper(paper_id, claims)
@@ -84,6 +121,18 @@ def extract_claims_for_paper(
             paper_id=paper_id,
         )
     return claim_repo.list_claims_for_paper(paper_id)
+
+
+def _write_claim_stage_artifact(paper_repo: PaperRepository, text_artifact_path: str, paper_id: str, artifact_type: str, payload) -> None:
+    path = Path(text_artifact_path).parent / f"{artifact_type}.json"
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    paper_repo.create_artifact(
+        paper_id=paper_id,
+        artifact_type=artifact_type,
+        path=path,
+        format_name="json",
+        metadata={"count": len(payload) if hasattr(payload, "__len__") else None},
+    )
 
 
 def _extract_claim_dicts(text: str, paper_id: str) -> list[dict]:
