@@ -68,6 +68,7 @@ class CliSmokeTest(unittest.TestCase):
             self.assertEqual(len(claims_payload), 2)
             self.assertEqual(claims_payload[0]["subject"], "Transformer")
             self.assertIn(claims_payload[0]["predicate"], {"supports", "improves"})
+            self.assertIn("section", claims_payload[0]["evidence"])
 
             concepts_result = run_cli("concepts", payload["id"], cwd=tmp_path)
             self.assertEqual(concepts_result.returncode, 0, concepts_result.stderr)
@@ -93,6 +94,13 @@ class CliSmokeTest(unittest.TestCase):
             show_claim_payload = json.loads(show_claim_result.stdout)
             self.assertEqual(show_claim_payload["subject"], "Transformer")
             self.assertGreaterEqual(len(show_claim_payload["edges"]), 2)
+            self.assertIn("section", show_claim_payload["evidence"])
+
+            search_result = run_cli("search", "Transformer", cwd=tmp_path)
+            self.assertEqual(search_result.returncode, 0, search_result.stderr)
+            search_payload = json.loads(search_result.stdout)
+            self.assertGreaterEqual(len(search_payload["claims"]), 1)
+            self.assertGreaterEqual(len(search_payload["concepts"]), 1)
 
 
 if __name__ == "__main__":

@@ -78,6 +78,10 @@ def build_parser() -> argparse.ArgumentParser:
     concepts_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     concepts_parser.set_defaults(handler=handle_concepts)
 
+    search_parser = subparsers.add_parser("search", help="Run local text search across papers, claims, and concepts.")
+    search_parser.add_argument("query", help="Search query text.")
+    search_parser.set_defaults(handler=handle_search)
+
     summarize_parser = subparsers.add_parser("summarize", help="Generate or request reasoning outputs.")
     summarize_subparsers = summarize_parser.add_subparsers(dest="summarize_command", required=True)
 
@@ -243,6 +247,19 @@ def handle_concepts(args: argparse.Namespace) -> int:
             edges=session.edges,
         )
         payload = query.concepts_for_paper(args.paper_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_search(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        query = QueryService(
+            papers=session.papers,
+            claims=session.claims,
+            concepts=session.concepts,
+            edges=session.edges,
+        )
+        payload = query.search(args.query)
     print(json.dumps(payload, indent=2))
     return 0
 

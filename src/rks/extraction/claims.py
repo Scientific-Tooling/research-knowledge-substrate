@@ -43,10 +43,13 @@ def extract_claims_for_paper(
 
     artifact = paper_repo.get_artifact(paper.text_artifact_id)
     payload = json.loads(Path(artifact.path).read_text(encoding="utf-8"))
-    text = payload.get("text", "")
-    claim_candidates = _extract_candidate_sentences(text=text)
-    normalized_claims = [_normalize_sentence(candidate) for candidate in claim_candidates]
-    claims = _extract_claim_dicts(text=text, paper_id=paper_id)
+    sections_payload = _load_sections_payload(Path(artifact.path))
+    claim_candidates = _extract_candidate_entries(payload=payload, sections_payload=sections_payload)
+    normalized_claims = [
+        {"text": _normalize_sentence(candidate["text"]), "section": candidate["section"]}
+        for candidate in claim_candidates
+    ]
+    claims = _extract_claim_dicts(claim_candidates=claim_candidates, paper_id=paper_id)
     _write_claim_stage_artifact(paper_repo, artifact.path, paper_id, "claim_candidates", claim_candidates)
     _write_claim_stage_artifact(paper_repo, artifact.path, paper_id, "normalized_claims", normalized_claims)
     return persist_claims_for_paper(
@@ -135,12 +138,11 @@ def _write_claim_stage_artifact(paper_repo: PaperRepository, text_artifact_path:
     )
 
 
-def _extract_claim_dicts(text: str, paper_id: str) -> list[dict]:
-    raw_sentences = _extract_candidate_sentences(text)
+def _extract_claim_dicts(claim_candidates: list[dict], paper_id: str) -> list[dict]:
     claims: list[dict] = []
 
-    for sentence in raw_sentences:
-        candidate = _normalize_sentence(sentence)
+    for candidate_entry in claim_candidates:
+        candidate = _normalize_sentence(candidate_entry["text"])
         if len(candidate) < 20:
             continue
 
@@ -159,9 +161,14 @@ def _extract_claim_dicts(text: str, paper_id: str) -> list[dict]:
                 "context": {
                     "paper_id": paper_id,
                     "subject_text": subject_text,
+                    "section": candidate_entry["section"],
                     **context,
                 },
-                "evidence": {"paper_id": paper_id, "extraction": "heuristic"},
+                "evidence": {
+                    "paper_id": paper_id,
+                    "extraction": "heuristic",
+                    "section": candidate_entry["section"],
+                },
                 "confidence": 0.55,
             }
         )
@@ -174,6 +181,29 @@ def _extract_candidate_sentences(text: str) -> list[str]:
     if not normalized_text:
         return []
     return [sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", normalized_text) if sentence.strip()]
+
+
+def _extract_candidate_entries(payload: dict, sections_payload: dict | None) -> list[dict]:
+    if sections_payload and sections_payload.get("sections"):
+        entries = []
+        for section in sections_payload["sections"]:
+            section_name = section.get("name", "unknown")
+            if section_name not in {"abstract", "introduction", "method", "experiments", "results", "conclusion"}:
+                continue
+            for paragraph in section.get("paragraphs", []):
+                for sentence in _extract_candidate_sentences(paragraph):
+                    entries.append({"text": sentence, "section": section_name})
+        if entries:
+            return entries
+
+    return [{"text": sentence, "section": "abstract"} for sentence in _extract_candidate_sentences(payload.get("text", ""))]
+
+
+def _load_sections_payload(text_artifact_path: Path) -> dict | None:
+    sections_path = text_artifact_path.parent / "sections.json"
+    if not sections_path.exists():
+        return None
+    return json.loads(sections_path.read_text(encoding="utf-8"))
 
 
 def _normalize_sentence(sentence: str) -> str:

@@ -78,6 +78,7 @@ rks show claim c_000001
 Run deterministic queries:
 
 ```bash
+rks search Transformer
 rks query claims-about Transformer
 rks query papers-supporting c_000001
 ```

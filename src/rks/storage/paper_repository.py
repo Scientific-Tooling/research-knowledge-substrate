@@ -178,3 +178,16 @@ class PaperRepository:
         if row is None:
             raise KeyError(f"Artifact not found: {artifact_id}")
         return ArtifactRecord(**dict(row))
+
+    def search_papers(self, query: str) -> list[PaperRecord]:
+        like = f"%{query}%"
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM papers
+            WHERE title LIKE ? OR abstract LIKE ? OR source_ref LIKE ?
+            ORDER BY updated_at DESC, id DESC
+            """,
+            (like, like, like),
+        ).fetchall()
+        return [PaperRecord(**dict(row)) for row in rows]

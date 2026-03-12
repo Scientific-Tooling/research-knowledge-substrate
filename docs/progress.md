@@ -15,6 +15,7 @@ The repository now has a working local MVP spine:
 - concept normalization and persistence
 - graph edge persistence for `contains`, `supported_by`, and `about`
 - deterministic CLI queries for `claims-about` and `papers-supporting`
+- local search across papers, claims, and concepts
 
 ## Implemented Milestones
 

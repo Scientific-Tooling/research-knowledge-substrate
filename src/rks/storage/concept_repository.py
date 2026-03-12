@@ -75,3 +75,15 @@ class ConceptRepository:
             (paper_id,),
         ).fetchall()
         return [ConceptRecord(**dict(row)) for row in rows]
+
+    def search_concepts(self, query: str) -> list[ConceptRecord]:
+        canonical = canonicalize_term(query)
+        rows = self.conn.execute("SELECT * FROM concepts ORDER BY updated_at DESC, id DESC").fetchall()
+        matches = []
+        for row in rows:
+            record = ConceptRecord(**dict(row))
+            aliases = json.loads(record.aliases_json or "[]")
+            haystacks = [record.name, *aliases]
+            if any(canonical.lower() in value.lower() for value in haystacks if value):
+                matches.append(record)
+        return matches

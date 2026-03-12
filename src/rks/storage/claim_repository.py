@@ -93,3 +93,16 @@ class ClaimRepository:
         if row is None:
             raise KeyError(f"Claim not found: {claim_id}")
         return ClaimRecord(**dict(row))
+
+    def search_claims(self, query: str) -> list[ClaimRecord]:
+        like = f"%{query}%"
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM claims
+            WHERE text LIKE ? OR object_text LIKE ? OR context_json LIKE ?
+            ORDER BY updated_at DESC, id DESC
+            """,
+            (like, like, like),
+        ).fetchall()
+        return [ClaimRecord(**dict(row)) for row in rows]

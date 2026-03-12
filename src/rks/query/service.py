@@ -53,6 +53,30 @@ class QueryService:
         concepts = self.concepts.list_for_paper(paper_id)
         return [{"id": concept.id, "name": concept.name} for concept in concepts]
 
+    def search(self, query: str) -> dict:
+        papers = self.papers.search_papers(query)
+        claims = self.claims.search_claims(query)
+        concepts = self.concepts.search_concepts(query)
+        return {
+            "query": query,
+            "papers": [
+                {
+                    "id": paper.id,
+                    "title": paper.title,
+                    "source_type": paper.source_type,
+                }
+                for paper in papers
+            ],
+            "claims": [self._claim_payload(claim) for claim in claims],
+            "concepts": [
+                {
+                    "id": concept.id,
+                    "name": concept.name,
+                }
+                for concept in concepts
+            ],
+        }
+
     def _resolve_concept(self, concept_name_or_id: str):
         if concept_name_or_id.startswith("k_"):
             return self.concepts.get_concept(concept_name_or_id)
