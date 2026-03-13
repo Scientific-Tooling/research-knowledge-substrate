@@ -10,6 +10,9 @@ These documents describe the current product, architecture direction, operations
 - `progress.md`
 - `product-priorities.md`
 - `design-implementation-comparison.md`
+- `knowledge-evolution-design-zh.md`
+- `knowledge-evolution-capability-map-zh.md`
+- `knowledge-evolution-current-architecture-outline-zh.md`
 - `research-output-roadmap.md`
 - `focus-optimization-plan.md`
 - `dual-track-llm-contract.md`
