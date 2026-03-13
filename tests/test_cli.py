@@ -519,5 +519,48 @@ class CliSmokeTest(unittest.TestCase):
             self.assertEqual(planner_payload["recommended_surface"], "project_review_priorities")
 
 
+class SchemaCommandTest(unittest.TestCase):
+    def test_schema_claim_returns_claim_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            result = run_cli("schema", "claim", cwd=tmp_path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["object_type"], "claim")
+            self.assertIn("fields", payload)
+            fields = payload["fields"]
+            for required_field in ("id", "paper_id", "text", "predicate", "created_by", "created_at", "updated_at"):
+                self.assertIn(required_field, fields)
+                self.assertTrue(fields[required_field]["required"])
+            self.assertIn("context", fields)
+            self.assertIn("evidence", fields)
+            context_fields = fields["context"]["fields"]
+            for ctx_field in ("subject_text", "section", "claim_key", "dataset", "task", "domain"):
+                self.assertIn(ctx_field, context_fields)
+            evidence_fields = fields["evidence"]["fields"]
+            for ev_field in ("paper_id", "extraction", "extractor_version", "section", "paragraph_index", "sentence_index", "char_start", "char_end", "snippet", "schema_version"):
+                self.assertIn(ev_field, evidence_fields)
+            predicate_field = fields["predicate"]
+            self.assertIn("allowed_values", predicate_field)
+            self.assertIn("improves", predicate_field["allowed_values"])
+            self.assertIn("outperforms", predicate_field["allowed_values"])
+
+    def test_schema_claim_parser(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["schema", "claim"])
+        self.assertEqual(args.schema_command, "claim")
+
+    def test_schema_claim_api_endpoint(self) -> None:
+        from rks.service import dispatch_get_request
+
+        status, content_type, body = dispatch_get_request("/api/schema/claim")
+        self.assertEqual(status, 200)
+        self.assertEqual(content_type, "application/json")
+        payload = json.loads(body)
+        self.assertEqual(payload["object_type"], "claim")
+        self.assertIn("fields", payload)
+        self.assertIn("predicate", payload["fields"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from rks.config import load_paths
-from rks.operations import ResearchOperations
+from rks.operations import ResearchOperations, describe_claim_schema
 from rks.providers import LocalHashEmbeddingProvider
 from rks.query import QueryService
 from rks.storage import (
@@ -195,6 +195,8 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         return 200, "text/html; charset=utf-8", _ui_html().encode("utf-8")
     if parsed.path == "/health":
         return 200, "application/json", json.dumps({"status": "ok"}).encode("utf-8")
+    if parsed.path == "/api/schema/claim":
+        return 200, "application/json", json.dumps(describe_claim_schema()).encode("utf-8")
     if parsed.path == "/api/projects":
         with _open_operations() as operations:
             payload = operations.list_projects()

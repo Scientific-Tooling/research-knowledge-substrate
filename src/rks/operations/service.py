@@ -1302,3 +1302,64 @@ def _task_recovery_commands(task_type: str, status: str, paper_id: str, task_id:
         elif task_type == "summarize_paper":
             commands.append(f"rks summarize paper {paper_id} --mode agent")
     return commands
+
+
+def describe_claim_schema() -> dict:
+    return {
+        "object_type": "claim",
+        "description": (
+            "A structured research claim extracted from a paper, representing a "
+            "Subject-Predicate-Object triple with supporting context and evidence."
+        ),
+        "fields": {
+            "id": {"type": "string", "description": "Unique claim identifier (e.g. c_000001).", "required": True},
+            "paper_id": {"type": "string", "description": "ID of the source paper.", "required": True},
+            "text": {"type": "string", "description": "Full natural-language claim sentence.", "required": True},
+            "subject": {"type": "string|null", "description": "Resolved subject name (from linked concept or context.subject_text).", "required": False},
+            "predicate": {
+                "type": "string",
+                "description": "Relation expressed by the claim.",
+                "required": True,
+                "allowed_values": [
+                    "outperforms", "improves", "reduces", "increases",
+                    "enables", "requires", "supports", "replaces",
+                    "refines", "extends",
+                ],
+            },
+            "object": {"type": "string|null", "description": "Resolved object name (from linked concept or object_text).", "required": False},
+            "confidence": {"type": "float|null", "description": "Extraction confidence score between 0.0 and 1.0.", "required": False},
+            "context": {
+                "type": "object",
+                "description": "Structured context parsed from the claim sentence.",
+                "required": False,
+                "fields": {
+                    "subject_text": {"type": "string|null", "description": "Raw subject text as extracted.", "required": False},
+                    "section": {"type": "string|null", "description": "Paper section where the claim appeared.", "required": False},
+                    "claim_key": {"type": "string|null", "description": "Short SHA1 fingerprint of the claim sentence.", "required": False},
+                    "dataset": {"type": "string|null", "description": "Benchmark or dataset mentioned in the claim.", "required": False},
+                    "task": {"type": "string|null", "description": "Task or problem domain mentioned in the claim.", "required": False},
+                    "domain": {"type": "string|null", "description": "Research domain mentioned in the claim.", "required": False},
+                },
+            },
+            "evidence": {
+                "type": "object",
+                "description": "Location of the claim within the source paper.",
+                "required": False,
+                "fields": {
+                    "paper_id": {"type": "string|null", "description": "ID of the paper containing the evidence.", "required": False},
+                    "extraction": {"type": "string|null", "description": "Extraction method used (e.g. heuristic, agent).", "required": False},
+                    "extractor_version": {"type": "string|null", "description": "Version of the extractor that produced the claim.", "required": False},
+                    "section": {"type": "string|null", "description": "Section of the paper where the sentence appears.", "required": False},
+                    "paragraph_index": {"type": "integer|null", "description": "Zero-based paragraph index within the section.", "required": False},
+                    "sentence_index": {"type": "integer|null", "description": "Zero-based sentence index within the paragraph.", "required": False},
+                    "char_start": {"type": "integer|null", "description": "Character offset of the sentence start in the full text.", "required": False},
+                    "char_end": {"type": "integer|null", "description": "Character offset of the sentence end in the full text.", "required": False},
+                    "snippet": {"type": "string|null", "description": "Original sentence text before normalization.", "required": False},
+                    "schema_version": {"type": "string|null", "description": "Schema version used when the claim was extracted.", "required": False},
+                },
+            },
+            "created_by": {"type": "string", "description": "Creator label (e.g. system:heuristic, system:llm_api, human:user).", "required": True},
+            "created_at": {"type": "string", "description": "ISO 8601 timestamp of creation.", "required": True},
+            "updated_at": {"type": "string", "description": "ISO 8601 timestamp of last update.", "required": True},
+        },
+    }

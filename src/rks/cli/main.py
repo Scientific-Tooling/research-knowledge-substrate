@@ -32,7 +32,7 @@ from rks.ingestion import (
     ingest_url_reference,
 )
 from rks.llm import ALL_EXTRACTION_MODES, run_dual_track_mode
-from rks.operations import ResearchOperations
+from rks.operations import ResearchOperations, describe_claim_schema
 from rks.providers import (
     ArxivMetadataProvider,
     CrossrefMetadataProvider,
@@ -190,6 +190,12 @@ def build_parser() -> argparse.ArgumentParser:
     show_hypothesis_parser = show_subparsers.add_parser("hypothesis", help="Show a stored project hypothesis.")
     show_hypothesis_parser.add_argument("hypothesis_id", help="Hypothesis ID, for example h_000001.")
     show_hypothesis_parser.set_defaults(handler=handle_show_hypothesis)
+
+    schema_parser = subparsers.add_parser("schema", help="Describe the data structure of RKS objects.")
+    schema_subparsers = schema_parser.add_subparsers(dest="schema_command", required=True)
+
+    schema_claim_parser = schema_subparsers.add_parser("claim", help="Show the data structure of a claim object.")
+    schema_claim_parser.set_defaults(handler=handle_schema_claim)
 
     project_parser = subparsers.add_parser("project", help="Create and organize research projects.")
     project_subparsers = project_parser.add_subparsers(dest="project_command", required=True)
@@ -1292,6 +1298,11 @@ def handle_show_dataset(args: argparse.Namespace) -> int:
             "edges": [_edge_payload(edge) for edge in edges],
         }
     print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_schema_claim(args: argparse.Namespace) -> int:
+    print(json.dumps(describe_claim_schema(), indent=2))
     return 0
 
 
