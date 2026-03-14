@@ -22,6 +22,9 @@ TABLES = [
     "artifacts",
     "embeddings",
     "tasks",
+    "claim_relation_candidates",
+    "evolution_events",
+    "concept_timeline_snapshots",
 ]
 
 

@@ -48,6 +48,8 @@ class ResearchOperations:
         datasets,
         embeddings,
         tasks,
+        candidates=None,
+        evolution=None,
     ):
         self.papers = papers
         self.projects = projects
@@ -60,6 +62,8 @@ class ResearchOperations:
         self.datasets = datasets
         self.embeddings = embeddings
         self.tasks = tasks
+        self.candidates = candidates
+        self.evolution = evolution
         self.query = QueryService(
             papers=papers,
             claims=claims,
@@ -551,6 +555,64 @@ class ResearchOperations:
             "status_after": status_after,
         }
 
+    # ------------------------------------------------------------------
+    # Extraction quality metrics
+    # ------------------------------------------------------------------
+
+    def extraction_quality_report(self) -> dict:
+        """Compute extraction quality metrics across all papers.
+
+        Returns per-paper claim counts, zero-claim papers, predicate
+        frequency distribution, and per-mode breakdowns.
+        """
+        papers = self.papers.list_papers()
+        per_paper: list[dict] = []
+        zero_claim_papers: list[dict] = []
+        predicate_counts: dict[str, int] = {}
+        mode_counts: dict[str, int] = {}
+        total_claims = 0
+
+        for paper in papers:
+            claims = self.claims.list_claims_for_paper(paper.id)
+            count = len(claims)
+            total_claims += count
+            entry = {"paper_id": paper.id, "title": paper.title, "claim_count": count}
+            per_paper.append(entry)
+            if count == 0:
+                artifacts = self.papers.get_artifacts_for_paper(paper.id)
+                has_text = any(a.artifact_type == "extracted_text" for a in artifacts)
+                zero_claim_papers.append({**entry, "has_text": has_text})
+
+            for claim in claims:
+                pred = claim.predicate or "unknown"
+                predicate_counts[pred] = predicate_counts.get(pred, 0) + 1
+                evidence = json.loads(claim.evidence_json or "{}")
+                mode = evidence.get("extraction", "unknown")
+                mode_counts[mode] = mode_counts.get(mode, 0) + 1
+
+        claim_counts = sorted([p["claim_count"] for p in per_paper])
+        n = len(claim_counts)
+        if n > 0:
+            median = claim_counts[n // 2] if n % 2 else (claim_counts[n // 2 - 1] + claim_counts[n // 2]) / 2
+            mean = total_claims / n
+        else:
+            median = 0
+            mean = 0
+
+        return {
+            "paper_count": len(papers),
+            "total_claims": total_claims,
+            "claims_per_paper": {
+                "mean": round(mean, 2),
+                "median": median,
+                "min": claim_counts[0] if claim_counts else 0,
+                "max": claim_counts[-1] if claim_counts else 0,
+            },
+            "zero_claim_papers": zero_claim_papers,
+            "predicate_distribution": dict(sorted(predicate_counts.items(), key=lambda x: -x[1])),
+            "extraction_mode_distribution": mode_counts,
+        }
+
     def promote_claim_relation(
         self,
         source_claim_id: str,
@@ -577,6 +639,19 @@ class ResearchOperations:
             metadata=metadata,
             created_by=reviewed_by,
         )
+        if self.evolution is not None:
+            self.evolution.record_event(
+                event_type="relation_promoted",
+                subject_id=source_claim.id,
+                subject_type="claim",
+                detail={
+                    "relation_type": relation_type,
+                    "target_claim_id": target_claim.id,
+                    "confidence": confidence,
+                    "edge_id": edge.id,
+                },
+                created_by=reviewed_by,
+            )
         return _edge_payload(edge)
 
     def retract_claim_relation(self, source_claim_id: str, relation_type: str, target_claim_id: str) -> dict:
@@ -585,11 +660,255 @@ class ResearchOperations:
             relation_type=relation_type,
             target_id=target_claim_id,
         )
+        if self.evolution is not None and deleted:
+            self.evolution.record_event(
+                event_type="relation_retracted",
+                subject_id=source_claim_id,
+                subject_type="claim",
+                detail={
+                    "relation_type": relation_type,
+                    "target_claim_id": target_claim_id,
+                },
+                created_by="system:retract",
+            )
         return {
             "source_claim_id": source_claim_id,
             "relation_type": relation_type,
             "target_claim_id": target_claim_id,
             "deleted": deleted,
+        }
+
+    def materialize_claim_relation_candidates(self, claim_id: str | None = None) -> dict:
+        """Materialize inferred claim relations into the candidate table.
+
+        If claim_id is given, materialize candidates for that claim only.
+        Otherwise, materialize for all claims in the system.
+        """
+        if self.candidates is None:
+            return {"error": "candidate repository not available", "materialized": 0}
+
+        claims_to_process = []
+        if claim_id:
+            claims_to_process.append(self.claims.get_claim(claim_id))
+        else:
+            for paper in self.papers.list_papers():
+                claims_to_process.extend(self.claims.list_claims_for_paper(paper.id))
+
+        materialized = 0
+        for anchor in claims_to_process:
+            relations = self.query.claim_relations(anchor.id)
+            for rel in relations.get("inferred_relations", []):
+                target_id = rel["claim"]["id"]
+                self.candidates.upsert_candidate(
+                    source_claim_id=anchor.id,
+                    target_claim_id=target_id,
+                    relation_type=rel["relation_type"],
+                    score=rel["claim"].get("confidence"),
+                    metadata={
+                        "anchor_paper_id": anchor.paper_id,
+                        "target_paper_id": rel["claim"].get("paper_id"),
+                    },
+                )
+                materialized += 1
+        self.query.clear_relation_cache()
+        return {"claim_id": claim_id, "materialized": materialized}
+
+    def list_relation_candidates(self, claim_id: str | None = None, status: str | None = None) -> list[dict]:
+        if self.candidates is None:
+            return []
+        if claim_id:
+            records = self.candidates.list_for_claim(claim_id, status=status)
+        else:
+            records = self.candidates.list_pending()
+        return [
+            {
+                "id": r.id,
+                "source_claim_id": r.source_claim_id,
+                "target_claim_id": r.target_claim_id,
+                "relation_type": r.relation_type,
+                "score": r.score,
+                "algorithm_version": r.algorithm_version,
+                "status": r.status,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            }
+            for r in records
+        ]
+
+    def promote_candidate(self, candidate_id: str, reviewed_by: str = "agent:review") -> dict:
+        if self.candidates is None:
+            return {"error": "candidate repository not available"}
+        candidate = self.candidates.get_candidate(candidate_id)
+        result = self.promote_claim_relation(
+            source_claim_id=candidate.source_claim_id,
+            relation_type=candidate.relation_type,
+            target_claim_id=candidate.target_claim_id,
+            reviewed_by=reviewed_by,
+        )
+        self.candidates.update_status(candidate_id, "promoted")
+        result["candidate_id"] = candidate_id
+        return result
+
+    def reject_candidate(self, candidate_id: str) -> dict:
+        if self.candidates is None:
+            return {"error": "candidate repository not available"}
+        record = self.candidates.update_status(candidate_id, "rejected")
+        return {"candidate_id": candidate_id, "status": record.status}
+
+    # ------------------------------------------------------------------
+    # Evolution: events and timeline
+    # ------------------------------------------------------------------
+
+    def list_evolution_events(self, subject_id: str, subject_type: str | None = None) -> list[dict]:
+        if self.evolution is None:
+            return []
+        records = self.evolution.list_events_for_subject(subject_id, subject_type)
+        return [
+            {
+                "id": r.id,
+                "event_type": r.event_type,
+                "subject_id": r.subject_id,
+                "subject_type": r.subject_type,
+                "detail": json.loads(r.detail_json or "{}"),
+                "created_by": r.created_by,
+                "created_at": r.created_at,
+            }
+            for r in records
+        ]
+
+    def build_concept_timeline(self, concept_id: str) -> dict:
+        """Snapshot current state of a concept and append to timeline."""
+        if self.evolution is None:
+            return {"error": "evolution repository not available"}
+
+        concept = self.concepts.get_concept(concept_id)
+        claims = self.claims.list_claims_for_concept(concept_id)
+        paper_ids = sorted({claim.paper_id for claim in claims})
+
+        support_count = 0
+        contradiction_count = 0
+        for claim in claims:
+            # Count reviewed relations involving this concept's claims
+            for edge in self.edges.list_claim_relation_edges(claim.id):
+                if edge.relation_type == "supports":
+                    support_count += 1
+                elif edge.relation_type == "contradicts":
+                    contradiction_count += 1
+
+        snapshot = self.evolution.create_snapshot(
+            concept_id=concept_id,
+            support_count=support_count,
+            contradiction_count=contradiction_count,
+            paper_count=len(paper_ids),
+            claim_count=len(claims),
+            detail={"paper_ids": paper_ids},
+        )
+
+        self.evolution.record_event(
+            event_type="concept_snapshot",
+            subject_id=concept_id,
+            subject_type="concept",
+            detail={
+                "snapshot_id": snapshot.id,
+                "support_count": support_count,
+                "contradiction_count": contradiction_count,
+                "paper_count": len(paper_ids),
+                "claim_count": len(claims),
+            },
+            created_by="system:timeline",
+        )
+
+        return {
+            "concept": {"id": concept.id, "name": concept.name},
+            "snapshot": {
+                "id": snapshot.id,
+                "snapshot_at": snapshot.snapshot_at,
+                "support_count": snapshot.support_count,
+                "contradiction_count": snapshot.contradiction_count,
+                "paper_count": snapshot.paper_count,
+                "claim_count": snapshot.claim_count,
+            },
+        }
+
+    def build_hypothesis_evolution(self, hypothesis_id: str) -> dict:
+        """Build an evolution view for a hypothesis.
+
+        Aggregates evidence links by relation type, counts supporting vs
+        contradicting evidence, includes evolution events if available,
+        and computes a trend indicator.
+        """
+        hypothesis = self.hypotheses.get_hypothesis(hypothesis_id)
+        evidence_links = self.hypotheses.list_evidence_links_for_hypothesis(hypothesis_id)
+
+        support_count = 0
+        contradiction_count = 0
+        neutral_count = 0
+        for link in evidence_links:
+            if link.relation_type in ("supported_by", "supports"):
+                support_count += 1
+            elif link.relation_type in ("contradicted_by", "contradicts"):
+                contradiction_count += 1
+            else:
+                neutral_count += 1
+
+        total = support_count + contradiction_count + neutral_count
+        if total == 0:
+            trend = "no_evidence"
+        elif contradiction_count == 0:
+            trend = "strengthening"
+        elif support_count == 0:
+            trend = "weakening"
+        elif support_count > contradiction_count * 2:
+            trend = "strengthening"
+        elif contradiction_count > support_count * 2:
+            trend = "weakening"
+        else:
+            trend = "contested"
+
+        events = []
+        if self.evolution is not None:
+            events = [
+                {
+                    "id": r.id,
+                    "event_type": r.event_type,
+                    "detail": json.loads(r.detail_json or "{}"),
+                    "created_by": r.created_by,
+                    "created_at": r.created_at,
+                }
+                for r in self.evolution.list_events_for_subject(hypothesis_id, "hypothesis")
+            ]
+
+        return {
+            "hypothesis": _hypothesis_payload(hypothesis),
+            "evidence_summary": {
+                "support_count": support_count,
+                "contradiction_count": contradiction_count,
+                "neutral_count": neutral_count,
+                "total": total,
+            },
+            "trend": trend,
+            "events": events,
+        }
+
+    def concept_timeline(self, concept_id: str) -> dict:
+        """Return the full timeline of snapshots for a concept."""
+        if self.evolution is None:
+            return {"error": "evolution repository not available", "snapshots": []}
+        concept = self.concepts.get_concept(concept_id)
+        snapshots = self.evolution.list_snapshots_for_concept(concept_id)
+        return {
+            "concept": {"id": concept.id, "name": concept.name},
+            "snapshots": [
+                {
+                    "id": s.id,
+                    "snapshot_at": s.snapshot_at,
+                    "support_count": s.support_count,
+                    "contradiction_count": s.contradiction_count,
+                    "paper_count": s.paper_count,
+                    "claim_count": s.claim_count,
+                }
+                for s in snapshots
+            ],
         }
 
     def _grouped_project_links(self, project_id: str) -> dict:

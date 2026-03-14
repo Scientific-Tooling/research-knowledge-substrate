@@ -10,19 +10,45 @@ from rks.concepts import link_claims_for_paper
 from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
 
 
-CLAIM_EXTRACTOR_VERSION = "1.0"
+CLAIM_EXTRACTOR_VERSION = "1.1"
 
 PREDICATE_PATTERNS = [
+    # Comparative / performance
     (r"\boutperform(?:s|ed|ing)?\b", "outperforms"),
+    (r"\bsurpass(?:es|ed|ing)?\b", "outperforms"),
+    (r"\bexceed(?:s|ed|ing)?\b", "outperforms"),
     (r"\bimprov(?:e|es|ed|ing)\b", "improves"),
     (r"\breduc(?:e|es|ed|ing)\b", "reduces"),
     (r"\bincreas(?:e|es|ed|ing)\b", "increases"),
+    # Capability / dependency
     (r"\benabl(?:e|es|ed|ing)\b", "enables"),
+    (r"\bfacilit(?:ate|ates|ated|ating)\b", "enables"),
     (r"\brequir(?:e|es|ed|ing)\b", "requires"),
+    (r"\brely\b|\breli(?:es|ed|ing)\b", "requires"),
+    # Evidence / validation
     (r"\bsupport(?:s|ed|ing)?\b", "supports"),
+    (r"\bvalidat(?:e|es|ed|ing)\b", "supports"),
+    (r"\bconfirm(?:s|ed|ing)?\b", "supports"),
+    (r"\bcorroborat(?:e|es|ed|ing)\b", "supports"),
+    # Structural
     (r"\breplac(?:e|es|ed|ing)\b", "replaces"),
     (r"\brefin(?:e|es|ed|ing)\b", "refines"),
     (r"\bextend(?:s|ed|ing)?\b", "extends"),
+    (r"\bgeneraliz(?:e|es|ed|ing)\b", "extends"),
+    # Achievement / result
+    (r"\bachiev(?:e|es|ed|ing)\b", "achieves"),
+    (r"\battain(?:s|ed|ing)?\b", "achieves"),
+    # Scalability / robustness
+    (r"\bscal(?:e|es|ed|ing)\b", "scales"),
+    (r"\bconverg(?:e|es|ed|ing)\b", "converges"),
+    # Negative / limitation
+    (r"\bdegrad(?:e|es|ed|ing)\b", "degrades"),
+    (r"\blimit(?:s|ed|ing)?\b", "limits"),
+    (r"\bfail(?:s|ed|ing)?\b", "fails"),
+    # Correlation / association
+    (r"\bcorrelat(?:e|es|ed|ing)\b", "correlates"),
+    (r"\baddress(?:es|ed|ing)?\b", "addresses"),
+    (r"\bmitigat(?:e|es|ed|ing)\b", "mitigates"),
 ]
 
 
@@ -182,20 +208,77 @@ def _extract_claim_dicts(claim_candidates: list[dict], paper_id: str) -> list[di
     return claims
 
 
+_ABBREVIATIONS = {
+    "dr", "mr", "mrs", "ms", "prof", "sr", "jr", "vs", "etc", "inc", "ltd",
+    "fig", "figs", "eq", "eqs", "ref", "refs", "vol", "no", "approx",
+    "al", "et", "dept", "univ", "assoc", "conf", "proc", "trans",
+    "i", "ii", "iii", "iv", "ed", "eds", "ch", "sec", "pp",
+}
+
+# Multi-letter dot-separated acronyms like "U.S.", "i.e.", "e.g."
+_ACRONYM_PATTERN = re.compile(r"\b([A-Za-z]\.){2,}$")
+
+_SENTENCE_BOUNDARY = re.compile(
+    r"""
+    (?<=[.!?])          # lookbehind: sentence-ending punctuation
+    (?<![A-Z][.])       # not a single capital + dot (initials like "J.")
+    \s+                 # whitespace gap
+    (?=[A-Z"\(a-z])     # lookahead: next sentence starts with any letter, quote, or paren
+    """,
+    re.VERBOSE,
+)
+
+
 def _extract_candidate_sentences(text: str, base_offset: int) -> list[dict]:
     entries: list[dict] = []
-    for sentence_index, match in enumerate(re.finditer(r"[^.!?]+[.!?]?", text, flags=re.DOTALL)):
-        sentence = match.group(0).strip()
+    parts = _SENTENCE_BOUNDARY.split(text)
+    offset = 0
+    pending_prefix = ""
+    pending_offset = 0
+    output_index = 0
+    for part_index, raw in enumerate(parts):
+        pos = text.find(raw, offset)
+        if pos == -1:
+            pos = offset
+        sentence = raw.strip()
         if not sentence:
+            offset = pos + len(raw)
             continue
-        leading_space = len(match.group(0)) - len(match.group(0).lstrip())
-        sentence_start = base_offset + match.start() + leading_space
+        # Rejoin with pending abbreviation fragment
+        if pending_prefix:
+            sentence = pending_prefix + " " + sentence
+            pos = pending_offset
+            pending_prefix = ""
+        # Check if this part ends with an abbreviation or acronym — if so, buffer it
+        stripped = sentence.rstrip(".!?")
+        last_word = stripped.rsplit(None, 1)[-1].lower() if stripped else ""
+        is_abbrev = last_word in _ABBREVIATIONS
+        is_acronym = bool(_ACRONYM_PATTERN.search(sentence.rstrip()))
+        if (is_abbrev or is_acronym) and part_index < len(parts) - 1:
+            pending_prefix = sentence
+            pending_offset = pos
+            offset = pos + len(raw)
+            continue
+        leading_space = len(raw) - len(raw.lstrip())
+        sentence_start = base_offset + pos + leading_space
         entries.append(
             {
                 "text": sentence,
                 "char_start": sentence_start,
                 "char_end": sentence_start + len(sentence),
-                "sentence_index": sentence_index,
+                "sentence_index": output_index,
+            }
+        )
+        output_index += 1
+        offset = pos + len(raw)
+    # Flush any remaining buffered prefix
+    if pending_prefix:
+        entries.append(
+            {
+                "text": pending_prefix,
+                "char_start": base_offset + pending_offset,
+                "char_end": base_offset + pending_offset + len(pending_prefix),
+                "sentence_index": output_index,
             }
         )
     return entries
@@ -253,13 +336,17 @@ def _load_sections_payload(text_artifact_path: Path) -> dict | None:
 
 def _normalize_sentence(sentence: str) -> str:
     normalized = " ".join(sentence.split()).strip()
-    normalized = re.sub(
-        r"^(our|we|this paper|the authors|experiments|results|our experiments|our results)\s+",
-        "",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-    normalized = re.sub(r"^(show|show that|demonstrate|demonstrate that)\s+", "", normalized, flags=re.IGNORECASE)
+    for _ in range(3):
+        prev = normalized
+        normalized = re.sub(
+            r"^(our|we|this paper|the authors|experiments|results|our experiments|our results)\s+",
+            "",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        normalized = re.sub(r"^(show that|demonstrate that|show|demonstrate)\s+", "", normalized, flags=re.IGNORECASE)
+        if normalized == prev:
+            break
     return normalized.strip()
 
 
@@ -269,14 +356,26 @@ def _detect_predicate(sentence: str) -> tuple[str | None, str | None]:
         if match:
             return predicate, match.group(0)
     lowered = sentence.lower()
-    if "show" in lowered or "demonstrate" in lowered:
+    if "show" in lowered or "demonstrate" in lowered or "indicat" in lowered:
         return "supports", "show"
+    if "propos" in lowered or "introduc" in lowered or "present" in lowered:
+        return "proposes", "propose"
     return None, None
+
+
+_PASSIVE_PATTERN = re.compile(
+    r"\b(?:is|are|was|were|been)\s+(\w+(?:ed|ing))\s+by\b",
+    re.IGNORECASE,
+)
 
 
 def _parse_claim_parts(sentence: str, keyword: str | None) -> tuple[str | None, str | None, dict]:
     if not keyword:
         return None, None, {}
+
+    # Detect passive voice ("X is improved by Y") and swap to active form
+    passive_match = _PASSIVE_PATTERN.search(sentence)
+    is_passive = passive_match is not None and keyword.lower() in passive_match.group(0).lower()
 
     before, after = sentence, ""
     if keyword.lower() in sentence.lower():
@@ -284,6 +383,18 @@ def _parse_claim_parts(sentence: str, keyword: str | None) -> tuple[str | None, 
         if match:
             before = sentence[: match.start()]
             after = sentence[match.end() :]
+
+    if is_passive and passive_match:
+        # In passive voice, the real subject follows the agent-marker "by".
+        # Use the last occurrence to avoid matching "by" in phrases like "by 10%".
+        by_pos = after.lower().rfind(" by ")
+        if by_pos >= 0:
+            real_subject = after[by_pos + 4:]
+            real_object = before
+            # Strip the auxiliary verb ("is", "are", etc.) from the object
+            real_object = re.sub(r"\s*\b(?:is|are|was|were|been)\s*$", "", real_object, flags=re.IGNORECASE)
+            before = real_subject
+            after = real_object
 
     subject_text = _clean_phrase(before)
     object_text = _clean_phrase(after)
@@ -323,8 +434,7 @@ def _clean_phrase(value: str) -> str | None:
         cleaned,
         flags=re.IGNORECASE,
     )
-    cleaned = re.sub(r"^(show|shows|demonstrate|demonstrates)\s+", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b(better|more|less)\s+than\b.*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(shows|show|demonstrates|demonstrate)\s+", "", cleaned, flags=re.IGNORECASE)
     return cleaned or None
 
 

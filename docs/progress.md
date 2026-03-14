@@ -47,6 +47,23 @@ The repository now has a hardened post-MVP base for extraction quality:
 - install-time skill bundle metadata plus `rks doctor` self-checks and package smoke validation in CI
 - package metadata, packaged migrations, and CI workflows for formal PyPI distribution readiness
 - installed CLI export of bundled repository skills for Codex, Claude Code, and other agent runtimes
+- query performance indexes for concept lookups, edge type filtering, and note targets
+- WAL journal mode for concurrent read/write access
+- expanded heuristic claim extraction with 30+ predicate patterns (v1.1), improved sentence segmentation, and passive voice handling
+- claim relation inference caching and concept-based candidate narrowing to eliminate O(n²) scans
+- materialized claim relation candidate layer with promote/reject/supersede lifecycle
+- evolution event recording for relation promotions and retractions
+- concept timeline snapshots for tracking support and contradiction counts over time
+- LLM provider retry logic with exponential backoff and timeout
+- loosened method and dataset entity extraction heuristics for better recall
+- unit tests for extraction heuristics (sentence splitting, predicate detection, subject-object parsing) and query polarity inference
+- HTTP endpoints for candidate materialization, promotion, rejection, evolution events, concept timeline, and hypothesis evolution
+- hypothesis evolution views with evidence aggregation, trend indicators, and event history
+- extraction quality metrics report with per-paper claim counts, predicate distribution, and mode breakdown
+- improved sentence boundary handling for dot-separated acronyms (U.S., i.e., e.g.) and expanded abbreviation set
+- fixed normalization regex alternation ordering for proper multi-pass filler stripping
+- direct PDF-to-LLM: llm-api track now sends the source PDF as base64 alongside the text prompt, so the LLM can read the actual document even when heuristic extraction fails
+- agent track text requests now surface the source PDF path at the top level with updated instructions to read the PDF directly
 
 ## Implemented Milestones
 
@@ -60,9 +77,11 @@ The repository now has a hardened post-MVP base for extraction quality:
 - Phase 3: Retrieval and Reasoning Upgrade
 - Phase 4: Agent Workflow Maturity
 - Phase 5: Productization Layer
+- Phase 6: Knowledge Evolution Foundation
 
 ## Remaining Work
 
+- continue hardening real-world fixtures and provider integrations
 - continue hardening real-world fixtures and provider integrations
 
 ## Latest Architectural Direction

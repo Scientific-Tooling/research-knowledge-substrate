@@ -9,11 +9,13 @@ from rks.operations import ResearchOperations
 from rks.providers import LocalHashEmbeddingProvider
 from rks.query import QueryService
 from rks.storage import (
+    CandidateRepository,
     ClaimRepository,
     ConceptRepository,
     DatasetRepository,
     EmbeddingRepository,
     EdgeRepository,
+    EvolutionRepository,
     HypothesisRepository,
     MethodRepository,
     NoteRepository,
@@ -84,6 +86,8 @@ class _RepositoryContext:
             "datasets": DatasetRepository(self.conn),
             "embeddings": EmbeddingRepository(self.conn),
             "tasks": TaskRepository(self.conn),
+            "candidates": CandidateRepository(self.conn),
+            "evolution": EvolutionRepository(self.conn),
         }
 
     def __exit__(self, exc_type, exc, tb):
@@ -133,6 +137,8 @@ class _OperationsContext:
             datasets=repos["datasets"],
             embeddings=repos["embeddings"],
             tasks=repos["tasks"],
+            candidates=repos["candidates"],
+            evolution=repos["evolution"],
         )
 
     def __exit__(self, exc_type, exc, tb):
@@ -302,6 +308,30 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_operations() as operations:
             payload = operations.claim_relations(claim_id)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/review/candidates":
+        params = parse_qs(parsed.query)
+        claim_id = params.get("claim_id", [None])[0]
+        status = params.get("status", [None])[0]
+        with _open_operations() as operations:
+            payload = operations.list_relation_candidates(claim_id=claim_id, status=status)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/events/"):
+        subject_id = parsed.path.rsplit("/", 1)[-1]
+        params = parse_qs(parsed.query)
+        subject_type = params.get("type", [None])[0]
+        with _open_operations() as operations:
+            payload = operations.list_evolution_events(subject_id, subject_type=subject_type)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/concept-timeline/"):
+        concept_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.concept_timeline(concept_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/hypothesis/"):
+        hypothesis_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.build_hypothesis_evolution(hypothesis_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/notes"):
         project_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
@@ -360,6 +390,10 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
                 ],
                 "source_pdf": _source_pdf_status(paper, artifacts),
             }
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/extraction-quality":
+        with _open_operations() as operations:
+            payload = operations.extraction_quality_report()
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/status/"):
         paper_id = parsed.path.rsplit("/", 1)[-1]
@@ -471,6 +505,30 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
                 content=payload["content"],
                 created_by=payload.get("created_by", "human:http"),
             )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path == "/api/review/materialize-candidates":
+        with _open_operations() as operations:
+            response = operations.materialize_claim_relation_candidates(
+                claim_id=payload.get("claim_id"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path == "/api/review/promote-candidate":
+        with _open_operations() as operations:
+            response = operations.promote_candidate(
+                candidate_id=payload["candidate_id"],
+                reviewed_by=payload.get("reviewed_by", "agent:review"),
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path == "/api/review/reject-candidate":
+        with _open_operations() as operations:
+            response = operations.reject_candidate(
+                candidate_id=payload["candidate_id"],
+            )
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/snapshot-concept/"):
+        concept_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            response = operations.build_concept_timeline(concept_id)
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/prepare/papers/") and parsed.path.endswith("/output"):
         paper_id = parsed.path.split("/")[4]

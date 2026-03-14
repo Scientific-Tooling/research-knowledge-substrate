@@ -22,7 +22,11 @@ CITATION_EXTRACTOR_VERSION = "1.0"
 
 _METHOD_PATTERNS = [
     re.compile(
-        r"\b(?:we|this paper|our work)\s+(?:propose|present|introduce)\s+([A-Z][A-Za-z0-9\-]*(?:\s+[A-Z][A-Za-z0-9\-]*){0,3})",
+        r"\b(?:we|this paper|our work)\s+(?:propose|present|introduce|develop|design|build|create)\s+([A-Z][A-Za-z0-9\-]*(?:\s+[A-Z][A-Za-z0-9\-]*){0,3})",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:our|the proposed|a novel)\s+(?:method|approach|framework|algorithm|architecture|model)\s*,?\s+([A-Z][A-Za-z0-9\-]*(?:\s+[A-Z][A-Za-z0-9\-]*){0,3})",
         flags=re.IGNORECASE,
     ),
 ]
@@ -204,20 +208,59 @@ def _remember_dataset_candidate(candidates: dict[str, dict], raw_name: str, desc
     candidates.setdefault(name, {"name": name, "description": description})
 
 
+_METHOD_STOPWORDS = {
+    "paper", "result", "results", "experiment", "experiments",
+    "section", "table", "figure", "we", "our", "this", "the",
+    "it", "they", "there", "here", "that", "which",
+}
+
+_METHOD_SIGNAL_TOKENS = {
+    "attention", "transformer", "model", "network", "system",
+    "encoder", "decoder", "architecture", "layer", "module",
+    "optimizer", "scheduler", "loss", "regulariz", "algorithm",
+    "framework", "pipeline", "agent", "classifier", "detector",
+}
+
+
 def _looks_like_method_name(name: str) -> bool:
     lowered = name.lower()
-    if lowered in {"paper", "result", "results", "experiment"}:
+    if lowered in _METHOD_STOPWORDS:
         return False
-    return len(name.split()) <= 5 and any(char.isupper() for char in name) or any(
-        token.lower() in lowered for token in ("attention", "transformer", "model", "network", "system")
-    )
+    tokens = name.split()
+    if len(tokens) > 6:
+        return False
+    # Accept if: has uppercase char, or contains a known signal token, or has a hyphen (e.g. "BERT-large")
+    has_upper = any(char.isupper() for char in name)
+    has_signal = any(sig in lowered for sig in _METHOD_SIGNAL_TOKENS)
+    has_hyphen = "-" in name
+    return has_upper or has_signal or has_hyphen
+
+
+_DATASET_STOPWORDS = {
+    "result", "results", "table", "figure", "method", "methods",
+    "section", "paper", "approach", "model", "experiment",
+}
+
+_KNOWN_DATASETS = {
+    "ImageNet", "CIFAR-10", "CIFAR-100", "WMT14", "WMT16",
+    "GLUE", "SuperGLUE", "SQuAD", "MNLI", "COCO", "Pascal VOC",
+    "Penn Treebank", "WikiText", "OpenWebText", "Common Crawl",
+}
 
 
 def _looks_like_dataset_name(name: str) -> bool:
     lowered = name.lower()
-    if lowered in {"result", "results", "table", "figure", "method"}:
+    if lowered in _DATASET_STOPWORDS:
         return False
-    return any(char.isdigit() for char in name) or name.isupper() or name in {"ImageNet", "CIFAR-10", "WMT14"}
+    if name in _KNOWN_DATASETS:
+        return True
+    # Accept if: has digit, is all-uppercase, has mixed case with capital start,
+    # or contains a hyphen/dot suggesting a versioned name
+    has_digit = any(char.isdigit() for char in name)
+    is_upper = name.isupper() and len(name) >= 2
+    has_version_marker = bool(re.search(r"[-.]", name)) and any(char.isupper() for char in name)
+    has_mixed_case = name[0].isupper() and any(char.islower() for char in name) and len(name) >= 3
+    return has_digit or is_upper or has_version_marker or has_mixed_case
 
 
 def _write_artifact(
@@ -300,17 +343,9 @@ def _rebuild_research_object_edges(
             metadata={"claim_id": claim.id},
         )
 
-    if not linked_pairs and len(methods) == 1 and len(datasets) == 1:
-        edge_repo.create_edge(
-            source_id=methods[0].id,
-            source_type="method",
-            relation_type="evaluated_on",
-            target_id=datasets[0].id,
-            target_type="dataset",
-            evidence_paper_id=paper_id,
-            confidence=0.6,
-            metadata={"inferred": True},
-        )
+    # Note: removed forced single-method/single-dataset fallback edge
+    # that created false positives. Method-dataset links now require
+    # claim-level evidence only.
 
 
 def _normalize_citation(citation: dict) -> dict:

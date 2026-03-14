@@ -44,11 +44,13 @@ from rks.query import QueryService, index_embeddings
 from rks.reasoning import summarize_paper_heuristic
 from rks.reasoning.summary import build_summary_input, persist_summary_artifact
 from rks.storage import (
+    CandidateRepository,
     ClaimRepository,
     ConceptRepository,
     DatasetRepository,
     EmbeddingRepository,
     EdgeRepository,
+    EvolutionRepository,
     HypothesisRepository,
     MethodRepository,
     NoteRepository,
@@ -73,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_parser = subparsers.add_parser("doctor", help="Run installation and environment self-checks.")
     doctor_parser.set_defaults(handler=handle_doctor)
+
+    extraction_quality_parser = subparsers.add_parser(
+        "extraction-quality", help="Show extraction quality metrics across all papers."
+    )
+    extraction_quality_parser.set_defaults(handler=handle_extraction_quality)
 
     config_parser = subparsers.add_parser("config", help="Manage RKS configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
@@ -445,6 +452,63 @@ def build_parser() -> argparse.ArgumentParser:
     review_retract_parser.add_argument("target_claim_id", help="Target claim ID.")
     review_retract_parser.set_defaults(handler=handle_review_retract_claim_relation)
 
+    review_materialize_parser = review_subparsers.add_parser(
+        "materialize-candidates",
+        help="Materialize inferred claim relations into the candidate table.",
+    )
+    review_materialize_parser.add_argument("--claim-id", default=None, help="Optional claim ID to scope materialization.")
+    review_materialize_parser.set_defaults(handler=handle_review_materialize_candidates)
+
+    review_candidates_parser = review_subparsers.add_parser(
+        "list-candidates",
+        help="List claim relation candidates.",
+    )
+    review_candidates_parser.add_argument("--claim-id", default=None, help="Optional claim ID to filter.")
+    review_candidates_parser.add_argument("--status", default=None, choices=("pending", "promoted", "rejected", "superseded"))
+    review_candidates_parser.set_defaults(handler=handle_review_list_candidates)
+
+    review_promote_candidate_parser = review_subparsers.add_parser(
+        "promote-candidate",
+        help="Promote a candidate relation into the durable graph.",
+    )
+    review_promote_candidate_parser.add_argument("candidate_id", help="Candidate ID.")
+    review_promote_candidate_parser.add_argument("--reviewed-by", default="agent:review")
+    review_promote_candidate_parser.set_defaults(handler=handle_review_promote_candidate)
+
+    review_reject_candidate_parser = review_subparsers.add_parser(
+        "reject-candidate",
+        help="Reject a candidate relation.",
+    )
+    review_reject_candidate_parser.add_argument("candidate_id", help="Candidate ID.")
+    review_reject_candidate_parser.set_defaults(handler=handle_review_reject_candidate)
+
+    # Evolution subcommands
+    evolution_parser = subparsers.add_parser("evolution", help="Knowledge evolution events and timeline.")
+    evolution_subparsers = evolution_parser.add_subparsers(dest="evolution_command", required=True)
+
+    evo_events_parser = evolution_subparsers.add_parser("events", help="List evolution events for a subject.")
+    evo_events_parser.add_argument("subject_id", help="Subject ID (claim, concept, hypothesis).")
+    evo_events_parser.add_argument("--type", dest="subject_type", default=None, help="Optional subject type filter.")
+    evo_events_parser.set_defaults(handler=handle_evolution_events)
+
+    evo_snapshot_parser = evolution_subparsers.add_parser(
+        "snapshot-concept", help="Take a timeline snapshot of a concept."
+    )
+    evo_snapshot_parser.add_argument("concept_id", help="Concept ID, for example k_000001.")
+    evo_snapshot_parser.set_defaults(handler=handle_evolution_snapshot_concept)
+
+    evo_timeline_parser = evolution_subparsers.add_parser(
+        "concept-timeline", help="Show the full timeline for a concept."
+    )
+    evo_timeline_parser.add_argument("concept_id", help="Concept ID, for example k_000001.")
+    evo_timeline_parser.set_defaults(handler=handle_evolution_concept_timeline)
+
+    evo_hypothesis_parser = evolution_subparsers.add_parser(
+        "hypothesis", help="Show evolution view for a hypothesis."
+    )
+    evo_hypothesis_parser.add_argument("hypothesis_id", help="Hypothesis ID.")
+    evo_hypothesis_parser.set_defaults(handler=handle_evolution_hypothesis)
+
     query_parser = subparsers.add_parser("query", help="Run deterministic research graph queries.")
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
 
@@ -722,6 +786,14 @@ def _doctor_recommended_actions(checks: dict) -> list[str]:
     if not actions:
         actions.append("rks --help")
     return actions
+
+
+def handle_extraction_quality(args: argparse.Namespace) -> int:
+    del args
+    with _open_session() as session:
+        payload = _operations(session).extraction_quality_report()
+    print(json.dumps(payload, indent=2))
+    return 0
 
 
 def handle_ingest_pdf(args: argparse.Namespace) -> int:
@@ -1587,6 +1659,81 @@ def handle_review_retract_claim_relation(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_review_materialize_candidates(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).materialize_claim_relation_candidates(
+            claim_id=args.claim_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_review_list_candidates(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_relation_candidates(
+            claim_id=args.claim_id,
+            status=args.status,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_review_promote_candidate(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).promote_candidate(
+            candidate_id=args.candidate_id,
+            reviewed_by=args.reviewed_by,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_review_reject_candidate(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).reject_candidate(
+            candidate_id=args.candidate_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_events(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_evolution_events(
+            subject_id=args.subject_id,
+            subject_type=args.subject_type,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_snapshot_concept(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).build_concept_timeline(
+            concept_id=args.concept_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_concept_timeline(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).concept_timeline(
+            concept_id=args.concept_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_hypothesis(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).build_hypothesis_evolution(
+            hypothesis_id=args.hypothesis_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def handle_query_claims_about(args: argparse.Namespace) -> int:
     with _open_session() as session:
         query = QueryService(
@@ -1822,6 +1969,8 @@ class _Session:
         datasets: DatasetRepository,
         embeddings: EmbeddingRepository,
         tasks: TaskRepository,
+        candidates: CandidateRepository | None = None,
+        evolution: EvolutionRepository | None = None,
     ):
         self.papers = papers
         self.projects = projects
@@ -1834,6 +1983,8 @@ class _Session:
         self.datasets = datasets
         self.embeddings = embeddings
         self.tasks = tasks
+        self.candidates = candidates
+        self.evolution = evolution
 
 
 class _SessionContext:
@@ -1853,6 +2004,8 @@ class _SessionContext:
             datasets=DatasetRepository(self.conn),
             embeddings=EmbeddingRepository(self.conn),
             tasks=TaskRepository(self.conn),
+            candidates=CandidateRepository(self.conn),
+            evolution=EvolutionRepository(self.conn),
         )
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -1878,6 +2031,8 @@ def _operations(session: _Session) -> ResearchOperations:
         datasets=session.datasets,
         embeddings=session.embeddings,
         tasks=session.tasks,
+        candidates=session.candidates,
+        evolution=session.evolution,
     )
 
 

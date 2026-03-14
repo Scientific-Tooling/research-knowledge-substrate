@@ -162,6 +162,44 @@ class HypothesisEvidenceLinkRecord:
 
 
 @dataclass(frozen=True)
+class ClaimRelationCandidateRecord:
+    id: str
+    source_claim_id: str
+    target_claim_id: str
+    relation_type: str
+    score: Optional[float]
+    algorithm_version: str
+    status: str
+    metadata_json: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class EvolutionEventRecord:
+    id: str
+    event_type: str
+    subject_id: str
+    subject_type: str
+    detail_json: Optional[str]
+    created_by: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class ConceptTimelineSnapshotRecord:
+    id: str
+    concept_id: str
+    snapshot_at: str
+    support_count: int
+    contradiction_count: int
+    paper_count: int
+    claim_count: int
+    detail_json: Optional[str]
+    created_at: str
+
+
+@dataclass(frozen=True)
 class EdgeRecord:
     id: str
     source_id: str

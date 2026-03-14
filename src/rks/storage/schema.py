@@ -188,4 +188,53 @@ CREATE INDEX IF NOT EXISTS idx_project_links_object ON project_links(object_type
 CREATE INDEX IF NOT EXISTS idx_hypotheses_project ON hypotheses(project_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_hypothesis_evidence_hypothesis ON hypothesis_evidence_links(hypothesis_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_hypothesis_evidence_object ON hypothesis_evidence_links(object_type, object_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_claims_subject_concept ON claims(subject_concept_id);
+CREATE INDEX IF NOT EXISTS idx_claims_object_concept ON claims(object_concept_id);
+CREATE INDEX IF NOT EXISTS idx_edges_types ON edges(source_type, target_type, relation_type);
+CREATE INDEX IF NOT EXISTS idx_notes_target ON notes(target_id, target_type);
+CREATE INDEX IF NOT EXISTS idx_concepts_name ON concepts(name);
+
+CREATE TABLE IF NOT EXISTS claim_relation_candidates (
+    id TEXT PRIMARY KEY,
+    source_claim_id TEXT NOT NULL,
+    target_claim_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    score REAL,
+    algorithm_version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    metadata_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_crc_source ON claim_relation_candidates(source_claim_id, status);
+CREATE INDEX IF NOT EXISTS idx_crc_target ON claim_relation_candidates(target_claim_id, status);
+CREATE INDEX IF NOT EXISTS idx_crc_status ON claim_relation_candidates(status, relation_type);
+
+CREATE TABLE IF NOT EXISTS evolution_events (
+    id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    subject_type TEXT NOT NULL,
+    detail_json TEXT,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_evolution_events_subject ON evolution_events(subject_id, subject_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_evolution_events_type ON evolution_events(event_type, created_at);
+
+CREATE TABLE IF NOT EXISTS concept_timeline_snapshots (
+    id TEXT PRIMARY KEY,
+    concept_id TEXT NOT NULL,
+    snapshot_at TEXT NOT NULL,
+    support_count INTEGER NOT NULL DEFAULT 0,
+    contradiction_count INTEGER NOT NULL DEFAULT 0,
+    paper_count INTEGER NOT NULL DEFAULT 0,
+    claim_count INTEGER NOT NULL DEFAULT 0,
+    detail_json TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_concept_timeline_concept ON concept_timeline_snapshots(concept_id, snapshot_at);
 """

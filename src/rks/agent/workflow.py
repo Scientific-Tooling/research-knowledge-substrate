@@ -23,14 +23,18 @@ SUMMARY_SCHEMA_VERSION = "summary.v1"
 
 def create_text_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -> dict:
     paper = repo.get_paper(paper_id)
+    input_payload = build_text_source_input(paper)
     request = build_dual_track_request(
         task="extract_text",
         paper_id=paper_id,
         instruction=(
-            "Extract readable research text from the input. Return JSON with keys: "
+            "Extract readable research text from the PDF document. "
+            "The source PDF path is provided in `source_pdf` — read it directly "
+            "for best results. The `rough_text` field contains a heuristic "
+            "pre-extraction that may be incomplete. Return JSON with keys: "
             "`text`, `paragraphs`, `warnings`."
         ),
-        input_payload=build_text_source_input(paper),
+        input_payload=input_payload,
         expected_output_schema={
             "text": "string",
             "paragraphs": ["string"],
@@ -38,6 +42,10 @@ def create_text_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -
         },
         schema_version=TEXT_SCHEMA_VERSION,
     )
+    # Surface the PDF path at the top level so agents can read it directly
+    # without parsing the nested input payload.
+    if input_payload.get("source_pdf"):
+        request["source_pdf"] = input_payload["source_pdf"]
     return _write_request_artifact(repo, paths, paper_id, "agent_text_request", "agent_text_request.json", request)
 
 

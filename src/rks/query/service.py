@@ -36,6 +36,7 @@ class QueryService:
         self.datasets = datasets
         self.embeddings = embeddings
         self.embedding_provider = embedding_provider or LocalHashEmbeddingProvider()
+        self._claim_relations_cache: dict[str, dict] = {}
 
     def claims_about(self, concept_name_or_id: str) -> dict:
         concept = self._resolve_concept(concept_name_or_id)
@@ -171,38 +172,76 @@ class QueryService:
         }
 
     def claim_relations(self, claim_id: str) -> dict:
+        cached = self._claim_relations_cache.get(claim_id)
+        if cached is not None:
+            return cached
+
         anchor = self.claims.get_claim(claim_id)
         reviewed_relations = self._reviewed_claim_relations(anchor.id)
         reviewed_keys = {
             (relation["relation_type"], relation["claim"]["id"], relation["direction"])
             for relation in reviewed_relations
         }
+
+        # Narrow candidate set: only compare claims sharing a concept with the anchor
+        candidate_claims = self._related_candidate_claims(anchor, claim_id)
+
         inferred_relations = []
-        for paper in self.papers.list_papers():
-            for candidate in self.claims.list_claims_for_paper(paper.id):
-                if candidate.id == claim_id:
-                    continue
-                relation = self._infer_claim_relation(anchor, candidate)
-                if relation is None:
-                    continue
-                dedupe_key = (relation, candidate.id, "outgoing")
-                if dedupe_key in reviewed_keys:
-                    continue
-                inferred_relations.append(
-                    {
-                        "relation_type": relation,
-                        "relation_source": "inferred",
-                        "direction": "outgoing",
-                        "claim": self._claim_payload(candidate),
-                        "paper": self._paper_payload(self.papers.get_paper(candidate.paper_id)),
-                    }
-                )
-        return {
+        for candidate in candidate_claims:
+            relation = self._infer_claim_relation(anchor, candidate)
+            if relation is None:
+                continue
+            dedupe_key = (relation, candidate.id, "outgoing")
+            if dedupe_key in reviewed_keys:
+                continue
+            inferred_relations.append(
+                {
+                    "relation_type": relation,
+                    "relation_source": "inferred",
+                    "direction": "outgoing",
+                    "claim": self._claim_payload(candidate),
+                    "paper": self._paper_payload(self.papers.get_paper(candidate.paper_id)),
+                }
+            )
+        result = {
             "claim": self._claim_payload(anchor),
             "reviewed_relations": reviewed_relations,
             "inferred_relations": inferred_relations,
             "relations": reviewed_relations + inferred_relations,
         }
+        self._claim_relations_cache[claim_id] = result
+        return result
+
+    def clear_relation_cache(self) -> None:
+        """Clear the per-request claim relations cache."""
+        self._claim_relations_cache.clear()
+
+    def _related_candidate_claims(self, anchor, claim_id: str) -> list:
+        """Return claims that share a concept with the anchor, falling back to all claims."""
+        concept_ids = set()
+        if anchor.subject_concept_id:
+            concept_ids.add(anchor.subject_concept_id)
+        if anchor.object_concept_id:
+            concept_ids.add(anchor.object_concept_id)
+
+        if concept_ids:
+            seen = set()
+            candidates = []
+            for cid in concept_ids:
+                for claim in self.claims.list_claims_for_concept(cid):
+                    if claim.id != claim_id and claim.id not in seen:
+                        seen.add(claim.id)
+                        candidates.append(claim)
+            if candidates:
+                return candidates
+
+        # Fallback: scan all claims (preserves original behavior for unlinked claims)
+        candidates = []
+        for paper in self.papers.list_papers():
+            for claim in self.claims.list_claims_for_paper(paper.id):
+                if claim.id != claim_id:
+                    candidates.append(claim)
+        return candidates
 
     def methods_for(self, target: str) -> dict:
         if target.startswith("p_"):
