@@ -67,6 +67,16 @@ That means:
 - agent-produced JSON is not trusted implicitly
 - both go through the same schema-level checks
 
+## Provider Reliability
+
+The `llm-api` track includes:
+
+- retry logic with exponential backoff (up to 3 attempts)
+- a 60-second timeout per request
+- direct PDF-to-LLM: the source PDF is sent as base64 alongside the text prompt so the LLM can read the actual document even when heuristic extraction fails
+
+The `agent` track now surfaces the source PDF path at the top level of text extraction requests so the external agent can read the PDF directly.
+
 ## Current Tasks Covered
 
 The contract is currently implemented for:

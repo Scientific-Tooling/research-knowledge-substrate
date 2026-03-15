@@ -11,7 +11,7 @@ Scope:
 
 Reference date:
 
-- 2026-03-12
+- 2026-03-15
 
 ## Executive Summary
 
@@ -28,7 +28,7 @@ What is now broadly aligned:
 What remains only partially aligned:
 
 - concept hierarchy is still shallow and heuristic rather than a richer ontology
-- claim-to-claim structure is mostly inferred at query time rather than persisted as first-class graph edges
+- claim-to-claim structure is partially materialized through the candidate layer and review promotion, but most relations are still inferred at query time
 - the reasoning layer is implemented as deterministic query templates, not a full natural-language query planner
 - extraction quality is much stronger than the MVP, but still far simpler than the most ambitious reading of the pipeline documents
 
@@ -287,6 +287,7 @@ Code ahead of the original interaction docs:
 - explicit task queue lifecycle now exists through `tasks`
 - there are batch operations and paper-level status reporting
 - request/result schema versions are tracked in addition to the original `spec_version`
+- the HTTP service now includes structured request logging, input validation on all POST endpoints, and proper error responses (400 for bad requests, 500 for server errors)
 
 Remaining gaps:
 
@@ -328,6 +329,7 @@ Key implementation simplification:
 Code ahead of the document:
 
 - the repository now has a task store and artifact index model that were not explicit in the original storage architecture doc
+- six schema migrations now exist (up from the original three): query performance indexes, claim relation candidates, and evolution events
 
 Conclusion:
 

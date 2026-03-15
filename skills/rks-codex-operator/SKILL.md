@@ -168,6 +168,8 @@ curl -s -X POST http://127.0.0.1:8765/api/projects/<project_id>/hypotheses -H 'C
 curl -s -X POST http://127.0.0.1:8765/api/hypotheses/<hypothesis_id>/evidence -H 'Content-Type: application/json' -d '{...}'
 ```
 
+All POST endpoints validate required fields and return `400` with a clear message on missing fields or malformed JSON. Unhandled errors return `500`. Requests are logged to stderr.
+
 ## Required Output Discipline
 
 When reporting back, include:

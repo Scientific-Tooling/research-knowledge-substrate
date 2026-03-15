@@ -87,6 +87,8 @@ curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/promote -H 'Con
 curl -s -X POST http://127.0.0.1:8765/api/review/claim-relations/retract -H 'Content-Type: application/json' -d '{...}'
 ```
 
+All POST endpoints validate required fields. Missing fields return `400` with a message like `Missing required fields: name`. Malformed JSON also returns `400`. Unhandled server errors return `500`. All requests are logged to stderr.
+
 Persist operator context as a paper note when it needs to survive beyond the current session:
 
 ```bash

@@ -328,6 +328,8 @@ rks prepare paper-output <paper_id> --apply
 rks serve --host 127.0.0.1 --port 8765
 ```
 
+The service binds to `127.0.0.1` by default (local-only). All requests are logged to stderr. POST endpoints validate required fields and return `400` with a clear message on missing fields or malformed JSON. Unhandled errors return `500` instead of dropping the connection.
+
 ### 10.2 Read endpoints
 
 ```bash

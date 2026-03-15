@@ -64,6 +64,9 @@ The repository now has a hardened post-MVP base for extraction quality:
 - fixed normalization regex alternation ordering for proper multi-pass filler stripping
 - direct PDF-to-LLM: llm-api track now sends the source PDF as base64 alongside the text prompt, so the LLM can read the actual document even when heuristic extraction fails
 - agent track text requests now surface the source PDF path at the top level with updated instructions to read the PDF directly
+- request logging to stderr for all HTTP GET and POST handlers with warning and exception levels for errors
+- input validation on all POST endpoints with clear missing-field error messages and malformed JSON rejection
+- unhandled exception safety in HTTP handlers returning 500 instead of dropping the connection
 
 ## Implemented Milestones
 
@@ -81,7 +84,6 @@ The repository now has a hardened post-MVP base for extraction quality:
 
 ## Remaining Work
 
-- continue hardening real-world fixtures and provider integrations
 - continue hardening real-world fixtures and provider integrations
 
 ## Latest Architectural Direction

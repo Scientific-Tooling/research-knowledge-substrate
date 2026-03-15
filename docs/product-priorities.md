@@ -52,6 +52,22 @@ Exit criteria:
 - External agents can inspect paper status and claim relations through stable endpoints.
 - Review writes are available without introducing a richer orchestration subsystem.
 
+## Priority 3: Operational Hardening for Local Beta
+
+- [x] Add request logging to the HTTP service (all GET/POST to stderr).
+- [x] Validate required fields on all POST endpoints with clear error messages.
+- [x] Return structured error responses (400 for bad input, 500 for server errors) instead of dropping connections.
+- [x] Sync root and packaged migration directories (0004-0006).
+- [x] Register `evolution_event` ID prefix for the Knowledge Evolution System.
+- [x] Fix test drift from claim extractor version bump (1.0 to 1.1) and LLM provider timeout parameter.
+
+Exit criteria:
+
+- All 32 unit tests pass.
+- Malformed HTTP POST requests return 400 with a descriptive message.
+- Server errors do not silently close connections.
+- Running from repo checkout or pip install uses the same set of migrations.
+
 ## Non-Priorities
 
 - Richer frontend visualization beyond lightweight inspection.

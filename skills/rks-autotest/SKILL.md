@@ -141,6 +141,9 @@ Verify:
 
 - HTTP read surfaces match CLI semantics
 - HTTP write surfaces mutate state as expected
+- POST with missing required fields returns `400` with a `Missing required fields` message
+- POST with malformed JSON returns `400`
+- requests are logged to stderr
 
 ### 6. Research output layer
 

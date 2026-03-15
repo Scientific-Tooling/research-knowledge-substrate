@@ -32,7 +32,7 @@ The current implementation supports:
 - config initialization, migration/version reporting, and graph snapshot export/import
 - stable agent-facing operations for paper status and claim-relation review over CLI and HTTP
 - bundled skill export for Codex, Claude Code, and other external agent tools
-- a local HTTP service and lightweight UI
+- a local HTTP service and lightweight UI with request logging, input validation, and structured error responses
 
 Progress is tracked in [docs/progress.md](docs/progress.md).
 
