@@ -50,6 +50,7 @@ class ResearchOperations:
         tasks,
         candidates=None,
         evolution=None,
+        conflict_clusters=None,
     ):
         self.papers = papers
         self.projects = projects
@@ -63,6 +64,7 @@ class ResearchOperations:
         self.embeddings = embeddings
         self.tasks = tasks
         self.candidates = candidates
+        self.conflict_clusters = conflict_clusters
         self.evolution = evolution
         self.query = QueryService(
             papers=papers,
@@ -787,13 +789,19 @@ class ResearchOperations:
 
         support_count = 0
         contradiction_count = 0
+        refine_count = 0
         for claim in claims:
-            # Count reviewed relations involving this concept's claims
             for edge in self.edges.list_claim_relation_edges(claim.id):
                 if edge.relation_type == "supports":
                     support_count += 1
                 elif edge.relation_type == "contradicts":
                     contradiction_count += 1
+                elif edge.relation_type == "refines":
+                    refine_count += 1
+
+        total = support_count + contradiction_count
+        consensus_score = support_count / max(1, total)
+        controversy_score = min(support_count, contradiction_count) / max(1, total)
 
         snapshot = self.evolution.create_snapshot(
             concept_id=concept_id,
@@ -802,6 +810,10 @@ class ResearchOperations:
             paper_count=len(paper_ids),
             claim_count=len(claims),
             detail={"paper_ids": paper_ids},
+            refine_count=refine_count,
+            consensus_score=consensus_score,
+            controversy_score=controversy_score,
+            basis_layer="reviewed",
         )
 
         self.evolution.record_event(
@@ -812,8 +824,11 @@ class ResearchOperations:
                 "snapshot_id": snapshot.id,
                 "support_count": support_count,
                 "contradiction_count": contradiction_count,
+                "refine_count": refine_count,
                 "paper_count": len(paper_ids),
                 "claim_count": len(claims),
+                "consensus_score": consensus_score,
+                "controversy_score": controversy_score,
             },
             created_by="system:timeline",
         )
@@ -825,8 +840,11 @@ class ResearchOperations:
                 "snapshot_at": snapshot.snapshot_at,
                 "support_count": snapshot.support_count,
                 "contradiction_count": snapshot.contradiction_count,
+                "refine_count": snapshot.refine_count,
                 "paper_count": snapshot.paper_count,
                 "claim_count": snapshot.claim_count,
+                "consensus_score": snapshot.consensus_score,
+                "controversy_score": snapshot.controversy_score,
             },
         }
 
@@ -898,17 +916,460 @@ class ResearchOperations:
         snapshots = self.evolution.list_snapshots_for_concept(concept_id)
         return {
             "concept": {"id": concept.id, "name": concept.name},
-            "snapshots": [
-                {
-                    "id": s.id,
-                    "snapshot_at": s.snapshot_at,
-                    "support_count": s.support_count,
-                    "contradiction_count": s.contradiction_count,
-                    "paper_count": s.paper_count,
-                    "claim_count": s.claim_count,
-                }
-                for s in snapshots
-            ],
+            "snapshots": [_snapshot_payload(s) for s in snapshots],
+        }
+
+    # ------------------------------------------------------------------
+    # Phase 2: Time-bucketed trend analysis
+    # ------------------------------------------------------------------
+
+    def build_concept_timeline_bucketed(self, concept_id: str, bucket_size: str = "yearly") -> dict:
+        """Build time-bucketed snapshots grouped by paper year."""
+        if self.evolution is None:
+            return {"error": "evolution repository not available"}
+
+        concept = self.concepts.get_concept(concept_id)
+        claims = self.claims.list_claims_for_concept(concept_id)
+
+        # Group claims by paper year
+        buckets: dict[str, list] = {}
+        for claim in claims:
+            try:
+                paper = self.papers.get_paper(claim.paper_id)
+            except KeyError:
+                continue
+            year = paper.year
+            if year is None:
+                bucket_key = "unknown"
+            else:
+                bucket_key = str(year)
+            buckets.setdefault(bucket_key, []).append(claim)
+
+        created_snapshots = []
+        for bucket_key in sorted(buckets):
+            bucket_claims = buckets[bucket_key]
+            bucket_claim_ids = {c.id for c in bucket_claims}
+            paper_ids = sorted({c.paper_id for c in bucket_claims})
+
+            support_count = 0
+            contradiction_count = 0
+            refine_count = 0
+            for claim in bucket_claims:
+                for edge in self.edges.list_claim_relation_edges(claim.id):
+                    # Only count edges where both sides are in the same bucket
+                    other_id = edge.target_id if edge.source_id == claim.id else edge.source_id
+                    if other_id not in bucket_claim_ids:
+                        continue
+                    if edge.relation_type == "supports":
+                        support_count += 1
+                    elif edge.relation_type == "contradicts":
+                        contradiction_count += 1
+                    elif edge.relation_type == "refines":
+                        refine_count += 1
+
+            # Each edge counted from both sides, halve
+            support_count = support_count // 2
+            contradiction_count = contradiction_count // 2
+            refine_count = refine_count // 2
+
+            total = support_count + contradiction_count
+            consensus_score = support_count / max(1, total)
+            controversy_score = min(support_count, contradiction_count) / max(1, total)
+
+            snapshot = self.evolution.create_snapshot(
+                concept_id=concept_id,
+                support_count=support_count,
+                contradiction_count=contradiction_count,
+                paper_count=len(paper_ids),
+                claim_count=len(bucket_claims),
+                detail={"paper_ids": paper_ids},
+                time_bucket=bucket_key,
+                refine_count=refine_count,
+                consensus_score=consensus_score,
+                controversy_score=controversy_score,
+                basis_layer="reviewed",
+            )
+            created_snapshots.append(snapshot)
+
+        self.evolution.record_event(
+            event_type="concept_timeline_bucketed",
+            subject_id=concept_id,
+            subject_type="concept",
+            detail={
+                "bucket_size": bucket_size,
+                "bucket_count": len(created_snapshots),
+                "buckets": [s.time_bucket for s in created_snapshots],
+            },
+            created_by="system:timeline",
+        )
+
+        return {
+            "concept": {"id": concept.id, "name": concept.name},
+            "bucket_size": bucket_size,
+            "snapshots": [_snapshot_payload(s) for s in created_snapshots],
+        }
+
+    # ------------------------------------------------------------------
+    # Phase 2: Conflict clustering
+    # ------------------------------------------------------------------
+
+    def cluster_claim_conflicts(self, concept_id: str | None = None) -> dict:
+        """Detect and persist conflict clusters from contradicts edges."""
+        if self.conflict_clusters is None:
+            return {"error": "conflict cluster repository not available"}
+
+        concept_ids = []
+        if concept_id:
+            concept_ids.append(concept_id)
+        else:
+            for paper in self.papers.list_papers():
+                for claim in self.claims.list_claims_for_paper(paper.id):
+                    if claim.subject_concept_id and claim.subject_concept_id not in concept_ids:
+                        concept_ids.append(claim.subject_concept_id)
+                    if claim.object_concept_id and claim.object_concept_id not in concept_ids:
+                        concept_ids.append(claim.object_concept_id)
+
+        total_clusters = 0
+        results = []
+        for cid in concept_ids:
+            concept = self.concepts.get_concept(cid)
+            claims = self.claims.list_claims_for_concept(cid)
+            claim_ids = {c.id for c in claims}
+
+            # Build adjacency from contradicts edges
+            adjacency: dict[str, set[str]] = {c.id: set() for c in claims}
+            for claim in claims:
+                for edge in self.edges.list_claim_relation_edges(claim.id, relation_types=["contradicts"]):
+                    src, tgt = edge.source_id, edge.target_id
+                    if src in claim_ids and tgt in claim_ids:
+                        adjacency.setdefault(src, set()).add(tgt)
+                        adjacency.setdefault(tgt, set()).add(src)
+
+            # Find connected components via BFS
+            visited: set[str] = set()
+            components: list[set[str]] = []
+            for node in adjacency:
+                if node in visited or not adjacency[node]:
+                    continue
+                component: set[str] = set()
+                queue = [node]
+                while queue:
+                    current = queue.pop()
+                    if current in visited:
+                        continue
+                    visited.add(current)
+                    component.add(current)
+                    for neighbor in adjacency.get(current, set()):
+                        if neighbor not in visited:
+                            queue.append(neighbor)
+                if len(component) >= 2:
+                    components.append(component)
+
+            if not components:
+                continue
+
+            # Clear old clusters for this concept before creating new ones
+            self.conflict_clusters.clear_clusters_for_concept(cid)
+
+            for component in components:
+                cluster = self.conflict_clusters.create_cluster(
+                    anchor_concept_id=cid,
+                    topic_label=concept.name,
+                    summary={"claim_count": len(component)},
+                )
+
+                # Assign stances: count support edges to determine majority
+                claim_support_counts: dict[str, int] = {}
+                for claim_id_in_component in component:
+                    count = 0
+                    for edge in self.edges.list_claim_relation_edges(claim_id_in_component, relation_types=["supports"]):
+                        count += 1
+                    claim_support_counts[claim_id_in_component] = count
+
+                if claim_support_counts:
+                    median_support = sorted(claim_support_counts.values())[len(claim_support_counts) // 2]
+                else:
+                    median_support = 0
+
+                for claim_id_in_component in component:
+                    support = claim_support_counts.get(claim_id_in_component, 0)
+                    stance = "mainstream" if support >= median_support else "dissenting"
+                    self.conflict_clusters.add_member(
+                        cluster_id=cluster.id,
+                        claim_id=claim_id_in_component,
+                        role="member",
+                        stance=stance,
+                    )
+
+                total_clusters += 1
+
+                if self.evolution is not None:
+                    self.evolution.record_event(
+                        event_type="conflict_cluster_created",
+                        subject_id=cluster.id,
+                        subject_type="conflict_cluster",
+                        detail={
+                            "anchor_concept_id": cid,
+                            "concept_name": concept.name,
+                            "member_count": len(component),
+                        },
+                        created_by="system:clustering",
+                    )
+
+            results.append({
+                "concept_id": cid,
+                "concept_name": concept.name,
+                "cluster_count": len(components),
+            })
+
+        return {"total_clusters": total_clusters, "concepts": results}
+
+    def list_conflict_clusters(self, concept_id: str) -> dict:
+        """List conflict clusters for a concept with members."""
+        if self.conflict_clusters is None:
+            return {"error": "conflict cluster repository not available", "clusters": []}
+
+        concept = self.concepts.get_concept(concept_id)
+        clusters = self.conflict_clusters.list_clusters_for_concept(concept_id)
+        result = []
+        for cluster in clusters:
+            members = self.conflict_clusters.list_members_for_cluster(cluster.id)
+            result.append({
+                "id": cluster.id,
+                "topic_label": cluster.topic_label,
+                "status": cluster.status,
+                "members": [
+                    {
+                        "id": m.id,
+                        "claim_id": m.claim_id,
+                        "role": m.role,
+                        "stance": m.stance,
+                        "confidence": m.confidence,
+                    }
+                    for m in members
+                ],
+                "created_at": cluster.created_at,
+            })
+        return {
+            "concept": {"id": concept.id, "name": concept.name},
+            "clusters": result,
+        }
+
+    # ------------------------------------------------------------------
+    # Phase 2: Discovery engine — review priorities and open questions
+    # ------------------------------------------------------------------
+
+    def compute_review_priorities(self, scope_type: str = "concept", scope_id: str | None = None) -> dict:
+        """Rank pending candidates by evolution-derived priority."""
+        if self.candidates is None:
+            return {"error": "candidate repository not available", "priorities": []}
+
+        pending = self.candidates.list_pending(limit=200)
+        if not pending:
+            return {"priorities": [], "count": 0}
+
+        # Gather hypothesis claim IDs for relevance check
+        hypothesis_claim_ids: set[str] = set()
+        try:
+            for paper in self.papers.list_papers():
+                pass  # iterate to confirm connectivity
+            if scope_id and scope_type == "project":
+                for h in self.hypotheses.list_hypotheses_for_project(scope_id):
+                    for link in self.hypotheses.list_evidence_links_for_hypothesis(h.id):
+                        if link.object_type == "claim":
+                            hypothesis_claim_ids.add(link.object_id)
+            else:
+                for project in self.projects.list_projects():
+                    for h in self.hypotheses.list_hypotheses_for_project(project.id):
+                        for link in self.hypotheses.list_evidence_links_for_hypothesis(h.id):
+                            if link.object_type == "claim":
+                                hypothesis_claim_ids.add(link.object_id)
+        except Exception:
+            pass
+
+        # Cache latest concept controversy scores
+        concept_controversy: dict[str, float] = {}
+
+        priorities = []
+        for candidate in pending:
+            score = candidate.score or 0.0
+
+            # Hypothesis relevance
+            hypothesis_relevant = (
+                candidate.source_claim_id in hypothesis_claim_ids
+                or candidate.target_claim_id in hypothesis_claim_ids
+            )
+
+            # Concept controversy
+            controversy = 0.0
+            try:
+                source_claim = self.claims.get_claim(candidate.source_claim_id)
+                for cid in [source_claim.subject_concept_id, source_claim.object_concept_id]:
+                    if cid and cid not in concept_controversy and self.evolution:
+                        snapshots = self.evolution.list_snapshots_for_concept(cid)
+                        if snapshots:
+                            latest = snapshots[-1]
+                            concept_controversy[cid] = latest.controversy_score or 0.0
+                    if cid and cid in concept_controversy:
+                        controversy = max(controversy, concept_controversy[cid])
+            except (KeyError, Exception):
+                pass
+
+            # Recency bonus
+            recency = 0.0
+            try:
+                source_claim = self.claims.get_claim(candidate.source_claim_id)
+                paper = self.papers.get_paper(source_claim.paper_id)
+                if paper.year and paper.year >= 2024:
+                    recency = 1.0
+                elif paper.year and paper.year >= 2022:
+                    recency = 0.5
+            except (KeyError, Exception):
+                pass
+
+            priority_score = (
+                score * 0.3
+                + controversy * 0.25
+                + (1.0 if hypothesis_relevant else 0.0) * 0.25
+                + recency * 0.2
+            )
+
+            priorities.append({
+                "candidate_id": candidate.id,
+                "source_claim_id": candidate.source_claim_id,
+                "target_claim_id": candidate.target_claim_id,
+                "relation_type": candidate.relation_type,
+                "priority_score": round(priority_score, 4),
+                "factors": {
+                    "candidate_score": score,
+                    "controversy": round(controversy, 4),
+                    "hypothesis_relevant": hypothesis_relevant,
+                    "recency": recency,
+                },
+            })
+
+        priorities.sort(key=lambda p: p["priority_score"], reverse=True)
+        return {"priorities": priorities, "count": len(priorities)}
+
+    def compute_open_questions(self, scope_type: str = "concept", scope_id: str | None = None) -> dict:
+        """Identify evidence-sparse controversies and under-explored areas."""
+        if self.evolution is None:
+            return {"error": "evolution repository not available", "questions": []}
+
+        questions = []
+
+        # Gather concepts to analyze
+        concept_ids: list[str] = []
+        if scope_id and scope_type == "concept":
+            concept_ids = [scope_id]
+        elif scope_id and scope_type == "project":
+            links = self.projects.list_links_for_project(scope_id)
+            concept_ids = [link.object_id for link in links if link.object_type == "concept"]
+        else:
+            # All concepts with snapshots — check up to 200 concepts
+            seen = set()
+            for paper in self.papers.list_papers():
+                for claim in self.claims.list_claims_for_paper(paper.id):
+                    for cid in [claim.subject_concept_id, claim.object_concept_id]:
+                        if cid and cid not in seen:
+                            seen.add(cid)
+                            concept_ids.append(cid)
+                            if len(concept_ids) >= 200:
+                                break
+
+        for cid in concept_ids:
+            try:
+                concept = self.concepts.get_concept(cid)
+            except KeyError:
+                continue
+            snapshots = self.evolution.list_snapshots_for_concept(cid)
+            if not snapshots:
+                continue
+            latest = snapshots[-1]
+
+            # High controversy, low claim count → evidence-sparse controversy
+            cs = latest.controversy_score or 0.0
+            if cs > 0.3 and latest.claim_count <= 5:
+                questions.append({
+                    "concept_id": cid,
+                    "concept_name": concept.name,
+                    "type": "evidence_sparse_controversy",
+                    "controversy_score": cs,
+                    "claim_count": latest.claim_count,
+                    "description": f"'{concept.name}' has controversy score {cs:.2f} but only {latest.claim_count} claims — more evidence needed.",
+                })
+
+            # Trend shift detection: compare first and last snapshot
+            if len(snapshots) >= 2:
+                first = snapshots[0]
+                first_cs = first.consensus_score or 0.5
+                latest_cs = latest.consensus_score or 0.5
+                shift = abs(latest_cs - first_cs)
+                if shift > 0.3:
+                    direction = "weakening consensus" if latest_cs < first_cs else "strengthening consensus"
+                    questions.append({
+                        "concept_id": cid,
+                        "concept_name": concept.name,
+                        "type": "trend_shift",
+                        "consensus_shift": round(shift, 4),
+                        "direction": direction,
+                        "description": f"'{concept.name}' shows {direction} (shift={shift:.2f}) — worth investigating.",
+                    })
+
+        return {"questions": questions, "count": len(questions)}
+
+    # ------------------------------------------------------------------
+    # Phase 2: Project-scoped evolution
+    # ------------------------------------------------------------------
+
+    def project_evolution_summary(self, project_id: str) -> dict:
+        """Aggregate evolution data across all concepts and hypotheses linked to a project."""
+        project = self.projects.get_project(project_id)
+
+        # Gather linked concepts
+        links = self.projects.list_links_for_project(project_id)
+        concept_ids = [link.object_id for link in links if link.object_type == "concept"]
+
+        concept_summaries = []
+        for cid in concept_ids:
+            try:
+                concept = self.concepts.get_concept(cid)
+            except KeyError:
+                continue
+            snapshots = self.evolution.list_snapshots_for_concept(cid) if self.evolution else []
+            latest = snapshots[-1] if snapshots else None
+            cluster_count = 0
+            if self.conflict_clusters:
+                cluster_count = len(self.conflict_clusters.list_clusters_for_concept(cid))
+            concept_summaries.append({
+                "concept_id": cid,
+                "concept_name": concept.name,
+                "snapshot_count": len(snapshots),
+                "latest_consensus": latest.consensus_score if latest else None,
+                "latest_controversy": latest.controversy_score if latest else None,
+                "conflict_cluster_count": cluster_count,
+            })
+
+        # Gather hypothesis evolution summaries
+        hypotheses = self.hypotheses.list_hypotheses_for_project(project_id)
+        hypothesis_summaries = []
+        for h in hypotheses:
+            evo = self.build_hypothesis_evolution(h.id)
+            hypothesis_summaries.append({
+                "hypothesis_id": h.id,
+                "text": h.text,
+                "trend": evo["trend"],
+                "evidence_summary": evo["evidence_summary"],
+            })
+
+        # Review priorities scoped to project
+        priorities = self.compute_review_priorities(scope_type="project", scope_id=project_id)
+
+        return {
+            "project": {"id": project.id, "name": project.name},
+            "concepts": concept_summaries,
+            "hypotheses": hypothesis_summaries,
+            "review_priorities": priorities.get("priorities", [])[:10],
         }
 
     def _grouped_project_links(self, project_id: str) -> dict:
@@ -1182,6 +1643,22 @@ def _hypothesis_payload(hypothesis) -> dict:
         "created_by": hypothesis.created_by,
         "created_at": hypothesis.created_at,
         "updated_at": hypothesis.updated_at,
+    }
+
+
+def _snapshot_payload(s) -> dict:
+    return {
+        "id": s.id,
+        "snapshot_at": s.snapshot_at,
+        "support_count": s.support_count,
+        "contradiction_count": s.contradiction_count,
+        "refine_count": s.refine_count,
+        "paper_count": s.paper_count,
+        "claim_count": s.claim_count,
+        "consensus_score": s.consensus_score,
+        "controversy_score": s.controversy_score,
+        "time_bucket": s.time_bucket,
+        "basis_layer": s.basis_layer,
     }
 
 

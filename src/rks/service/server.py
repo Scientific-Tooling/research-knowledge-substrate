@@ -16,6 +16,7 @@ from rks.storage import (
     CandidateRepository,
     ClaimRepository,
     ConceptRepository,
+    ConflictClusterRepository,
     DatasetRepository,
     EmbeddingRepository,
     EdgeRepository,
@@ -111,6 +112,7 @@ class _RepositoryContext:
             "tasks": TaskRepository(self.conn),
             "candidates": CandidateRepository(self.conn),
             "evolution": EvolutionRepository(self.conn),
+            "conflict_clusters": ConflictClusterRepository(self.conn),
         }
 
     def __exit__(self, exc_type, exc, tb):
@@ -162,6 +164,7 @@ class _OperationsContext:
             tasks=repos["tasks"],
             candidates=repos["candidates"],
             evolution=repos["evolution"],
+            conflict_clusters=repos["conflict_clusters"],
         )
 
     def __exit__(self, exc_type, exc, tb):
@@ -354,6 +357,43 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         hypothesis_id = parsed.path.rsplit("/", 1)[-1]
         with _open_operations() as operations:
             payload = operations.build_hypothesis_evolution(hypothesis_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/conflict-clusters/"):
+        concept_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.list_conflict_clusters(concept_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/concept-consensus/"):
+        concept_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.concept_timeline(concept_id)
+            snapshots = payload.get("snapshots", [])
+            latest = snapshots[-1] if snapshots else {}
+            payload = {
+                "concept": payload.get("concept", {}),
+                "consensus_score": latest.get("consensus_score"),
+                "controversy_score": latest.get("controversy_score"),
+                "snapshot_count": len(snapshots),
+            }
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/query/review-priorities":
+        params = parse_qs(parsed.query)
+        scope_type = params.get("scope_type", ["concept"])[0]
+        scope_id = params.get("scope_id", [None])[0]
+        with _open_operations() as operations:
+            payload = operations.compute_review_priorities(scope_type=scope_type, scope_id=scope_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/query/open-questions":
+        params = parse_qs(parsed.query)
+        scope_type = params.get("scope_type", ["concept"])[0]
+        scope_id = params.get("scope_id", [None])[0]
+        with _open_operations() as operations:
+            payload = operations.compute_open_questions(scope_type=scope_type, scope_id=scope_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/project/"):
+        project_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.project_evolution_summary(project_id)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/notes"):
         project_id = parsed.path.split("/")[3]
@@ -574,6 +614,16 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
         concept_id = parsed.path.rsplit("/", 1)[-1]
         with _open_operations() as operations:
             response = operations.build_concept_timeline(concept_id)
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/build-timeline/"):
+        concept_id = parsed.path.rsplit("/", 1)[-1]
+        bucket_size = payload.get("bucket_size", "yearly")
+        with _open_operations() as operations:
+            response = operations.build_concept_timeline_bucketed(concept_id, bucket_size=bucket_size)
+        return 200, "application/json", json.dumps(response).encode("utf-8")
+    if parsed.path == "/api/evolution/cluster-conflicts":
+        with _open_operations() as operations:
+            response = operations.cluster_claim_conflicts(concept_id=payload.get("concept_id"))
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/prepare/papers/") and parsed.path.endswith("/output"):
         paper_id = parsed.path.split("/")[4]

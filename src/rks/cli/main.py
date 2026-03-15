@@ -47,6 +47,7 @@ from rks.storage import (
     CandidateRepository,
     ClaimRepository,
     ConceptRepository,
+    ConflictClusterRepository,
     DatasetRepository,
     EmbeddingRepository,
     EdgeRepository,
@@ -509,6 +510,31 @@ def build_parser() -> argparse.ArgumentParser:
     evo_hypothesis_parser.add_argument("hypothesis_id", help="Hypothesis ID.")
     evo_hypothesis_parser.set_defaults(handler=handle_evolution_hypothesis)
 
+    evo_bucketed_parser = evolution_subparsers.add_parser(
+        "build-timeline-bucketed", help="Build time-bucketed timeline snapshots for a concept."
+    )
+    evo_bucketed_parser.add_argument("concept_id", help="Concept ID, for example k_000001.")
+    evo_bucketed_parser.add_argument("--bucket-size", default="yearly", choices=("yearly",), help="Bucket size.")
+    evo_bucketed_parser.set_defaults(handler=handle_evolution_build_timeline_bucketed)
+
+    evo_cluster_parser = evolution_subparsers.add_parser(
+        "cluster-conflicts", help="Detect and persist conflict clusters from contradicts edges."
+    )
+    evo_cluster_parser.add_argument("--concept-id", default=None, help="Optional concept ID to scope clustering.")
+    evo_cluster_parser.set_defaults(handler=handle_evolution_cluster_conflicts)
+
+    evo_list_clusters_parser = evolution_subparsers.add_parser(
+        "list-clusters", help="List conflict clusters for a concept."
+    )
+    evo_list_clusters_parser.add_argument("concept_id", help="Concept ID, for example k_000001.")
+    evo_list_clusters_parser.set_defaults(handler=handle_evolution_list_clusters)
+
+    evo_project_parser = evolution_subparsers.add_parser(
+        "project-summary", help="Show evolution summary for a project."
+    )
+    evo_project_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    evo_project_parser.set_defaults(handler=handle_evolution_project_summary)
+
     query_parser = subparsers.add_parser("query", help="Run deterministic research graph queries.")
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
 
@@ -541,6 +567,20 @@ def build_parser() -> argparse.ArgumentParser:
     query_datasets_for_parser = query_subparsers.add_parser("datasets-for", help="List datasets for a paper or method.")
     query_datasets_for_parser.add_argument("target", help="Paper ID or method ID.")
     query_datasets_for_parser.set_defaults(handler=handle_query_datasets_for)
+
+    query_review_priorities_parser = query_subparsers.add_parser(
+        "review-priorities", help="Rank pending candidates by evolution-derived priority."
+    )
+    query_review_priorities_parser.add_argument("--scope-type", default="concept", choices=("concept", "project"))
+    query_review_priorities_parser.add_argument("--scope-id", default=None, help="Optional project or concept ID to scope.")
+    query_review_priorities_parser.set_defaults(handler=handle_query_review_priorities)
+
+    query_open_questions_parser = query_subparsers.add_parser(
+        "open-questions", help="Identify evidence-sparse controversies and under-explored areas."
+    )
+    query_open_questions_parser.add_argument("--scope-type", default="concept", choices=("concept", "project"))
+    query_open_questions_parser.add_argument("--scope-id", default=None, help="Optional project or concept ID to scope.")
+    query_open_questions_parser.set_defaults(handler=handle_query_open_questions)
 
     output_parser = subparsers.add_parser("output", help="Generate direct research outputs from the local graph.")
     output_subparsers = output_parser.add_subparsers(dest="output_command", required=True)
@@ -1734,6 +1774,63 @@ def handle_evolution_hypothesis(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_evolution_build_timeline_bucketed(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).build_concept_timeline_bucketed(
+            concept_id=args.concept_id,
+            bucket_size=args.bucket_size,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_cluster_conflicts(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).cluster_claim_conflicts(
+            concept_id=args.concept_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_list_clusters(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_conflict_clusters(
+            concept_id=args.concept_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_project_summary(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_evolution_summary(
+            project_id=args.project_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_query_review_priorities(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).compute_review_priorities(
+            scope_type=args.scope_type,
+            scope_id=args.scope_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_query_open_questions(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).compute_open_questions(
+            scope_type=args.scope_type,
+            scope_id=args.scope_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def handle_query_claims_about(args: argparse.Namespace) -> int:
     with _open_session() as session:
         query = QueryService(
@@ -1971,6 +2068,7 @@ class _Session:
         tasks: TaskRepository,
         candidates: CandidateRepository | None = None,
         evolution: EvolutionRepository | None = None,
+        conflict_clusters: ConflictClusterRepository | None = None,
     ):
         self.papers = papers
         self.projects = projects
@@ -1985,6 +2083,7 @@ class _Session:
         self.tasks = tasks
         self.candidates = candidates
         self.evolution = evolution
+        self.conflict_clusters = conflict_clusters
 
 
 class _SessionContext:
@@ -2006,6 +2105,7 @@ class _SessionContext:
             tasks=TaskRepository(self.conn),
             candidates=CandidateRepository(self.conn),
             evolution=EvolutionRepository(self.conn),
+            conflict_clusters=ConflictClusterRepository(self.conn),
         )
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -2033,6 +2133,7 @@ def _operations(session: _Session) -> ResearchOperations:
         tasks=session.tasks,
         candidates=session.candidates,
         evolution=session.evolution,
+        conflict_clusters=session.conflict_clusters,
     )
 
 

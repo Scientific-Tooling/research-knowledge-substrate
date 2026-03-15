@@ -25,6 +25,8 @@ TABLES = [
     "claim_relation_candidates",
     "evolution_events",
     "concept_timeline_snapshots",
+    "claim_conflict_clusters",
+    "claim_conflict_cluster_members",
 ]
 
 

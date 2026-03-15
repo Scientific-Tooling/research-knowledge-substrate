@@ -197,6 +197,33 @@ class ConceptTimelineSnapshotRecord:
     claim_count: int
     detail_json: Optional[str]
     created_at: str
+    time_bucket: Optional[str] = None
+    refine_count: int = 0
+    consensus_score: Optional[float] = None
+    controversy_score: Optional[float] = None
+    basis_layer: str = "reviewed"
+
+
+@dataclass(frozen=True)
+class ClaimConflictClusterRecord:
+    id: str
+    anchor_concept_id: str
+    topic_label: Optional[str]
+    status: str
+    summary_json: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class ClaimConflictClusterMemberRecord:
+    id: str
+    cluster_id: str
+    claim_id: str
+    role: str
+    stance: Optional[str]
+    confidence: Optional[float]
+    created_at: str
 
 
 @dataclass(frozen=True)

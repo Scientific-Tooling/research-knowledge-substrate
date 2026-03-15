@@ -74,6 +74,11 @@ class EvolutionRepository:
         paper_count: int,
         claim_count: int,
         detail: dict | None = None,
+        time_bucket: str | None = None,
+        refine_count: int = 0,
+        consensus_score: float | None = None,
+        controversy_score: float | None = None,
+        basis_layer: str = "reviewed",
     ) -> ConceptTimelineSnapshotRecord:
         timestamp = utc_now()
         snapshot_id = next_id(self.conn, "concept_timeline_snapshot")
@@ -81,8 +86,9 @@ class EvolutionRepository:
             """
             INSERT INTO concept_timeline_snapshots(
                 id, concept_id, snapshot_at, support_count, contradiction_count,
-                paper_count, claim_count, detail_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                paper_count, claim_count, detail_json, created_at,
+                time_bucket, refine_count, consensus_score, controversy_score, basis_layer
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot_id,
@@ -94,6 +100,11 @@ class EvolutionRepository:
                 claim_count,
                 json.dumps(detail or {}, sort_keys=True),
                 timestamp,
+                time_bucket,
+                refine_count,
+                consensus_score,
+                controversy_score,
+                basis_layer,
             ),
         )
         self.conn.commit()
@@ -105,9 +116,15 @@ class EvolutionRepository:
             raise KeyError(f"Snapshot not found: {snapshot_id}")
         return ConceptTimelineSnapshotRecord(**dict(row))
 
-    def list_snapshots_for_concept(self, concept_id: str) -> list[ConceptTimelineSnapshotRecord]:
-        rows = self.conn.execute(
-            "SELECT * FROM concept_timeline_snapshots WHERE concept_id = ? ORDER BY snapshot_at ASC",
-            (concept_id,),
-        ).fetchall()
+    def list_snapshots_for_concept(self, concept_id: str, time_bucket: str | None = None) -> list[ConceptTimelineSnapshotRecord]:
+        if time_bucket is not None:
+            rows = self.conn.execute(
+                "SELECT * FROM concept_timeline_snapshots WHERE concept_id = ? AND time_bucket = ? ORDER BY snapshot_at ASC",
+                (concept_id, time_bucket),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM concept_timeline_snapshots WHERE concept_id = ? ORDER BY snapshot_at ASC",
+                (concept_id,),
+            ).fetchall()
         return [ConceptTimelineSnapshotRecord(**dict(row)) for row in rows]

@@ -1,5 +1,6 @@
 from rks.storage.candidate_repository import CandidateRepository
 from rks.storage.claim_repository import ClaimRepository
+from rks.storage.conflict_cluster_repository import ConflictClusterRepository
 from rks.storage.concept_repository import ConceptRepository
 from rks.storage.dataset_repository import DatasetRepository
 from rks.storage.db import connect_db, initialize_db
@@ -17,6 +18,7 @@ from rks.storage.task_repository import TaskRepository
 __all__ = [
     "CandidateRepository",
     "ClaimRepository",
+    "ConflictClusterRepository",
     "ConceptRepository",
     "DatasetRepository",
     "EmbeddingRepository",

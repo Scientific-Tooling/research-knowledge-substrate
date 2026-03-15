@@ -18,6 +18,9 @@ ID_PREFIXES = {
     "edge": "e",
     "artifact": "a",
     "evolution_event": "ev",
+    "concept_timeline_snapshot": "cts",
+    "claim_conflict_cluster": "cc",
+    "claim_conflict_cluster_member": "ccm",
 }
 
 
