@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+
+logger = logging.getLogger("rks.service")
 
 from rks.config import load_paths
 from rks.operations import ResearchOperations
@@ -28,6 +32,12 @@ from rks.storage import (
 
 
 def serve_http(host: str, port: int) -> None:
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        level=logging.INFO,
+        stream=sys.stderr,
+    )
+    logger.info("Starting RKS HTTP service on %s:%d (local-only)", host, port)
     server = ThreadingHTTPServer((host, port), _build_handler())
     server.serve_forever()
 
@@ -35,10 +45,16 @@ def serve_http(host: str, port: int) -> None:
 def _build_handler():
     class RksHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            logger.info("GET %s", self.path)
             try:
                 status_code, content_type, body = dispatch_get_request(self.path)
             except KeyError:
+                logger.warning("GET %s -> 404", self.path)
                 self.send_error(404, "Not found")
+                return
+            except Exception:
+                logger.exception("GET %s -> 500", self.path)
+                self.send_error(500, "Internal server error")
                 return
             self.send_response(status_code)
             self.send_header("Content-Type", content_type)
@@ -47,15 +63,22 @@ def _build_handler():
             self.wfile.write(body)
 
         def do_POST(self) -> None:
+            logger.info("POST %s", self.path)
             try:
                 content_length = int(self.headers.get("Content-Length", "0"))
                 raw_body = self.rfile.read(content_length) if content_length else b"{}"
                 status_code, content_type, body = dispatch_post_request(self.path, raw_body)
             except KeyError:
+                logger.warning("POST %s -> 404", self.path)
                 self.send_error(404, "Not found")
                 return
             except ValueError as exc:
+                logger.warning("POST %s -> 400: %s", self.path, exc)
                 self.send_error(400, str(exc))
+                return
+            except Exception:
+                logger.exception("POST %s -> 500", self.path)
+                self.send_error(500, "Internal server error")
                 return
             self.send_response(status_code)
             self.send_header("Content-Type", content_type)
@@ -411,10 +434,22 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
     raise KeyError(path)
 
 
+def _require_fields(payload: dict, *fields: str) -> None:
+    missing = [f for f in fields if f not in payload]
+    if missing:
+        raise ValueError(f"Missing required fields: {', '.join(missing)}")
+
+
 def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
     parsed = urlparse(path)
-    payload = json.loads(body.decode("utf-8") or "{}")
+    try:
+        payload = json.loads(body.decode("utf-8") or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError(f"Invalid JSON body: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object")
     if parsed.path == "/api/projects":
+        _require_fields(payload, "name")
         with _open_operations() as operations:
             response = operations.create_project(
                 name=payload["name"],
@@ -425,6 +460,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/hypotheses/") and parsed.path.endswith("/evidence"):
+        _require_fields(payload, "object_type", "object_id")
         hypothesis_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
             response = operations.add_hypothesis_evidence(
@@ -437,6 +473,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path == "/api/review/claim-relations/promote":
+        _require_fields(payload, "source_claim_id", "relation_type", "target_claim_id")
         with _open_operations() as operations:
             response = operations.promote_claim_relation(
                 source_claim_id=payload["source_claim_id"],
@@ -448,6 +485,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path == "/api/review/claim-relations/retract":
+        _require_fields(payload, "source_claim_id", "relation_type", "target_claim_id")
         with _open_operations() as operations:
             response = operations.retract_claim_relation(
                 source_claim_id=payload["source_claim_id"],
@@ -456,6 +494,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/notes"):
+        _require_fields(payload, "content")
         project_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
             response = operations.add_project_note(
@@ -465,6 +504,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/hypotheses"):
+        _require_fields(payload, "text")
         project_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
             response = operations.create_hypothesis(
@@ -477,6 +517,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/links"):
+        _require_fields(payload, "object_type", "object_id")
         project_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
             response = operations.add_project_link(
@@ -488,6 +529,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/papers"):
+        _require_fields(payload, "paper_id")
         project_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
             response = operations.add_project_paper(
@@ -498,6 +540,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/notes"):
+        _require_fields(payload, "content")
         paper_id = parsed.path.split("/")[3]
         with _open_operations() as operations:
             response = operations.add_paper_note(
@@ -513,6 +556,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path == "/api/review/promote-candidate":
+        _require_fields(payload, "candidate_id")
         with _open_operations() as operations:
             response = operations.promote_candidate(
                 candidate_id=payload["candidate_id"],
@@ -520,6 +564,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
             )
         return 200, "application/json", json.dumps(response).encode("utf-8")
     if parsed.path == "/api/review/reject-candidate":
+        _require_fields(payload, "candidate_id")
         with _open_operations() as operations:
             response = operations.reject_candidate(
                 candidate_id=payload["candidate_id"],
