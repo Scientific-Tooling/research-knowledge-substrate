@@ -64,7 +64,7 @@ class LlmProviderTest(unittest.TestCase):
             },
         ]
 
-        def fake_urlopen(request):
+        def fake_urlopen(request, **kwargs):
             self.assertIn("/chat/completions", request.full_url)
             return _FakeResponse(responses.pop(0))
 
@@ -98,7 +98,7 @@ class LlmProviderTest(unittest.TestCase):
             ]
         }
 
-        def fake_urlopen(request):
+        def fake_urlopen(request, **kwargs):
             self.assertIn("/chat/completions", request.full_url)
             return _FakeResponse(response)
 

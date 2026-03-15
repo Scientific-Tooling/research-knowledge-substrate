@@ -96,7 +96,7 @@ class QualityHardeningTest(unittest.TestCase):
             self.assertIn("snippet", evidence)
             self.assertIn("char_start", evidence)
             self.assertIn("char_end", evidence)
-            self.assertEqual(evidence["extractor_version"], "1.0")
+            self.assertEqual(evidence["extractor_version"], "1.1")
 
 
 if __name__ == "__main__":

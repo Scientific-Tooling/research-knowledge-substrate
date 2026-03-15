@@ -40,7 +40,14 @@ class ProductizationTest(unittest.TestCase):
 
     def test_packaged_migrations_exist_for_distributions(self) -> None:
         packaged = _packaged_migration_files()
-        self.assertEqual([path.name for path in packaged], ["0001_init.sql", "0002_research_projects.sql", "0003_project_hypotheses.sql"])
+        self.assertEqual([path.name for path in packaged], [
+            "0001_init.sql",
+            "0002_research_projects.sql",
+            "0003_project_hypotheses.sql",
+            "0004_query_performance_indexes.sql",
+            "0005_claim_relation_candidates.sql",
+            "0006_evolution_events.sql",
+        ])
         self.assertIn("CREATE TABLE IF NOT EXISTS papers", packaged[0].read_text(encoding="utf-8"))
         self.assertIn("CREATE TABLE IF NOT EXISTS research_projects", packaged[1].read_text(encoding="utf-8"))
         self.assertIn("CREATE TABLE IF NOT EXISTS hypotheses", packaged[2].read_text(encoding="utf-8"))
@@ -116,7 +123,7 @@ class ProductizationTest(unittest.TestCase):
             migrate_result = run_cli("migrate", cwd=source)
             self.assertEqual(migrate_result.returncode, 0, migrate_result.stderr)
             migrate_payload = json.loads(migrate_result.stdout)
-            self.assertEqual(migrate_payload["current_version"], "0003_project_hypotheses.sql")
+            self.assertEqual(migrate_payload["current_version"], "0006_evolution_events.sql")
 
             snapshot_path = source / "snapshot.json"
             export_result = run_cli("export", "graph", str(snapshot_path), cwd=source)
