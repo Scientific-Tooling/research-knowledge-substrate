@@ -363,6 +363,21 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_operations() as operations:
             payload = operations.list_conflict_clusters(concept_id)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/conflict-graph/"):
+        concept_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.conflict_graph(concept_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/hypothesis-bucketed/"):
+        hypothesis_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.build_hypothesis_evolution_bucketed(hypothesis_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path.startswith("/api/evolution/project-timeline/"):
+        project_id = parsed.path.rsplit("/", 1)[-1]
+        with _open_operations() as operations:
+            payload = operations.project_evolution_timeline(project_id)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/evolution/concept-consensus/"):
         concept_id = parsed.path.rsplit("/", 1)[-1]
         with _open_operations() as operations:

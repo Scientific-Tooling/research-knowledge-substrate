@@ -924,6 +924,143 @@ class ResearchOperations:
             "events": events,
         }
 
+    def build_hypothesis_evolution_bucketed(self, hypothesis_id: str, bucket_size: str = "yearly") -> dict:
+        """Build a time-bucketed view of hypothesis evidence by paper year.
+
+        Groups each evidence link by the publication year of the linked paper
+        (or claim's paper) and computes support/contradiction counts per bucket.
+        No snapshots are persisted — this is a read-only aggregation.
+        """
+        hypothesis = self.hypotheses.get_hypothesis(hypothesis_id)
+        evidence_links = self.hypotheses.list_evidence_links_for_hypothesis(hypothesis_id)
+
+        # Group evidence links by paper year
+        buckets: dict[str, dict] = {}
+        for link in evidence_links:
+            year_key = "unknown"
+            try:
+                if link.object_type == "claim":
+                    claim = self.claims.get_claim(link.object_id)
+                    paper = self.papers.get_paper(claim.paper_id)
+                elif link.object_type == "paper":
+                    paper = self.papers.get_paper(link.object_id)
+                else:
+                    paper = None
+                if paper and paper.year:
+                    year_key = str(paper.year)
+            except (KeyError, Exception):
+                pass
+
+            if year_key not in buckets:
+                buckets[year_key] = {"support": 0, "contradiction": 0, "neutral": 0, "links": []}
+            bucket = buckets[year_key]
+            if link.relation_type in ("supported_by", "supports"):
+                bucket["support"] += 1
+            elif link.relation_type in ("contradicted_by", "contradicts"):
+                bucket["contradiction"] += 1
+            else:
+                bucket["neutral"] += 1
+            bucket["links"].append({
+                "object_type": link.object_type,
+                "object_id": link.object_id,
+                "relation_type": link.relation_type,
+            })
+
+        result_buckets = []
+        for key in sorted(buckets):
+            b = buckets[key]
+            total = b["support"] + b["contradiction"]
+            consensus_score = b["support"] / max(1, total)
+            controversy_score = min(b["support"], b["contradiction"]) / max(1, total)
+            if total == 0:
+                trend = "no_evidence"
+            elif b["contradiction"] == 0:
+                trend = "strengthening"
+            elif b["support"] == 0:
+                trend = "weakening"
+            elif b["support"] > b["contradiction"] * 2:
+                trend = "strengthening"
+            elif b["contradiction"] > b["support"] * 2:
+                trend = "weakening"
+            else:
+                trend = "contested"
+            result_buckets.append({
+                "time_bucket": key,
+                "support_count": b["support"],
+                "contradiction_count": b["contradiction"],
+                "neutral_count": b["neutral"],
+                "total_evidence": b["support"] + b["contradiction"] + b["neutral"],
+                "consensus_score": round(consensus_score, 4),
+                "controversy_score": round(controversy_score, 4),
+                "trend": trend,
+                "links": b["links"],
+            })
+
+        return {
+            "hypothesis": _hypothesis_payload(hypothesis),
+            "bucket_size": bucket_size,
+            "buckets": result_buckets,
+        }
+
+    def project_evolution_timeline(self, project_id: str) -> dict:
+        """Aggregate hypothesis evidence by year across all hypotheses in a project.
+
+        For each year bucket, returns the total support, contradiction, and
+        neutral evidence counts summed across all project hypotheses. Provides a
+        project-level time-series view of how the evidence base evolved.
+        """
+        project = self.projects.get_project(project_id)
+        hypotheses = self.hypotheses.list_hypotheses_for_project(project_id)
+
+        # Aggregate year → counts across all hypotheses
+        year_totals: dict[str, dict] = {}
+        hypothesis_summaries = []
+
+        for h in hypotheses:
+            h_bucketed = self.build_hypothesis_evolution_bucketed(h.id)
+            hypothesis_summaries.append({
+                "hypothesis_id": h.id,
+                "text": h.text,
+                "bucket_count": len(h_bucketed["buckets"]),
+            })
+            for bucket in h_bucketed["buckets"]:
+                key = bucket["time_bucket"]
+                if key not in year_totals:
+                    year_totals[key] = {
+                        "support": 0,
+                        "contradiction": 0,
+                        "neutral": 0,
+                        "hypothesis_ids": [],
+                    }
+                year_totals[key]["support"] += bucket["support_count"]
+                year_totals[key]["contradiction"] += bucket["contradiction_count"]
+                year_totals[key]["neutral"] += bucket["neutral_count"]
+                if h.id not in year_totals[key]["hypothesis_ids"]:
+                    year_totals[key]["hypothesis_ids"].append(h.id)
+
+        timeline = []
+        for key in sorted(year_totals):
+            t = year_totals[key]
+            total = t["support"] + t["contradiction"]
+            consensus_score = t["support"] / max(1, total)
+            controversy_score = min(t["support"], t["contradiction"]) / max(1, total)
+            timeline.append({
+                "time_bucket": key,
+                "support_count": t["support"],
+                "contradiction_count": t["contradiction"],
+                "neutral_count": t["neutral"],
+                "hypothesis_count": len(t["hypothesis_ids"]),
+                "hypothesis_ids": t["hypothesis_ids"],
+                "consensus_score": round(consensus_score, 4),
+                "controversy_score": round(controversy_score, 4),
+            })
+
+        return {
+            "project": {"id": project.id, "name": project.name},
+            "timeline": timeline,
+            "hypotheses": hypothesis_summaries,
+        }
+
     def concept_timeline(self, concept_id: str) -> dict:
         """Return the full timeline of snapshots for a concept."""
         if self.evolution is None:
@@ -1141,7 +1278,7 @@ class ResearchOperations:
         return {"total_clusters": total_clusters, "concepts": results}
 
     def list_conflict_clusters(self, concept_id: str) -> dict:
-        """List conflict clusters for a concept with members."""
+        """List conflict clusters for a concept with members (enriched with claim text and paper info)."""
         if self.conflict_clusters is None:
             return {"error": "conflict cluster repository not available", "clusters": []}
 
@@ -1150,25 +1287,122 @@ class ResearchOperations:
         result = []
         for cluster in clusters:
             members = self.conflict_clusters.list_members_for_cluster(cluster.id)
+            enriched_members = []
+            for m in members:
+                member_entry = {
+                    "id": m.id,
+                    "claim_id": m.claim_id,
+                    "role": m.role,
+                    "stance": m.stance,
+                    "confidence": m.confidence,
+                }
+                try:
+                    claim = self.claims.get_claim(m.claim_id)
+                    paper = self.papers.get_paper(claim.paper_id)
+                    member_entry["claim_text"] = claim.text
+                    member_entry["claim_predicate"] = claim.predicate
+                    member_entry["claim_confidence"] = claim.confidence
+                    member_entry["paper_id"] = claim.paper_id
+                    member_entry["paper_title"] = paper.title
+                    member_entry["paper_year"] = paper.year
+                except (KeyError, Exception):
+                    pass
+                enriched_members.append(member_entry)
             result.append({
                 "id": cluster.id,
                 "topic_label": cluster.topic_label,
                 "status": cluster.status,
-                "members": [
-                    {
-                        "id": m.id,
-                        "claim_id": m.claim_id,
-                        "role": m.role,
-                        "stance": m.stance,
-                        "confidence": m.confidence,
-                    }
-                    for m in members
-                ],
+                "members": enriched_members,
                 "created_at": cluster.created_at,
             })
         return {
             "concept": {"id": concept.id, "name": concept.name},
             "clusters": result,
+        }
+
+    def conflict_graph(self, concept_id: str) -> dict:
+        """Return the full contradiction graph for a concept as nodes and edges.
+
+        Nodes are claims (with text, paper info, confidence). Edges are all
+        ``contradicts`` relations between claims that share this concept. Useful
+        for analysing controversy structure without having to look up each claim
+        separately.
+        """
+        concept = self.concepts.get_concept(concept_id)
+        claims = self.claims.list_claims_for_concept(concept_id)
+        claim_ids = {c.id for c in claims}
+
+        # Build adjacency and collect edges
+        nodes: dict[str, dict] = {}
+        edges: list[dict] = []
+        seen_edges: set[frozenset] = set()
+
+        for claim in claims:
+            for edge in self.edges.list_claim_relation_edges(claim.id, relation_types=["contradicts"]):
+                src, tgt = edge.source_id, edge.target_id
+                if src not in claim_ids or tgt not in claim_ids:
+                    continue
+                pair = frozenset((src, tgt))
+                if pair in seen_edges:
+                    continue
+                seen_edges.add(pair)
+                edges.append({
+                    "source_id": src,
+                    "target_id": tgt,
+                    "relation_type": edge.relation_type,
+                    "confidence": edge.confidence,
+                    "created_by": edge.created_by,
+                })
+                for cid in (src, tgt):
+                    if cid not in nodes:
+                        nodes[cid] = cid  # placeholder
+
+        # Resolve node details only for claims that participate in edges
+        resolved_nodes = []
+        for cid in nodes:
+            try:
+                claim = self.claims.get_claim(cid)
+                paper = self.papers.get_paper(claim.paper_id)
+                subject_name = None
+                if claim.subject_concept_id:
+                    try:
+                        subject_name = self.concepts.get_concept(claim.subject_concept_id).name
+                    except KeyError:
+                        pass
+                resolved_nodes.append({
+                    "id": cid,
+                    "text": claim.text,
+                    "predicate": claim.predicate,
+                    "subject": subject_name,
+                    "object": claim.object_text,
+                    "confidence": claim.confidence,
+                    "paper_id": claim.paper_id,
+                    "paper_title": paper.title,
+                    "paper_year": paper.year,
+                })
+            except (KeyError, Exception):
+                resolved_nodes.append({"id": cid})
+
+        # Attach cluster membership if available
+        cluster_membership: dict[str, dict] = {}
+        if self.conflict_clusters is not None:
+            for cluster in self.conflict_clusters.list_clusters_for_concept(concept_id):
+                for m in self.conflict_clusters.list_members_for_cluster(cluster.id):
+                    cluster_membership[m.claim_id] = {
+                        "cluster_id": cluster.id,
+                        "stance": m.stance,
+                        "role": m.role,
+                    }
+        for node in resolved_nodes:
+            if node["id"] in cluster_membership:
+                node["cluster"] = cluster_membership[node["id"]]
+
+        return {
+            "concept": {"id": concept.id, "name": concept.name},
+            "node_count": len(resolved_nodes),
+            "edge_count": len(edges),
+            "nodes": resolved_nodes,
+            "edges": edges,
         }
 
     # ------------------------------------------------------------------
@@ -1243,11 +1477,31 @@ class ResearchOperations:
             except (KeyError, Exception):
                 pass
 
+            # Conflict cluster membership bonus — claims in an active cluster
+            # are more important to review because they anchor a known controversy
+            cluster_member = False
+            if self.conflict_clusters is not None:
+                try:
+                    source_claim = self.claims.get_claim(candidate.source_claim_id)
+                    for cid in [source_claim.subject_concept_id, source_claim.object_concept_id]:
+                        if cid and self.conflict_clusters.list_clusters_for_concept(cid):
+                            # Check if either claim is an actual cluster member
+                            for cluster in self.conflict_clusters.list_clusters_for_concept(cid):
+                                member_ids = {m.claim_id for m in self.conflict_clusters.list_members_for_cluster(cluster.id)}
+                                if candidate.source_claim_id in member_ids or candidate.target_claim_id in member_ids:
+                                    cluster_member = True
+                                    break
+                        if cluster_member:
+                            break
+                except (KeyError, Exception):
+                    pass
+
             priority_score = (
-                score * 0.3
+                score * 0.25
                 + controversy * 0.25
                 + (1.0 if hypothesis_relevant else 0.0) * 0.25
-                + recency * 0.2
+                + recency * 0.15
+                + (1.0 if cluster_member else 0.0) * 0.1
             )
 
             priorities.append({
@@ -1261,6 +1515,7 @@ class ResearchOperations:
                     "controversy": round(controversy, 4),
                     "hypothesis_relevant": hypothesis_relevant,
                     "recency": recency,
+                    "cluster_member": cluster_member,
                 },
             })
 
@@ -1268,7 +1523,15 @@ class ResearchOperations:
         return {"priorities": priorities, "count": len(priorities)}
 
     def compute_open_questions(self, scope_type: str = "concept", scope_id: str | None = None) -> dict:
-        """Identify evidence-sparse controversies and under-explored areas."""
+        """Identify evidence-sparse controversies and under-explored areas.
+
+        Detects five signal types:
+        - ``evidence_sparse_controversy``: high controversy score with few claims
+        - ``trend_shift``: concept consensus changed significantly across snapshots
+        - ``unsupported_hypothesis``: a project hypothesis has no supporting evidence
+        - ``unreviewed_conflict_cluster``: conflict cluster with no reviewed member relations
+        - ``hypothesis_concept_divergence``: hypothesis trend contradicts concept timeline trend
+        """
         if self.evolution is None:
             return {"error": "evolution repository not available", "questions": []}
 
@@ -1292,6 +1555,9 @@ class ResearchOperations:
                             concept_ids.append(cid)
                             if len(concept_ids) >= 200:
                                 break
+
+        # Build concept trend index for divergence detection below
+        concept_trend: dict[str, str] = {}
 
         for cid in concept_ids:
             try:
@@ -1323,6 +1589,7 @@ class ResearchOperations:
                 shift = abs(latest_cs - first_cs)
                 if shift > 0.3:
                     direction = "weakening consensus" if latest_cs < first_cs else "strengthening consensus"
+                    concept_trend[cid] = direction
                     questions.append({
                         "concept_id": cid,
                         "concept_name": concept.name,
@@ -1331,6 +1598,120 @@ class ResearchOperations:
                         "direction": direction,
                         "description": f"'{concept.name}' shows {direction} (shift={shift:.2f}) — worth investigating.",
                     })
+                else:
+                    concept_trend[cid] = "stable"
+            else:
+                latest_cs = latest.consensus_score or 0.5
+                concept_trend[cid] = "strengthening" if latest_cs >= 0.6 else "weakening" if latest_cs <= 0.4 else "stable"
+
+        # Signal: unreviewed conflict clusters — clusters where no member claim
+        # has any reviewed (promoted) relation edge. These clusters are "stuck"
+        # and represent unresolved controversies awaiting first review.
+        if self.conflict_clusters is not None:
+            for cid in concept_ids:
+                try:
+                    concept = self.concepts.get_concept(cid)
+                except KeyError:
+                    continue
+                clusters = self.conflict_clusters.list_clusters_for_concept(cid)
+                for cluster in clusters:
+                    members = self.conflict_clusters.list_members_for_cluster(cluster.id)
+                    has_reviewed = False
+                    for m in members:
+                        # Check if this claim has any reviewed (promoted) edges
+                        edges = self.edges.list_claim_relation_edges(m.claim_id)
+                        if any(e.created_by and "review" in e.created_by for e in edges):
+                            has_reviewed = True
+                            break
+                    if not has_reviewed and len(members) >= 2:
+                        questions.append({
+                            "concept_id": cid,
+                            "concept_name": concept.name,
+                            "cluster_id": cluster.id,
+                            "type": "unreviewed_conflict_cluster",
+                            "member_count": len(members),
+                            "description": f"Conflict cluster for '{concept.name}' has {len(members)} members but no reviewed relations — review is blocked.",
+                        })
+
+        # Signal: unsupported hypotheses — hypotheses whose evidence_summary
+        # shows no supporting links yet (trend == "no_evidence" or support==0).
+        try:
+            project_ids_to_check: list[str] = []
+            if scope_id and scope_type == "project":
+                project_ids_to_check = [scope_id]
+            else:
+                project_ids_to_check = [p.id for p in self.projects.list_projects()]
+
+            for project_id in project_ids_to_check:
+                for h in self.hypotheses.list_hypotheses_for_project(project_id):
+                    evo = self.build_hypothesis_evolution(h.id)
+                    ev = evo["evidence_summary"]
+                    if ev["total"] == 0 or ev["support_count"] == 0:
+                        questions.append({
+                            "hypothesis_id": h.id,
+                            "hypothesis_text": h.text,
+                            "project_id": project_id,
+                            "type": "unsupported_hypothesis",
+                            "evidence_total": ev["total"],
+                            "description": f"Hypothesis '{h.text[:80]}' has no supporting evidence — needs claim-level evidence links.",
+                        })
+        except Exception:
+            pass
+
+        # Signal: hypothesis_concept_divergence — a hypothesis is strengthening
+        # but its subject concept's timeline shows weakening consensus (or vice
+        # versa), indicating a potential inconsistency worth investigating.
+        try:
+            project_ids_to_check2: list[str] = []
+            if scope_id and scope_type == "project":
+                project_ids_to_check2 = [scope_id]
+            else:
+                project_ids_to_check2 = [p.id for p in self.projects.list_projects()]
+
+            for project_id in project_ids_to_check2:
+                for h in self.hypotheses.list_hypotheses_for_project(project_id):
+                    evo = self.build_hypothesis_evolution(h.id)
+                    h_trend = evo["trend"]
+                    if h_trend not in ("strengthening", "weakening"):
+                        continue
+                    # Check if any concept linked to this hypothesis has a diverging trend
+                    for link in self.hypotheses.list_evidence_links_for_hypothesis(h.id):
+                        if link.object_type != "claim":
+                            continue
+                        try:
+                            claim = self.claims.get_claim(link.object_id)
+                        except KeyError:
+                            continue
+                        for concept_id in [claim.subject_concept_id, claim.object_concept_id]:
+                            if not concept_id or concept_id not in concept_trend:
+                                continue
+                            c_trend = concept_trend[concept_id]
+                            diverges = (
+                                (h_trend == "strengthening" and "weakening" in c_trend)
+                                or (h_trend == "weakening" and "strengthening" in c_trend)
+                            )
+                            if diverges:
+                                try:
+                                    concept = self.concepts.get_concept(concept_id)
+                                    concept_name = concept.name
+                                except KeyError:
+                                    concept_name = concept_id
+                                questions.append({
+                                    "hypothesis_id": h.id,
+                                    "hypothesis_text": h.text,
+                                    "concept_id": concept_id,
+                                    "concept_name": concept_name,
+                                    "type": "hypothesis_concept_divergence",
+                                    "hypothesis_trend": h_trend,
+                                    "concept_trend": c_trend,
+                                    "description": (
+                                        f"Hypothesis is '{h_trend}' but concept '{concept_name}' shows '{c_trend}' — "
+                                        "the hypothesis may be based on stale or inconsistent evidence."
+                                    ),
+                                })
+                                break  # one divergence per hypothesis is enough
+        except Exception:
+            pass
 
         return {"questions": questions, "count": len(questions)}
 

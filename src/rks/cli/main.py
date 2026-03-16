@@ -535,6 +535,25 @@ def build_parser() -> argparse.ArgumentParser:
     evo_project_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
     evo_project_parser.set_defaults(handler=handle_evolution_project_summary)
 
+    evo_conflict_graph_parser = evolution_subparsers.add_parser(
+        "conflict-graph", help="Show the full contradiction graph for a concept (nodes + edges)."
+    )
+    evo_conflict_graph_parser.add_argument("concept_id", help="Concept ID, for example k_000001.")
+    evo_conflict_graph_parser.set_defaults(handler=handle_evolution_conflict_graph)
+
+    evo_hypothesis_bucketed_parser = evolution_subparsers.add_parser(
+        "hypothesis-bucketed", help="Show time-bucketed evolution view for a hypothesis."
+    )
+    evo_hypothesis_bucketed_parser.add_argument("hypothesis_id", help="Hypothesis ID.")
+    evo_hypothesis_bucketed_parser.add_argument("--bucket-size", default="yearly", choices=("yearly",), help="Bucket size.")
+    evo_hypothesis_bucketed_parser.set_defaults(handler=handle_evolution_hypothesis_bucketed)
+
+    evo_project_timeline_parser = evolution_subparsers.add_parser(
+        "project-timeline", help="Show aggregate year-by-year evidence timeline for a project."
+    )
+    evo_project_timeline_parser.add_argument("project_id", help="Project ID, for example rp_000001.")
+    evo_project_timeline_parser.set_defaults(handler=handle_evolution_project_timeline)
+
     query_parser = subparsers.add_parser("query", help="Run deterministic research graph queries.")
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
 
@@ -1812,6 +1831,34 @@ def handle_evolution_list_clusters(args: argparse.Namespace) -> int:
 def handle_evolution_project_summary(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = _operations(session).project_evolution_summary(
+            project_id=args.project_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_conflict_graph(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).conflict_graph(
+            concept_id=args.concept_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_hypothesis_bucketed(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).build_hypothesis_evolution_bucketed(
+            hypothesis_id=args.hypothesis_id,
+            bucket_size=args.bucket_size,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_evolution_project_timeline(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).project_evolution_timeline(
             project_id=args.project_id,
         )
     print(json.dumps(payload, indent=2))
