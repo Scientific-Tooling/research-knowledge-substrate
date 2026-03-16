@@ -582,6 +582,13 @@ def build_parser() -> argparse.ArgumentParser:
     query_open_questions_parser.add_argument("--scope-id", default=None, help="Optional project or concept ID to scope.")
     query_open_questions_parser.set_defaults(handler=handle_query_open_questions)
 
+    query_concept_controversies_parser = query_subparsers.add_parser(
+        "concept-controversies", help="Rank concepts by controversy score (descending)."
+    )
+    query_concept_controversies_parser.add_argument("--min-score", type=float, default=0.0, help="Minimum controversy score filter (0.0–1.0).")
+    query_concept_controversies_parser.add_argument("--limit", type=int, default=50, help="Maximum number of results to return.")
+    query_concept_controversies_parser.set_defaults(handler=handle_query_concept_controversies)
+
     output_parser = subparsers.add_parser("output", help="Generate direct research outputs from the local graph.")
     output_subparsers = output_parser.add_subparsers(dest="output_command", required=True)
 
@@ -1826,6 +1833,16 @@ def handle_query_open_questions(args: argparse.Namespace) -> int:
         payload = _operations(session).compute_open_questions(
             scope_type=args.scope_type,
             scope_id=args.scope_id,
+        )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_query_concept_controversies(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).list_concept_controversies(
+            min_score=args.min_score,
+            limit=args.limit,
         )
     print(json.dumps(payload, indent=2))
     return 0

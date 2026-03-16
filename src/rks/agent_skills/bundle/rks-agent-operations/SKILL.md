@@ -102,7 +102,50 @@ Generate direct output surfaces:
 rks output answer "<question>"
 rks output brief "<topic>"
 rks output disagreements "<topic>"
+rks output open-questions "<topic>"
+rks output review-priorities "<topic>"
 rks output opportunities "<topic>"
+```
+
+Materialize claim relation candidates:
+
+```bash
+rks evolution materialize-candidates [<claim_id>]
+```
+
+Cluster conflicts across concepts:
+
+```bash
+rks evolution cluster-conflicts [--concept-id <concept_id>]
+```
+
+Build concept timelines:
+
+```bash
+rks evolution build-timeline <concept_id>
+rks evolution build-timeline-bucketed <concept_id>
+```
+
+Query evolution analytics:
+
+```bash
+rks query review-priorities [--scope-type project --scope-id <project_id>]
+rks query open-questions [--scope-type project --scope-id <project_id>]
+rks query concept-controversies [--min-score 0.3] [--limit 20]
+rks evolution project-summary <project_id>
+```
+
+HTTP evolution endpoints:
+
+```bash
+curl -s "http://127.0.0.1:8765/api/evolution/concept-controversies?min_score=0.3"
+curl -s "http://127.0.0.1:8765/api/evolution/concept-consensus/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/conflict-clusters/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/project/<project_id>"
+curl -s "http://127.0.0.1:8765/api/query/review-priorities"
+curl -s "http://127.0.0.1:8765/api/query/open-questions"
+curl -s -X POST http://127.0.0.1:8765/api/evolution/cluster-conflicts -H 'Content-Type: application/json' -d '{}'
+curl -s -X POST "http://127.0.0.1:8765/api/evolution/build-timeline/<concept_id>" -H 'Content-Type: application/json' -d '{}'
 ```
 
 ## Agent Mode Discipline

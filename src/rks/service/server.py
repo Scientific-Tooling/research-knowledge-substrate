@@ -390,6 +390,13 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         with _open_operations() as operations:
             payload = operations.compute_open_questions(scope_type=scope_type, scope_id=scope_id)
         return 200, "application/json", json.dumps(payload).encode("utf-8")
+    if parsed.path == "/api/evolution/concept-controversies":
+        params = parse_qs(parsed.query)
+        min_score = float(params.get("min_score", ["0.0"])[0])
+        limit = int(params.get("limit", ["50"])[0])
+        with _open_operations() as operations:
+            payload = operations.list_concept_controversies(min_score=min_score, limit=limit)
+        return 200, "application/json", json.dumps(payload).encode("utf-8")
     if parsed.path.startswith("/api/evolution/project/"):
         project_id = parsed.path.rsplit("/", 1)[-1]
         with _open_operations() as operations:

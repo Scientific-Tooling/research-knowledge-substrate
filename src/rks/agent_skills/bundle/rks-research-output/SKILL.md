@@ -31,10 +31,25 @@ Generate a topic brief:
 rks output brief "<topic>"
 ```
 
-Surface disagreements:
+Surface disagreements (enriched with evolution conflict clusters):
 
 ```bash
 rks output disagreements "<topic>"
+rks output project-disagreements <project_id>
+```
+
+Surface open questions (enriched with evolution evidence-gap signals):
+
+```bash
+rks output open-questions "<topic>"
+rks output project-open-questions <project_id>
+```
+
+Surface review priorities (enriched with evolution-derived candidate rankings):
+
+```bash
+rks output review-priorities "<topic>"
+rks output project-review-priorities <project_id>
 ```
 
 Generate opportunities and next steps:
@@ -49,8 +64,20 @@ HTTP equivalents:
 curl -s "http://127.0.0.1:8765/api/output/answer?q=<encoded-question>"
 curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
 curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=<encoded-topic>"
+curl -s "http://127.0.0.1:8765/api/output/open-questions?topic=<encoded-topic>"
+curl -s "http://127.0.0.1:8765/api/output/review-priorities?topic=<encoded-topic>"
 curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=<encoded-topic>"
 ```
+
+## Evolution Enrichment
+
+The `disagreements`, `open-questions`, and `review-priorities` output surfaces are **evolution-enriched**:
+
+- `disagreements` response includes `conflict_clusters`: active conflict clusters from the evolution layer (top 5 by concept)
+- `open-questions` response includes `evolution_questions`: evidence-sparse controversies and trend shifts detected from concept snapshots
+- `review-priorities` response includes `evolution_priorities`: pending candidates ranked by controversy score, hypothesis relevance, and recency
+
+These evolution fields supplement the heuristic output — report both layers to the user when present.
 
 ## Recommended Workflow
 

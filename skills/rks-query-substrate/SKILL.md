@@ -72,6 +72,34 @@ rks query papers-supporting <claim_id>
 rks query claim-relations <claim_id>
 ```
 
+Query evolution analytics:
+
+```bash
+rks query review-priorities [--scope-type project] [--scope-id <project_id>]
+rks query open-questions [--scope-type project] [--scope-id <project_id>]
+rks query concept-controversies [--min-score 0.3] [--limit 20]
+```
+
+Inspect concept timeline and conflict clusters:
+
+```bash
+rks evolution concept-timeline <concept_id>
+rks evolution build-timeline-bucketed <concept_id>
+rks evolution list-clusters <concept_id>
+rks evolution project-summary <project_id>
+```
+
+HTTP equivalents:
+
+```bash
+curl -s "http://127.0.0.1:8765/api/evolution/concept-controversies?min_score=0.3&limit=20"
+curl -s "http://127.0.0.1:8765/api/evolution/concept-consensus/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/conflict-clusters/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/project/<project_id>"
+curl -s "http://127.0.0.1:8765/api/query/review-priorities?scope_type=project&scope_id=<project_id>"
+curl -s "http://127.0.0.1:8765/api/query/open-questions?scope_type=project&scope_id=<project_id>"
+```
+
 Generate a summary:
 
 ```bash
@@ -91,12 +119,14 @@ Generate direct research outputs:
 ```bash
 rks output answer "<question>"
 rks output brief "<topic>"
-rks output disagreements "<topic>"
+rks output disagreements "<topic>"          # includes conflict_clusters from evolution
+rks output open-questions "<topic>"         # includes evolution_questions
+rks output review-priorities "<topic>"      # includes evolution_priorities
 rks output opportunities "<topic>"
 rks output project-answer <project_id> --question "<question>"
 rks output project-brief <project_id>
-rks output project-open-questions <project_id>
-rks output project-review-priorities <project_id>
+rks output project-open-questions <project_id>    # includes evolution_questions scoped to project
+rks output project-review-priorities <project_id> # includes evolution_priorities scoped to project
 rks plan query "<request>" --project-id <project_id>
 ```
 

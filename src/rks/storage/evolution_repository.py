@@ -116,6 +116,21 @@ class EvolutionRepository:
             raise KeyError(f"Snapshot not found: {snapshot_id}")
         return ConceptTimelineSnapshotRecord(**dict(row))
 
+    def list_concept_ids_with_snapshots(self) -> list[str]:
+        """Return all concept IDs that have at least one snapshot."""
+        rows = self.conn.execute(
+            "SELECT DISTINCT concept_id FROM concept_timeline_snapshots ORDER BY concept_id"
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    def get_latest_snapshot_for_concept(self, concept_id: str) -> ConceptTimelineSnapshotRecord | None:
+        """Return the most recent snapshot for a concept, or None if none exist."""
+        row = self.conn.execute(
+            "SELECT * FROM concept_timeline_snapshots WHERE concept_id = ? ORDER BY snapshot_at DESC LIMIT 1",
+            (concept_id,),
+        ).fetchone()
+        return ConceptTimelineSnapshotRecord(**dict(row)) if row is not None else None
+
     def list_snapshots_for_concept(self, concept_id: str, time_bucket: str | None = None) -> list[ConceptTimelineSnapshotRecord]:
         if time_bucket is not None:
             rows = self.conn.execute(

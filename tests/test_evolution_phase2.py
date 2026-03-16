@@ -419,6 +419,20 @@ class EvolutionPhase2Test(unittest.TestCase):
                 evo_payload = json.loads(evo_body.decode("utf-8"))
                 self.assertIn("project", evo_payload)
                 self.assertIn("concepts", evo_payload)
+
+                # Test concept-controversies GET endpoint
+                _, _, controversies_body = dispatch_get_request("/api/evolution/concept-controversies")
+                controversies_payload = json.loads(controversies_body.decode("utf-8"))
+                self.assertIn("concepts", controversies_payload)
+                self.assertIn("count", controversies_payload)
+
+                # Test concept-controversies with min_score filter
+                _, _, filtered_body = dispatch_get_request("/api/evolution/concept-controversies?min_score=0.5")
+                filtered_payload = json.loads(filtered_body.decode("utf-8"))
+                self.assertIn("concepts", filtered_payload)
+                # All returned entries must meet min_score threshold
+                for entry in filtered_payload["concepts"]:
+                    self.assertGreaterEqual(entry["controversy_score"], 0.5)
             finally:
                 os.chdir(previous_cwd)
 

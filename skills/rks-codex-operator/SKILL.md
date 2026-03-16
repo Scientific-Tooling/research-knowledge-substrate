@@ -112,6 +112,8 @@ rks search <query>
 rks output answer "<question>"
 rks output brief "<topic>"
 rks output disagreements "<topic>"
+rks output open-questions "<topic>"
+rks output review-priorities "<topic>"
 rks output opportunities "<topic>"
 rks claims <paper_id>
 rks show claim <claim_id>
@@ -130,7 +132,31 @@ Retract when needed:
 rks review retract-claim-relation <source_claim_id> <relation_type> <target_claim_id>
 ```
 
-### 5. Cross-check HTTP behavior
+### 5. Run evolution workflows (optional, after claim relations are reviewed)
+
+```bash
+# Materialize candidates and build timelines
+rks evolution materialize-candidates
+rks evolution build-timeline <concept_id>
+rks evolution build-timeline-bucketed <concept_id>
+
+# Cluster conflicts to detect disputed areas
+rks evolution cluster-conflicts
+
+# Query ranked controversies and priorities
+rks query concept-controversies --min-score 0.2
+rks query review-priorities
+rks query open-questions
+rks evolution project-summary <project_id>
+```
+
+Evolution output is also embedded in standard output surfaces:
+
+- `rks output disagreements "<topic>"` → includes `conflict_clusters`
+- `rks output open-questions "<topic>"` → includes `evolution_questions`
+- `rks output review-priorities "<topic>"` → includes `evolution_priorities`
+
+### 6. Cross-check HTTP behavior
 
 Start the local service:
 

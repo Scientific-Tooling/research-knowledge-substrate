@@ -385,7 +385,9 @@ class ResearchOperations:
         return build_topic_brief(self.query, topic)
 
     def topic_disagreements(self, topic: str) -> dict:
-        return build_topic_disagreements(self.query, topic)
+        result = build_topic_disagreements(self.query, topic)
+        result["conflict_clusters"] = self._global_conflict_clusters(limit=5)
+        return result
 
     def research_opportunities(self, topic: str) -> dict:
         return build_research_opportunities(self.query, topic)
@@ -394,10 +396,16 @@ class ResearchOperations:
         return build_topic_reading_list(self.query, topic)
 
     def topic_open_questions(self, topic: str) -> dict:
-        return build_topic_open_questions(self.query, topic)
+        result = build_topic_open_questions(self.query, topic)
+        evo = self.compute_open_questions()
+        result["evolution_questions"] = evo.get("questions", [])[:5]
+        return result
 
     def topic_review_priorities(self, topic: str) -> dict:
-        return build_topic_review_priorities(self.query, topic)
+        result = build_topic_review_priorities(self.query, topic)
+        evo = self.compute_review_priorities()
+        result["evolution_priorities"] = evo.get("priorities", [])[:10]
+        return result
 
     def project_answer(self, project_id: str, *, question: str | None = None) -> dict:
         project = self.projects.get_project(project_id)
@@ -425,7 +433,9 @@ class ResearchOperations:
     def project_disagreements(self, project_id: str) -> dict:
         project = self.projects.get_project(project_id)
         context = self._project_output_context(project_id)
-        return build_scoped_disagreements(self.query, "project", project.name, context)
+        result = build_scoped_disagreements(self.query, "project", project.name, context)
+        result["conflict_clusters"] = self._project_conflict_clusters(project_id, limit=5)
+        return result
 
     def project_opportunities(self, project_id: str) -> dict:
         project = self.projects.get_project(project_id)
@@ -440,18 +450,24 @@ class ResearchOperations:
     def project_open_questions(self, project_id: str) -> dict:
         project = self.projects.get_project(project_id)
         context = self._project_output_context(project_id)
-        return build_scoped_open_questions(
+        result = build_scoped_open_questions(
             self.query,
             "project",
             project.name,
             context,
             hypotheses=self.list_project_hypotheses(project_id),
         )
+        evo = self.compute_open_questions(scope_type="project", scope_id=project_id)
+        result["evolution_questions"] = evo.get("questions", [])[:5]
+        return result
 
     def project_review_priorities(self, project_id: str) -> dict:
         project = self.projects.get_project(project_id)
         context = self._project_output_context(project_id)
-        return build_scoped_review_priorities(self.query, "project", project.name, context)
+        result = build_scoped_review_priorities(self.query, "project", project.name, context)
+        evo = self.compute_review_priorities(scope_type="project", scope_id=project_id)
+        result["evolution_priorities"] = evo.get("priorities", [])[:10]
+        return result
 
     def plan_query(self, request: str, *, project_id: str | None = None) -> dict:
         project = None
@@ -1317,6 +1333,93 @@ class ResearchOperations:
                     })
 
         return {"questions": questions, "count": len(questions)}
+
+    def list_concept_controversies(self, min_score: float = 0.0, limit: int = 50) -> dict:
+        """Rank concepts by their latest controversy score (descending)."""
+        if self.evolution is None:
+            return {"error": "evolution repository not available", "concepts": []}
+
+        concept_ids = self.evolution.list_concept_ids_with_snapshots()
+        entries = []
+        for cid in concept_ids:
+            snapshot = self.evolution.get_latest_snapshot_for_concept(cid)
+            if snapshot is None:
+                continue
+            score = snapshot.controversy_score or 0.0
+            if score < min_score:
+                continue
+            try:
+                concept = self.concepts.get_concept(cid)
+                name = concept.name
+            except KeyError:
+                name = cid
+            entries.append({
+                "concept_id": cid,
+                "concept_name": name,
+                "controversy_score": round(score, 4),
+                "consensus_score": round(snapshot.consensus_score or 0.0, 4),
+                "claim_count": snapshot.claim_count,
+                "support_count": snapshot.support_count,
+                "contradiction_count": snapshot.contradiction_count,
+                "snapshot_at": snapshot.snapshot_at,
+            })
+
+        entries.sort(key=lambda x: x["controversy_score"], reverse=True)
+        return {"concepts": entries[:limit], "count": len(entries)}
+
+    def _global_conflict_clusters(self, limit: int = 5) -> list[dict]:
+        """Return a sample of conflict clusters across all concepts."""
+        if self.conflict_clusters is None:
+            return []
+        concept_ids = []
+        seen: set[str] = set()
+        for paper in self.papers.list_papers():
+            for claim in self.claims.list_claims_for_paper(paper.id):
+                for cid in [claim.subject_concept_id, claim.object_concept_id]:
+                    if cid and cid not in seen:
+                        seen.add(cid)
+                        concept_ids.append(cid)
+        results = []
+        for cid in concept_ids:
+            if len(results) >= limit:
+                break
+            clusters = self.conflict_clusters.list_clusters_for_concept(cid)
+            for cluster in clusters:
+                if len(results) >= limit:
+                    break
+                members = self.conflict_clusters.list_members_for_cluster(cluster.id)
+                results.append({
+                    "id": cluster.id,
+                    "anchor_concept_id": cid,
+                    "topic_label": cluster.topic_label,
+                    "member_count": len(members),
+                    "status": cluster.status,
+                })
+        return results
+
+    def _project_conflict_clusters(self, project_id: str, limit: int = 5) -> list[dict]:
+        """Return conflict clusters for concepts linked to a project."""
+        if self.conflict_clusters is None:
+            return []
+        links = self.projects.list_links_for_project(project_id)
+        concept_ids = [link.object_id for link in links if link.object_type == "concept"]
+        results = []
+        for cid in concept_ids:
+            if len(results) >= limit:
+                break
+            clusters = self.conflict_clusters.list_clusters_for_concept(cid)
+            for cluster in clusters:
+                if len(results) >= limit:
+                    break
+                members = self.conflict_clusters.list_members_for_cluster(cluster.id)
+                results.append({
+                    "id": cluster.id,
+                    "anchor_concept_id": cid,
+                    "topic_label": cluster.topic_label,
+                    "member_count": len(members),
+                    "status": cluster.status,
+                })
+        return results
 
     # ------------------------------------------------------------------
     # Phase 2: Project-scoped evolution
