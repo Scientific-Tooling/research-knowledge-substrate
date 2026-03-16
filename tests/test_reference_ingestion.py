@@ -351,5 +351,185 @@ class ReferenceIngestionTest(unittest.TestCase):
             tmp_dir.cleanup()
 
 
+    def test_acquisition_records_failed_status_when_download_raises(self) -> None:
+        """When every downloader call raises an exception, acquisition status is 'failed'."""
+        root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            def failing_downloader(url: str) -> bytes:
+                raise OSError("Connection refused")
+
+            paper = ingest_doi_reference(
+                repo=repo,
+                paths=paths,
+                doi="10.1000/fail",
+                provider=_FakeProvider({
+                    "title": "Fail Paper",
+                    "abstract": None,
+                    "authors": [],
+                    "year": 2023,
+                    "venue": None,
+                    "doi": "10.1000/fail",
+                    "arxiv_id": None,
+                    "references": [],
+                    "pdf_candidates": [{"url": "https://example.org/fail.pdf", "source": "test"}],
+                    "raw": {},
+                }),
+                downloader=failing_downloader,
+            )
+
+            artifacts = repo.get_artifacts_for_paper(paper.id)
+            acq = next(a for a in artifacts if a.artifact_type == "source_pdf_acquisition")
+            payload = json.loads(acq.metadata_json)
+            self.assertEqual(payload["status"], "failed")
+            self.assertEqual(payload["reason"], "all_candidates_failed")
+            self.assertEqual(len(payload["attempted"]), 1)
+            self.assertEqual(payload["attempted"][0]["status"], "failed")
+            self.assertIn("Connection refused", payload["attempted"][0]["error"])
+            self.assertFalse(repo.get_paper(paper.id).pdf_path)
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+    def test_acquisition_records_failed_status_when_download_returns_non_pdf(self) -> None:
+        """When downloader returns non-PDF bytes, acquisition status is 'failed'."""
+        root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            paper = ingest_doi_reference(
+                repo=repo,
+                paths=paths,
+                doi="10.1000/html",
+                provider=_FakeProvider({
+                    "title": "HTML Paper",
+                    "abstract": None,
+                    "authors": [],
+                    "year": 2023,
+                    "venue": None,
+                    "doi": "10.1000/html",
+                    "arxiv_id": None,
+                    "references": [],
+                    "pdf_candidates": [{"url": "https://example.org/paper.html", "source": "test"}],
+                    "raw": {},
+                }),
+                downloader=lambda _: b"<html><body>Not a PDF</body></html>",
+            )
+
+            artifacts = repo.get_artifacts_for_paper(paper.id)
+            acq = next(a for a in artifacts if a.artifact_type == "source_pdf_acquisition")
+            payload = json.loads(acq.metadata_json)
+            self.assertEqual(payload["status"], "failed")
+            self.assertFalse(repo.get_paper(paper.id).pdf_path)
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+    def test_acquisition_succeeds_on_second_candidate_when_first_fails(self) -> None:
+        """With multiple candidates, the first failure is recorded and the second succeeds."""
+        root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            calls: list[str] = []
+
+            def selective_downloader(url: str) -> bytes:
+                calls.append(url)
+                if "fail" in url:
+                    raise OSError("Not found")
+                return b"%PDF-1.4\nGood content"
+
+            paper = ingest_doi_reference(
+                repo=repo,
+                paths=paths,
+                doi="10.1000/multi",
+                provider=_FakeProvider({
+                    "title": "Multi Candidate Paper",
+                    "abstract": None,
+                    "authors": [],
+                    "year": 2023,
+                    "venue": None,
+                    "doi": "10.1000/multi",
+                    "arxiv_id": None,
+                    "references": [],
+                    "pdf_candidates": [
+                        {"url": "https://example.org/fail.pdf", "source": "mirror_a"},
+                        {"url": "https://example.org/good.pdf", "source": "mirror_b"},
+                    ],
+                    "raw": {},
+                }),
+                downloader=selective_downloader,
+            )
+
+            self.assertEqual(len(calls), 2)
+            artifacts = repo.get_artifacts_for_paper(paper.id)
+            acq = next(a for a in artifacts if a.artifact_type == "source_pdf_acquisition")
+            payload = json.loads(acq.metadata_json)
+            self.assertEqual(payload["status"], "downloaded")
+            self.assertEqual(payload["downloaded_from"], "https://example.org/good.pdf")
+            # Both candidates were attempted
+            self.assertEqual(len(payload["attempted"]), 2)
+            self.assertEqual(payload["attempted"][0]["status"], "failed")
+            self.assertEqual(payload["attempted"][1]["status"], "downloaded")
+            self.assertTrue(repo.get_paper(paper.id).pdf_path)
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+    def test_acquisition_records_unavailable_when_no_pdf_candidates(self) -> None:
+        """When metadata has no pdf_candidates, acquisition status is 'unavailable'."""
+        root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            paper = ingest_doi_reference(
+                repo=repo,
+                paths=paths,
+                doi="10.1000/nopdf",
+                provider=_FakeProvider({
+                    "title": "No PDF Paper",
+                    "abstract": None,
+                    "authors": [],
+                    "year": 2023,
+                    "venue": None,
+                    "doi": "10.1000/nopdf",
+                    "arxiv_id": None,
+                    "references": [],
+                    "pdf_candidates": [],
+                    "raw": {},
+                }),
+            )
+
+            artifacts = repo.get_artifacts_for_paper(paper.id)
+            acq = next(a for a in artifacts if a.artifact_type == "source_pdf_acquisition")
+            payload = json.loads(acq.metadata_json)
+            self.assertEqual(payload["status"], "unavailable")
+            self.assertEqual(payload["reason"], "no_pdf_candidates")
+            self.assertFalse(repo.get_paper(paper.id).pdf_path)
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+    def test_missing_title_falls_back_to_source_ref(self) -> None:
+        """When metadata has no title, the paper title falls back to the source ref."""
+        _, paths, tmp_dir, repo = self._make_repo()
+        try:
+            paper = ingest_doi_reference(
+                repo=repo,
+                paths=paths,
+                doi="10.1000/notitle",
+                provider=_FakeProvider({
+                    "title": None,
+                    "abstract": None,
+                    "authors": [],
+                    "year": None,
+                    "venue": None,
+                    "doi": "10.1000/notitle",
+                    "arxiv_id": None,
+                    "references": [],
+                    "pdf_candidates": [],
+                    "raw": {},
+                }),
+            )
+            self.assertEqual(paper.title, "10.1000/notitle")
+            self.assertIsNone(paper.year)
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()

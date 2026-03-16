@@ -74,8 +74,28 @@ curl -s "http://127.0.0.1:8765/api/output/opportunities?topic=<encoded-topic>"
 The `disagreements`, `open-questions`, and `review-priorities` output surfaces are **evolution-enriched**:
 
 - `disagreements` response includes `conflict_clusters`: active conflict clusters from the evolution layer (top 5 by concept)
-- `open-questions` response includes `evolution_questions`: evidence-sparse controversies and trend shifts detected from concept snapshots
-- `review-priorities` response includes `evolution_priorities`: pending candidates ranked by controversy score, hypothesis relevance, and recency
+- `open-questions` response includes `evolution_questions`: evidence-gap signals detected from the evolution layer (up to 5 entries)
+- `review-priorities` response includes `evolution_priorities`: pending candidates ranked by a five-factor score
+
+**`evolution_questions` signal types:**
+
+| type | meaning |
+|------|---------|
+| `evidence_sparse_controversy` | controversy score > 0.3 with ≤ 5 claims — needs more evidence |
+| `trend_shift` | concept consensus shifted > 0.3 across snapshots — investigate direction |
+| `unsupported_hypothesis` | a project hypothesis has no supporting evidence links yet |
+| `unreviewed_conflict_cluster` | conflict cluster where no member relation has been reviewed |
+| `hypothesis_concept_divergence` | hypothesis trend contradicts its concept's timeline trend |
+
+**`evolution_priorities` scoring factors** (sum to 1.0):
+
+| factor | weight | meaning |
+|--------|--------|---------|
+| `candidate_score` | 0.25 | inference confidence |
+| `controversy` | 0.25 | concept controversy score |
+| `hypothesis_relevant` | 0.25 | claim linked to a project hypothesis |
+| `recency` | 0.15 | paper published 2022+ |
+| `cluster_member` | 0.10 | claim is in an active conflict cluster |
 
 These evolution fields supplement the heuristic output — report both layers to the user when present.
 

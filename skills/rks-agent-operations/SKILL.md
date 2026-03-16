@@ -126,6 +126,25 @@ rks evolution build-timeline <concept_id>
 rks evolution build-timeline-bucketed <concept_id>
 ```
 
+Inspect the full contradiction graph for a concept (nodes + enriched edges):
+
+```bash
+rks evolution conflict-graph <concept_id>
+```
+
+`conflict-graph` returns nodes (claims with text, predicate, paper title/year, confidence) and edges (all `contradicts` relations between them). Each node also includes its cluster membership (`cluster_id`, `stance`, `role`) when a conflict cluster exists. Use this instead of making separate claim lookups when you need to reason about the full controversy structure for a concept.
+
+`list-clusters` members are also enriched: each member now includes `claim_text`, `claim_predicate`, `claim_confidence`, `paper_title`, and `paper_year`.
+
+Inspect hypothesis and project timelines:
+
+```bash
+rks evolution hypothesis-bucketed <hypothesis_id>
+rks evolution project-timeline <project_id>
+```
+
+`hypothesis-bucketed` groups each evidence link by the publication year of its linked paper and returns per-bucket support/contradiction counts, consensus/controversy scores, and a trend label. `project-timeline` aggregates these buckets across all project hypotheses.
+
 Query evolution analytics:
 
 ```bash
@@ -135,13 +154,27 @@ rks query concept-controversies [--min-score 0.3] [--limit 20]
 rks evolution project-summary <project_id>
 ```
 
+`review-priorities` ranks pending candidates by a five-factor score: `candidate_score` (0.25), `controversy` (0.25), `hypothesis_relevant` (0.25), `recency` (0.15), `cluster_member` (0.10). The `cluster_member` factor elevates candidates whose source or target claim belongs to an active conflict cluster.
+
+`open-questions` detects five signal types:
+
+- `evidence_sparse_controversy` — controversy score > 0.3 with ≤ 5 claims
+- `trend_shift` — concept consensus shifted > 0.3 across snapshots
+- `unsupported_hypothesis` — a project hypothesis with no supporting evidence links
+- `unreviewed_conflict_cluster` — conflict cluster where no member relation has been reviewed yet
+- `hypothesis_concept_divergence` — hypothesis trend contradicts the concept timeline trend
+
 HTTP evolution endpoints:
 
 ```bash
 curl -s "http://127.0.0.1:8765/api/evolution/concept-controversies?min_score=0.3"
 curl -s "http://127.0.0.1:8765/api/evolution/concept-consensus/<concept_id>"
 curl -s "http://127.0.0.1:8765/api/evolution/conflict-clusters/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/conflict-graph/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/hypothesis/<hypothesis_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/hypothesis-bucketed/<hypothesis_id>"
 curl -s "http://127.0.0.1:8765/api/evolution/project/<project_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/project-timeline/<project_id>"
 curl -s "http://127.0.0.1:8765/api/query/review-priorities"
 curl -s "http://127.0.0.1:8765/api/query/open-questions"
 curl -s -X POST http://127.0.0.1:8765/api/evolution/cluster-conflicts -H 'Content-Type: application/json' -d '{}'

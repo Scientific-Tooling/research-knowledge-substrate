@@ -86,7 +86,16 @@ Inspect concept timeline and conflict clusters:
 rks evolution concept-timeline <concept_id>
 rks evolution build-timeline-bucketed <concept_id>
 rks evolution list-clusters <concept_id>
+rks evolution conflict-graph <concept_id>
 rks evolution project-summary <project_id>
+```
+
+Inspect hypothesis and project timelines:
+
+```bash
+rks evolution hypothesis <hypothesis_id>
+rks evolution hypothesis-bucketed <hypothesis_id>
+rks evolution project-timeline <project_id>
 ```
 
 HTTP equivalents:
@@ -95,7 +104,11 @@ HTTP equivalents:
 curl -s "http://127.0.0.1:8765/api/evolution/concept-controversies?min_score=0.3&limit=20"
 curl -s "http://127.0.0.1:8765/api/evolution/concept-consensus/<concept_id>"
 curl -s "http://127.0.0.1:8765/api/evolution/conflict-clusters/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/conflict-graph/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/hypothesis/<hypothesis_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/hypothesis-bucketed/<hypothesis_id>"
 curl -s "http://127.0.0.1:8765/api/evolution/project/<project_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/project-timeline/<project_id>"
 curl -s "http://127.0.0.1:8765/api/query/review-priorities?scope_type=project&scope_id=<project_id>"
 curl -s "http://127.0.0.1:8765/api/query/open-questions?scope_type=project&scope_id=<project_id>"
 ```

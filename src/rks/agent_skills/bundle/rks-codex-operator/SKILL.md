@@ -143,12 +143,21 @@ rks evolution build-timeline-bucketed <concept_id>
 # Cluster conflicts to detect disputed areas
 rks evolution cluster-conflicts
 
+# Inspect the full contradiction graph for a concept
+rks evolution conflict-graph <concept_id>
+
+# Inspect hypothesis and project evolution over time
+rks evolution hypothesis-bucketed <hypothesis_id>
+rks evolution project-timeline <project_id>
+
 # Query ranked controversies and priorities
 rks query concept-controversies --min-score 0.2
 rks query review-priorities
 rks query open-questions
 rks evolution project-summary <project_id>
 ```
+
+`open-questions` detects five signal types: `evidence_sparse_controversy`, `trend_shift`, `unsupported_hypothesis`, `unreviewed_conflict_cluster`, `hypothesis_concept_divergence`.
 
 Evolution output is also embedded in standard output surfaces:
 
@@ -174,6 +183,9 @@ curl -s http://127.0.0.1:8765/api/projects
 curl -s http://127.0.0.1:8765/api/projects/<project_id>
 curl -s http://127.0.0.1:8765/api/projects/<project_id>/links
 curl -s http://127.0.0.1:8765/api/hypotheses/<hypothesis_id>
+curl -s "http://127.0.0.1:8765/api/evolution/conflict-graph/<concept_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/hypothesis-bucketed/<hypothesis_id>"
+curl -s "http://127.0.0.1:8765/api/evolution/project-timeline/<project_id>"
 curl -s "http://127.0.0.1:8765/api/output/answer?q=<encoded-question>"
 curl -s "http://127.0.0.1:8765/api/output/brief?topic=<encoded-topic>"
 curl -s "http://127.0.0.1:8765/api/output/disagreements?topic=<encoded-topic>"
