@@ -40,14 +40,31 @@ uv --version
 
 ## 3. 从源码安装
 
-### 3.1 获取代码
+### 3.1 获取代码（Git clone）
 
 ```bash
 git clone <repo-url>
 cd research-knowledge-substrate
 ```
 
-### 3.2 创建虚拟环境
+### 3.2 获取代码（GitHub ZIP 下载）
+
+如果你不想使用 `git clone`，可以直接在 GitHub 网页下载 ZIP：
+
+1. 打开仓库的 GitHub 页面
+2. 点击 `Code` -> `Download ZIP`
+3. 将 ZIP 解压到本地目录
+4. 进入解压后的目录（例如 `research-knowledge-substrate-main`）
+
+示例：
+
+```bash
+cd ~/Downloads
+unzip research-knowledge-substrate-main.zip
+cd research-knowledge-substrate-main
+```
+
+### 3.3 创建虚拟环境
 
 ```bash
 python3 -m venv .venv
@@ -61,7 +78,7 @@ uv venv
 . .venv/bin/activate
 ```
 
-### 3.3 安装 RKS
+### 3.4 安装 RKS
 
 ```bash
 python -m pip install -e .
