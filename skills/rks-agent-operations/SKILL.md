@@ -19,6 +19,7 @@ Use this skill for requests such as:
 - verify CLI and HTTP product operations agree
 - promote or retract reviewed claim relations
 - operate the research output layer repeatedly across topics
+- run a persistent user-agent discussion loop around one anchor paper
 
 ## Core Commands
 
@@ -218,3 +219,7 @@ A healthy paper or batch run should have:
 - no hidden failures outside the task table
 - consistent paper status across CLI and HTTP
 - reviewed claim relations changing only through explicit promote or retract operations
+
+## When To Switch Skills
+
+- If the task is specifically user-facing discussion for one paper, prefer `rks-paper-discussion`.

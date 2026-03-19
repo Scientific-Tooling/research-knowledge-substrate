@@ -58,6 +58,7 @@ class CliSmokeTest(unittest.TestCase):
             skill_names = [entry["name"] for entry in list_payload]
             self.assertIn("rks-codex-operator", skill_names)
             self.assertIn("rks-query-substrate", skill_names)
+            self.assertIn("rks-paper-discussion", skill_names)
 
             export_dir = tmp_path / "rks-agent-kit"
             export_result = run_cli("skills", "export", str(export_dir), cwd=tmp_path)
@@ -71,6 +72,7 @@ class CliSmokeTest(unittest.TestCase):
             self.assertTrue((export_dir / "CLAUDE.md").exists())
             self.assertTrue((export_dir / "README.md").exists())
             self.assertTrue((export_dir / "skills" / "rks-codex-operator" / "SKILL.md").exists())
+            self.assertTrue((export_dir / "skills" / "rks-paper-discussion" / "SKILL.md").exists())
             bundle_metadata = json.loads((export_dir / "bundle-metadata.json").read_text(encoding="utf-8"))
             self.assertEqual(bundle_metadata["bundle_version"], SKILL_BUNDLE_VERSION)
             self.assertEqual(bundle_metadata["skill_count"], len(list_payload))

@@ -49,6 +49,14 @@ Purpose:
 - verify CLI and HTTP operations remain consistent
 - operate output-layer commands repeatedly across topics
 
+### `rks-paper-discussion`
+
+Purpose:
+
+- let an agent discuss one paper with a user using RKS as evidence context
+- standardize read/search/write-back behavior through CLI
+- persist discussion outcomes as notes, hypotheses, and reviewed relations
+
 ### `rks-codex-operator`
 
 Purpose:

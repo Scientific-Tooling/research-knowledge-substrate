@@ -244,6 +244,60 @@ rks output review-priorities "Sparse Attention"
 
 当用户真正想要“内容、综合、灵感、下一步建议”时，这组命令应优先于只返回底层 graph 对象的命令。
 
+### 7.4 单篇文献讨论闭环（用户 <-> agent）
+
+当用户希望围绕单篇文献持续讨论时，建议执行这个闭环：
+
+1. 锚定 paper
+2. 从 RKS 读取上下文
+3. 按用户问题扩展证据
+4. 用明确 ID 回答
+5. 把结论写回 RKS
+
+最小命令序列：
+
+```bash
+rks show paper <paper_id>
+rks status paper <paper_id>
+rks claims <paper_id>
+rks concepts <paper_id>
+rks note list paper <paper_id>
+```
+
+若状态显示抽取缺失：
+
+```bash
+rks extract text <paper_id>
+rks extract claims <paper_id>
+rks extract methods <paper_id>
+rks extract datasets <paper_id>
+rks summarize paper <paper_id>
+```
+
+针对后续问题扩展证据：
+
+```bash
+rks query claims-about <concept_or_concept_id>
+rks query papers-supporting <claim_id>
+rks query claim-relations <claim_id>
+rks search "<follow-up query>"
+```
+
+把讨论结论持久化（不要只留在聊天记录里）：
+
+```bash
+rks note add paper <paper_id> --content "<结论或下一步动作>" --created-by agent:discussion
+rks note list paper <paper_id>
+```
+
+如果讨论是在 project 范围内：
+
+```bash
+rks note add project <project_id> --content "<讨论结论>" --created-by agent:discussion
+rks hypothesis create <project_id> --text "<可检验假设>" --status draft --created-by agent:discussion
+rks hypothesis add-evidence <hypothesis_id> claim <claim_id> --relation-type supported_by --created-by agent:discussion
+```
+
 ## 8. claim relation 审阅闭环
 
 ### 8.1 先看候选关系

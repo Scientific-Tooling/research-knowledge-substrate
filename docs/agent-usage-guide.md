@@ -239,6 +239,60 @@ rks output review-priorities "Sparse Attention"
 
 These commands are the preferred product-facing output layer when the user expects synthesis, disagreement surfacing, or inspiration rather than raw graph inspection.
 
+### 7.4 Paper discussion loop (user <-> agent)
+
+When the user wants to discuss one paper interactively, run this loop:
+
+1. anchor paper resolution
+2. context loading from RKS
+3. question-driven evidence expansion
+4. grounded answer with explicit IDs
+5. write-back of conclusions and action items
+
+Minimal command sequence:
+
+```bash
+rks show paper <paper_id>
+rks status paper <paper_id>
+rks claims <paper_id>
+rks concepts <paper_id>
+rks note list paper <paper_id>
+```
+
+If extraction stages are missing:
+
+```bash
+rks extract text <paper_id>
+rks extract claims <paper_id>
+rks extract methods <paper_id>
+rks extract datasets <paper_id>
+rks summarize paper <paper_id>
+```
+
+For follow-up question expansion:
+
+```bash
+rks query claims-about <concept_or_concept_id>
+rks query papers-supporting <claim_id>
+rks query claim-relations <claim_id>
+rks search "<follow-up query>"
+```
+
+Persist discussion outcomes (do not leave critical decisions only in chat):
+
+```bash
+rks note add paper <paper_id> --content "<decision or next action>" --created-by agent:discussion
+rks note list paper <paper_id>
+```
+
+If discussing inside a project scope:
+
+```bash
+rks note add project <project_id> --content "<decision>" --created-by agent:discussion
+rks hypothesis create <project_id> --text "<testable hypothesis>" --status draft --created-by agent:discussion
+rks hypothesis add-evidence <hypothesis_id> claim <claim_id> --relation-type supported_by --created-by agent:discussion
+```
+
 ## 8. Claim Relation Review Loop
 
 ### 8.1 Inspect candidates first

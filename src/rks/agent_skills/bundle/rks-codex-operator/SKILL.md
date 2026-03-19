@@ -233,3 +233,4 @@ If a step fails:
 - If you need to change the RKS codebase, switch to `rks-maintain-worktree`
 - If the task is only graph inspection, switch to `rks-query-substrate`
 - If the task is only ingest/build, switch to `rks-build-paper-graph`
+- If the task is user-facing discussion around one paper, switch to `rks-paper-discussion`
