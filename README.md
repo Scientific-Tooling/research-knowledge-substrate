@@ -223,6 +223,10 @@ For the broader architectural boundaries that should remain stable as RKS evolve
 ## Design Docs
 
 - [docs/README.md](docs/README.md)
+- [docs/product-introduction.md](docs/product-introduction.md)
+- [docs/product-introduction-zh.md](docs/product-introduction-zh.md)
+- [docs/usage-manual.md](docs/usage-manual.md)
+- [docs/usage-manual-zh.md](docs/usage-manual-zh.md)
 - [docs/system-constraints.md](docs/system-constraints.md)
 - [docs/design-implementation-comparison.md](docs/design-implementation-comparison.md)
 - [docs/research-output-roadmap.md](docs/research-output-roadmap.md)

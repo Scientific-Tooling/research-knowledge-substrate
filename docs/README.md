@@ -6,6 +6,10 @@ This directory now separates active documentation from archived design history.
 
 These documents describe the current product, architecture direction, operations, or usage:
 
+- `product-introduction.md`
+- `product-introduction-zh.md`
+- `usage-manual.md`
+- `usage-manual-zh.md`
 - `system-constraints.md`
 - `progress.md`
 - `product-priorities.md`
@@ -32,6 +36,12 @@ These documents describe the current product, architecture direction, operations
 
 Current help and usage docs are maintained in both English and Chinese:
 
+- Product introduction:
+  `product-introduction.md`
+  `product-introduction-zh.md`
+- Detailed usage manual:
+  `usage-manual.md`
+  `usage-manual-zh.md`
 - Installation:
   `installation-guide.md`
   `installation-guide-zh.md`
