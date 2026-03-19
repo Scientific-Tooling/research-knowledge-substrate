@@ -14,6 +14,8 @@ from rks.ingestion.pdf import ingest_pdf_url
 from rks.storage import EdgeRepository, PaperRepository
 from rks.utils import ensure_dir
 
+_DEFAULT_TIMEOUT = 30
+
 
 def ingest_doi_reference(repo: PaperRepository, paths: AppPaths, doi: str, provider, acquire_pdf: bool = True, downloader=None) -> object:
     metadata = provider.fetch(doi)
@@ -293,7 +295,7 @@ def _write_source_pdf_acquisition_artifact(
 
 def _download_binary(url: str) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": "RKS/1.0"})
-    with urllib.request.urlopen(request) as response:
+    with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT) as response:
         return response.read()
 
 

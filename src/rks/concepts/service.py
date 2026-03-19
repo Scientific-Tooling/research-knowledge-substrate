@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 
-from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
-from rks.concepts.normalize import canonicalize_term
+from rks.storage.claim_repository import ClaimRepository
+from rks.storage.concept_repository import ConceptRepository
+from rks.storage.edge_repository import EdgeRepository
+from rks.storage.paper_repository import PaperRepository
 
 
 def link_claims_for_paper(

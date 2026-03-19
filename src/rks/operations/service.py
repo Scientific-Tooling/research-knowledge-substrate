@@ -620,6 +620,7 @@ class ResearchOperations:
         return {
             "paper_count": len(papers),
             "total_claims": total_claims,
+            "per_paper": per_paper,
             "claims_per_paper": {
                 "mean": round(mean, 2),
                 "median": median,

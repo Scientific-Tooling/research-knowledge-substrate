@@ -11,6 +11,8 @@ from rks.extraction import extract_text_for_paper
 from rks.storage import PaperRepository
 from rks.utils import ensure_dir
 
+_DEFAULT_TIMEOUT = 30
+
 
 def ingest_pdf(
     repo: PaperRepository,
@@ -92,7 +94,7 @@ def _peek_next_paper_id(repo: PaperRepository) -> str:
 
 def _download_binary(url: str) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": "RKS/1.0"})
-    with urllib.request.urlopen(request) as response:
+    with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT) as response:
         return response.read()
 
 

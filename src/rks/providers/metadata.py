@@ -6,6 +6,8 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
+_DEFAULT_TIMEOUT = 30
+
 
 class CrossrefMetadataProvider:
     def __init__(self, urlopen=urllib.request.urlopen):
@@ -13,7 +15,7 @@ class CrossrefMetadataProvider:
 
     def fetch(self, doi: str) -> dict:
         encoded = urllib.parse.quote(doi, safe="")
-        with self.urlopen(f"https://api.crossref.org/works/{encoded}") as response:
+        with _urlopen_with_timeout(self.urlopen, f"https://api.crossref.org/works/{encoded}") as response:
             payload = json.loads(response.read().decode("utf-8"))
 
         message = payload["message"]
@@ -64,7 +66,8 @@ class ArxivMetadataProvider:
         self.urlopen = urlopen
 
     def fetch(self, arxiv_id: str) -> dict:
-        with self.urlopen(
+        with _urlopen_with_timeout(
+            self.urlopen,
             f"http://export.arxiv.org/api/query?id_list={urllib.parse.quote(arxiv_id, safe='')}"
         ) as response:
             raw_xml = response.read().decode("utf-8")
@@ -109,7 +112,8 @@ class PubmedMetadataProvider:
 
     def fetch(self, pmid: str) -> dict:
         encoded = urllib.parse.quote(pmid, safe="")
-        with self.urlopen(
+        with _urlopen_with_timeout(
+            self.urlopen,
             f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={encoded}&retmode=xml"
         ) as response:
             raw_xml = response.read().decode("utf-8")
@@ -219,3 +223,10 @@ def _parse_pubmed_references(article: ET.Element) -> list[dict]:
             }
         )
     return references
+
+
+def _urlopen_with_timeout(urlopen, url: str):
+    try:
+        return urlopen(url, timeout=_DEFAULT_TIMEOUT)
+    except TypeError:
+        return urlopen(url)

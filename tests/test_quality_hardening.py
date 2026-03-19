@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -97,6 +98,132 @@ class QualityHardeningTest(unittest.TestCase):
             self.assertIn("char_start", evidence)
             self.assertIn("char_end", evidence)
             self.assertEqual(evidence["extractor_version"], "1.1")
+
+    def test_storage_db_submodule_imports_without_circular_error(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(ROOT / "src")
+        result = subprocess.run(
+            [sys.executable, "-c", "import rks.storage.db as db; print(db.__name__)"],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("rks.storage.db", result.stdout.strip())
+
+    def test_init_db_upgrades_legacy_datasets_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            data_dir = tmp_path / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+            db_path = data_dir / "rks.sqlite3"
+
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                """
+                CREATE TABLE datasets (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    source TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            init_result = run_cli("init-db", cwd=tmp_path)
+            self.assertEqual(init_result.returncode, 0, init_result.stderr)
+
+            conn = sqlite3.connect(db_path)
+            try:
+                columns = [row[1] for row in conn.execute("PRAGMA table_info(datasets)").fetchall()]
+            finally:
+                conn.close()
+            self.assertIn("paper_id", columns)
+
+    def test_batch_ingest_returns_nonzero_when_any_item_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            manifest_path = tmp_path / "manifest.json"
+            manifest_path.write_text(
+                json.dumps([{"source_type": "pdf", "path": "missing.pdf"}], indent=2),
+                encoding="utf-8",
+            )
+
+            result = run_cli("batch", "ingest", str(manifest_path), cwd=tmp_path)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["count"], 0)
+            self.assertEqual(len(payload["failures"]), 1)
+
+    def test_evaluate_baseline_passes_with_satisfied_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            pdf_path = tmp_path / "baseline-pass.pdf"
+            pdf_path.write_bytes(
+                b"%PDF-1.4\n"
+                b"Transformers improve translation accuracy on WMT14.\n"
+            )
+
+            ingest_result = run_cli("ingest", "pdf", str(pdf_path), cwd=tmp_path)
+            self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
+            paper_id = json.loads(ingest_result.stdout)["id"]
+
+            extract_result = run_cli("extract", "claims", paper_id, cwd=tmp_path)
+            self.assertEqual(extract_result.returncode, 0, extract_result.stderr)
+
+            spec_path = tmp_path / "quality-baseline.json"
+            spec_path.write_text(
+                json.dumps(
+                    {
+                        "name": "minimal-pass",
+                        "checks": {
+                            "min_paper_count": 1,
+                            "min_total_claims": 1,
+                            "max_zero_claim_rate": 0.0,
+                            "min_extraction_mode_counts": {"heuristic": 1},
+                            "per_paper_min_claims": {paper_id: 1},
+                        },
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_cli("evaluate", "baseline", str(spec_path), cwd=tmp_path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["passed"])
+            self.assertEqual(payload["failed_check_count"], 0)
+
+    def test_evaluate_baseline_returns_nonzero_on_failed_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            pdf_path = tmp_path / "baseline-fail.pdf"
+            pdf_path.write_bytes(
+                b"%PDF-1.4\n"
+                b"Transformers improve translation accuracy on WMT14.\n"
+            )
+
+            ingest_result = run_cli("ingest", "pdf", str(pdf_path), cwd=tmp_path)
+            self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
+
+            spec_path = tmp_path / "quality-baseline.json"
+            spec_path.write_text(
+                json.dumps({"checks": {"min_total_claims": 1}}, indent=2),
+                encoding="utf-8",
+            )
+
+            result = run_cli("evaluate", "baseline", str(spec_path), cwd=tmp_path)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertFalse(payload["passed"])
+            self.assertGreaterEqual(payload["failed_check_count"], 1)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ The current implementation supports:
 - config initialization, migration/version reporting, and graph snapshot export/import
 - stable agent-facing operations for paper status and claim-relation review over CLI and HTTP
 - bundled skill export for Codex, Claude Code, and other external agent tools
+- optional MCP adapter over stdio (experimental, launched via CLI) for Codex, Claude Code, OpenClaw, and other MCP-compatible agent clients
 - a local HTTP service and lightweight UI with request logging, input validation, and structured error responses
 
 Progress is tracked in [docs/progress.md](docs/progress.md).
@@ -91,6 +92,24 @@ rks skills list
 rks skills export ./rks-agent-kit
 ```
 
+CLI is the canonical external interface for RKS.  
+If you need MCP client compatibility, start the optional experimental MCP adapter from CLI:
+
+```bash
+rks mcp
+```
+
+The MCP surface includes tool endpoints for:
+
+- `search_papers`
+- `get_paper`
+- `get_sections`
+- `retrieve_passages`
+- `get_citation_spans`
+- `chat_with_paper`
+- `save_note`
+- `list_notes`
+
 Inspect the graph:
 
 ```bash
@@ -126,6 +145,24 @@ rks query evidence-for Transformer
 rks query claim-relations c_000001
 rks review promote-claim-relation c_000001 supports c_000014 --reviewed-by agent:review
 rks review retract-claim-relation c_000001 supports c_000014
+```
+
+Run a quality baseline check:
+
+```bash
+cat > quality-baseline.json <<'JSON'
+{
+  "name": "team-baseline-v1",
+  "checks": {
+    "min_paper_count": 5,
+    "min_total_claims": 20,
+    "max_zero_claim_rate": 0.3,
+    "min_mean_claims_per_paper": 2.0,
+    "required_extraction_modes": ["heuristic"]
+  }
+}
+JSON
+rks evaluate baseline quality-baseline.json
 ```
 
 Generate direct research outputs:

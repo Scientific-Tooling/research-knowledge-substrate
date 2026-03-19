@@ -26,6 +26,7 @@ def initialize_db(conn: sqlite3.Connection, migrations_dir: Path | None = None) 
 
 
 def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path | None = None) -> dict:
+    _preflight_legacy_schema_compatibility(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -96,6 +97,24 @@ def _ensure_indexes(conn: sqlite3.Connection) -> None:
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    if not _table_exists(conn, table):
+        return
     columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     if column not in columns:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+        (table,),
+    ).fetchone()
+    return row is not None
+
+
+def _preflight_legacy_schema_compatibility(conn: sqlite3.Connection) -> None:
+    """Backfill legacy columns required by migration-time index creation."""
+    _ensure_column(conn, "claims", "paper_id", "TEXT")
+    _ensure_column(conn, "methods", "paper_id", "TEXT")
+    _ensure_column(conn, "datasets", "paper_id", "TEXT")
+    _ensure_column(conn, "tasks", "paper_id", "TEXT")

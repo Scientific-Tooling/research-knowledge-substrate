@@ -82,6 +82,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     extraction_quality_parser.set_defaults(handler=handle_extraction_quality)
 
+    evaluate_parser = subparsers.add_parser("evaluate", help="Run quality baseline checks.")
+    evaluate_subparsers = evaluate_parser.add_subparsers(dest="evaluate_command", required=True)
+
+    evaluate_baseline_parser = evaluate_subparsers.add_parser(
+        "baseline",
+        help="Evaluate extraction quality metrics against a baseline spec JSON.",
+    )
+    evaluate_baseline_parser.add_argument("spec_path", type=Path, help="Path to a baseline spec JSON file.")
+    evaluate_baseline_parser.set_defaults(handler=handle_evaluate_baseline)
+
     config_parser = subparsers.add_parser("config", help="Manage RKS configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
 
@@ -411,6 +421,9 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8765)
     serve_parser.set_defaults(handler=handle_serve)
+
+    mcp_parser = subparsers.add_parser("mcp", help="Run the local RKS MCP server over stdio (experimental).")
+    mcp_parser.set_defaults(handler=handle_mcp)
 
     tasks_parser = subparsers.add_parser("tasks", help="Inspect or update queued agent tasks.")
     tasks_subparsers = tasks_parser.add_subparsers(dest="tasks_command", required=True)
@@ -862,6 +875,26 @@ def handle_extraction_quality(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_evaluate_baseline(args: argparse.Namespace) -> int:
+    spec = _load_json_object(args.spec_path, "baseline spec")
+    checks = _normalize_baseline_checks(spec)
+    with _open_session() as session:
+        metrics = _operations(session).extraction_quality_report()
+    evaluation = _evaluate_baseline_metrics(metrics, checks)
+    payload = {
+        "baseline_name": spec.get("name"),
+        "spec_path": str(args.spec_path.resolve()),
+        "passed": evaluation["passed"],
+        "check_count": len(evaluation["checks"]),
+        "failed_check_count": len(evaluation["failed_checks"]),
+        "failed_checks": evaluation["failed_checks"],
+        "checks": evaluation["checks"],
+        "metrics": metrics,
+    }
+    print(json.dumps(payload, indent=2))
+    return 0 if evaluation["passed"] else 1
+
+
 def handle_ingest_pdf(args: argparse.Namespace) -> int:
     with _open_repository() as repo:
         paper = ingest_pdf(repo=repo, paths=load_paths(), pdf_path=args.path, title=args.title)
@@ -993,7 +1026,7 @@ def handle_batch_ingest(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
-    return 0
+    return 1 if failures else 0
 
 
 def handle_batch_extract(args: argparse.Namespace) -> int:
@@ -1019,7 +1052,7 @@ def handle_batch_extract(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
-    return 0
+    return 1 if failures else 0
 
 
 def handle_batch_output(args: argparse.Namespace) -> int:
@@ -1043,7 +1076,7 @@ def handle_batch_output(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
-    return 0
+    return 1 if failures else 0
 
 
 def handle_prepare_paper_output(args: argparse.Namespace) -> int:
@@ -1675,6 +1708,14 @@ def handle_export_graph(args: argparse.Namespace) -> int:
 
 def handle_serve(args: argparse.Namespace) -> int:
     serve_http(args.host, args.port)
+    return 0
+
+
+def handle_mcp(args: argparse.Namespace) -> int:
+    del args
+    from rks.service.mcp import serve_mcp_stdio
+
+    serve_mcp_stdio()
     return 0
 
 
@@ -2327,6 +2368,128 @@ def _task_payload(task) -> dict:
         "error": json.loads(task.error_json) if task.error_json else None,
         "created_at": task.created_at,
         "updated_at": task.updated_at,
+    }
+
+
+def _load_json_object(path: Path, label: str) -> dict:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} must be a JSON object.")
+    return payload
+
+
+def _normalize_baseline_checks(spec: dict) -> dict:
+    checks = spec.get("checks")
+    if checks is None:
+        checks = {
+            key: value
+            for key, value in spec.items()
+            if key not in {"name", "description", "version"}
+        }
+    if not isinstance(checks, dict) or not checks:
+        raise ValueError("Baseline spec must define at least one check under `checks`.")
+    allowed = {
+        "min_paper_count",
+        "min_total_claims",
+        "min_mean_claims_per_paper",
+        "max_zero_claim_rate",
+        "required_predicates",
+        "required_extraction_modes",
+        "min_predicate_counts",
+        "min_extraction_mode_counts",
+        "per_paper_min_claims",
+    }
+    unknown = sorted(set(checks) - allowed)
+    if unknown:
+        raise ValueError(f"Unsupported baseline check keys: {', '.join(unknown)}")
+    return checks
+
+
+def _evaluate_baseline_metrics(metrics: dict, checks: dict) -> dict:
+    paper_count = int(metrics.get("paper_count", 0))
+    total_claims = int(metrics.get("total_claims", 0))
+    mean_claims = float((metrics.get("claims_per_paper") or {}).get("mean", 0.0))
+    zero_claim_count = len(metrics.get("zero_claim_papers", []))
+    zero_claim_rate = (zero_claim_count / paper_count) if paper_count else 0.0
+    predicate_distribution = metrics.get("predicate_distribution") or {}
+    mode_distribution = metrics.get("extraction_mode_distribution") or {}
+    per_paper_claims = {
+        item["paper_id"]: int(item.get("claim_count", 0))
+        for item in metrics.get("per_paper", [])
+        if isinstance(item, dict) and "paper_id" in item
+    }
+    # Fallback when per-paper details are not returned by metrics payload.
+    if not per_paper_claims:
+        per_paper_claims = {}
+
+    results: list[dict] = []
+
+    def record(check: str, expected, actual, passed: bool) -> None:
+        results.append(
+            {
+                "check": check,
+                "expected": expected,
+                "actual": actual,
+                "passed": bool(passed),
+            }
+        )
+
+    if "min_paper_count" in checks:
+        threshold = int(checks["min_paper_count"])
+        record("min_paper_count", {">=": threshold}, paper_count, paper_count >= threshold)
+    if "min_total_claims" in checks:
+        threshold = int(checks["min_total_claims"])
+        record("min_total_claims", {">=": threshold}, total_claims, total_claims >= threshold)
+    if "min_mean_claims_per_paper" in checks:
+        threshold = float(checks["min_mean_claims_per_paper"])
+        record("min_mean_claims_per_paper", {">=": threshold}, mean_claims, mean_claims >= threshold)
+    if "max_zero_claim_rate" in checks:
+        threshold = float(checks["max_zero_claim_rate"])
+        record("max_zero_claim_rate", {"<=": threshold}, round(zero_claim_rate, 4), zero_claim_rate <= threshold)
+    if "required_predicates" in checks:
+        required = list(checks["required_predicates"])
+        missing = [name for name in required if predicate_distribution.get(name, 0) <= 0]
+        record("required_predicates", {"present": required}, {"missing": missing}, len(missing) == 0)
+    if "required_extraction_modes" in checks:
+        required = list(checks["required_extraction_modes"])
+        missing = [name for name in required if mode_distribution.get(name, 0) <= 0]
+        record("required_extraction_modes", {"present": required}, {"missing": missing}, len(missing) == 0)
+    if "min_predicate_counts" in checks:
+        expected = dict(checks["min_predicate_counts"])
+        for predicate, threshold in expected.items():
+            actual = int(predicate_distribution.get(predicate, 0))
+            record(
+                f"min_predicate_counts.{predicate}",
+                {">=": int(threshold)},
+                actual,
+                actual >= int(threshold),
+            )
+    if "min_extraction_mode_counts" in checks:
+        expected = dict(checks["min_extraction_mode_counts"])
+        for mode, threshold in expected.items():
+            actual = int(mode_distribution.get(mode, 0))
+            record(
+                f"min_extraction_mode_counts.{mode}",
+                {">=": int(threshold)},
+                actual,
+                actual >= int(threshold),
+            )
+    if "per_paper_min_claims" in checks:
+        expected = dict(checks["per_paper_min_claims"])
+        for paper_id, threshold in expected.items():
+            actual = int(per_paper_claims.get(paper_id, 0))
+            record(
+                f"per_paper_min_claims.{paper_id}",
+                {">=": int(threshold)},
+                actual,
+                actual >= int(threshold),
+            )
+
+    failed = [item for item in results if not item["passed"]]
+    return {
+        "passed": len(failed) == 0,
+        "checks": results,
+        "failed_checks": failed,
     }
 
 
