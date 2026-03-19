@@ -32,7 +32,6 @@ The current implementation supports:
 - config initialization, migration/version reporting, and graph snapshot export/import
 - stable agent-facing operations for paper status and claim-relation review over CLI and HTTP
 - bundled skill export for Codex, Claude Code, and other external agent tools
-- optional MCP adapter over stdio (experimental, launched via CLI) for Codex, Claude Code, OpenClaw, and other MCP-compatible agent clients
 - a local HTTP service and lightweight UI with request logging, input validation, and structured error responses
 
 Progress is tracked in [docs/progress.md](docs/progress.md).
@@ -93,22 +92,7 @@ rks skills export ./rks-agent-kit
 ```
 
 CLI is the canonical external interface for RKS.  
-If you need MCP client compatibility, start the optional experimental MCP adapter from CLI:
-
-```bash
-rks mcp
-```
-
-The MCP surface includes tool endpoints for:
-
-- `search_papers`
-- `get_paper`
-- `get_sections`
-- `retrieve_passages`
-- `get_citation_spans`
-- `chat_with_paper`
-- `save_note`
-- `list_notes`
+Use the exported skills to drive Codex, Claude Code, or other agent runtimes through CLI commands.
 
 Inspect the graph:
 

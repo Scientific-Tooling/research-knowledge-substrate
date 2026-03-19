@@ -96,7 +96,7 @@ High-level product behavior should be assembled in one layer, not duplicated acr
 
 Implications:
 
-- CLI and HTTP should act as transport surfaces
+- CLI should be the canonical external transport surface; local HTTP (when present) should remain a mirror transport surface
 - status assembly, review actions, and similar product behaviors should live in shared operations or service layers
 - interface-specific code should not independently reconstruct business rules
 
@@ -114,6 +114,19 @@ Implications:
 
 This keeps the ingest boundary simple, testable, and durable.
 
+## 9. CLI Is The Only External Interface
+
+RKS should expose one canonical external interface for agent runtimes: the `rks` CLI.
+
+Implications:
+
+- external agent tools (Codex, Claude Code, OpenClaw, or others) should integrate through CLI commands
+- optional adapters or wrappers must remain thin compatibility layers over CLI behavior, not independent product surfaces
+- new agent-facing capabilities should be defined first as CLI semantics, then optionally mirrored elsewhere
+- interface documentation and skills should treat CLI as the source of truth for read, search, and write-back operations
+
+RKS should avoid introducing additional external control planes that compete with CLI semantics.
+
 ## Summary
 
 The intended long-term shape of RKS is:
@@ -122,5 +135,6 @@ The intended long-term shape of RKS is:
 - review-gated
 - artifact-first
 - agent-friendly
+- CLI-first at the external boundary
 - explicit at boundaries
 - narrow in responsibilities

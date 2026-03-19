@@ -422,9 +422,6 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--port", type=int, default=8765)
     serve_parser.set_defaults(handler=handle_serve)
 
-    mcp_parser = subparsers.add_parser("mcp", help="Run the local RKS MCP server over stdio (experimental).")
-    mcp_parser.set_defaults(handler=handle_mcp)
-
     tasks_parser = subparsers.add_parser("tasks", help="Inspect or update queued agent tasks.")
     tasks_subparsers = tasks_parser.add_subparsers(dest="tasks_command", required=True)
 
@@ -1708,14 +1705,6 @@ def handle_export_graph(args: argparse.Namespace) -> int:
 
 def handle_serve(args: argparse.Namespace) -> int:
     serve_http(args.host, args.port)
-    return 0
-
-
-def handle_mcp(args: argparse.Namespace) -> int:
-    del args
-    from rks.service.mcp import serve_mcp_stdio
-
-    serve_mcp_stdio()
     return 0
 
 

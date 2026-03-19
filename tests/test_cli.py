@@ -45,9 +45,6 @@ class CliSmokeTest(unittest.TestCase):
         self.assertEqual(eval_args.evaluate_command, "baseline")
         self.assertEqual(str(eval_args.spec_path), "baseline.json")
 
-        mcp_args = parser.parse_args(["mcp"])
-        self.assertEqual(mcp_args.command, "mcp")
-
     def test_skills_list_and_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
