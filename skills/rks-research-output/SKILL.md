@@ -1,6 +1,6 @@
 ---
 name: rks-research-output
-description: Use this skill when an agent should produce directly consumable research outputs from the local RKS graph: answer a question, brief a topic, surface disagreements, or suggest evidence-backed research opportunities.
+description: "Use this skill when an agent should produce directly consumable research outputs from the local RKS graph: answer a question, brief a topic, surface disagreements, or suggest evidence-backed research opportunities."
 ---
 
 # RKS Research Output

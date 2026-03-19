@@ -1,6 +1,6 @@
 ---
 name: rks-codex-operator
-description: Use this skill when Codex itself should act as the external agent operating RKS end-to-end through CLI and HTTP: ingesting sources, validating artifacts, driving review flows, and checking agent-facing product behavior.
+description: "Use this skill when Codex itself should act as the external agent operating RKS end-to-end through CLI and HTTP: ingesting sources, validating artifacts, driving review flows, and checking agent-facing product behavior."
 ---
 
 # RKS Codex Operator

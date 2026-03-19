@@ -1,6 +1,6 @@
 ---
 name: rks-dual-track-llm
-description: Use this skill when a task involves any LLM-backed RKS operation and you need to choose or execute the correct dual-track mode: llm-api or agent.
+description: "Use this skill when a task involves any LLM-backed RKS operation and you need to choose or execute the correct dual-track mode: llm-api or agent."
 ---
 
 # RKS Dual-Track LLM

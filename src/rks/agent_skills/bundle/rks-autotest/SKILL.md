@@ -1,6 +1,6 @@
 ---
 name: rks-autotest
-description: Use this skill when an agent should automatically validate RKS behavior as a product surface: set up a workspace, run repeatable CLI and HTTP checks, verify artifacts and IDs, and report failures with concrete reproduction steps.
+description: "Use this skill when an agent should automatically validate RKS behavior as a product surface: set up a workspace, run repeatable CLI and HTTP checks, verify artifacts and IDs, and report failures with concrete reproduction steps."
 ---
 
 # RKS Autotest

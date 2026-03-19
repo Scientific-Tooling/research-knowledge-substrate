@@ -1,6 +1,6 @@
 ---
 name: rks-maintain-worktree
-description: Use this skill when updating the RKS codebase itself so the agent follows the repository's delivery discipline: keep docs current, run verification, and commit coherent milestones.
+description: "Use this skill when updating the RKS codebase itself so the agent follows the repository's delivery discipline: keep docs current, run verification, and commit coherent milestones."
 ---
 
 # RKS Maintain Worktree

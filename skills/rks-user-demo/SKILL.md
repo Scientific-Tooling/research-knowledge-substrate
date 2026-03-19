@@ -1,6 +1,6 @@
 ---
 name: rks-user-demo
-description: Use this skill when an agent should demonstrate RKS to a user end-to-end: preparing a small workspace, ingesting a paper or reference, showing graph outputs, and narrating the product behavior in a clear sequence.
+description: "Use this skill when an agent should demonstrate RKS to a user end-to-end: preparing a small workspace, ingesting a paper or reference, showing graph outputs, and narrating the product behavior in a clear sequence."
 ---
 
 # RKS User Demo
