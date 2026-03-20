@@ -25,6 +25,7 @@ These documents describe the current product, architecture direction, operations
 - `installation-guide-zh.md`
 - `pypi-publishing-guide.md`
 - `pypi-publishing-guide-zh.md`
+- `release-tracking.md`
 - `user-usage-guide.md`
 - `user-usage-guide-zh.md`
 - `agent-usage-guide.md`
