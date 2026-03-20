@@ -42,6 +42,12 @@ def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path | None = Non
     for migration_path in available:
         if migration_path.name in applied:
             continue
+        if _migration_already_satisfied(conn, migration_path.name):
+            conn.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)",
+                (migration_path.name, utc_now()),
+            )
+            continue
         conn.executescript(migration_path.read_text(encoding="utf-8"))
         conn.execute(
             "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)",
@@ -94,13 +100,13 @@ def _packaged_migration_files() -> list[Any]:
 def _ensure_indexes(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_name ON concepts(name)")
     _ensure_column(conn, "datasets", "paper_id", "TEXT")
+    _ensure_column(conn, "papers", "reading_status", "TEXT NOT NULL DEFAULT 'unread'")
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
     if not _table_exists(conn, table):
         return
-    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-    if column not in columns:
+    if not _column_exists(conn, table, column):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
@@ -110,6 +116,21 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
         (table,),
     ).fetchone()
     return row is not None
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    if not _table_exists(conn, table):
+        return False
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    return column in columns
+
+
+def _migration_already_satisfied(conn: sqlite3.Connection, migration_name: str) -> bool:
+    # Allow recovery when a schema change was applied out-of-band but the
+    # migration history table was not updated.
+    if migration_name == "0008_paper_reading_status.sql":
+        return _column_exists(conn, "papers", "reading_status")
+    return False
 
 
 def _preflight_legacy_schema_compatibility(conn: sqlite3.Connection) -> None:
