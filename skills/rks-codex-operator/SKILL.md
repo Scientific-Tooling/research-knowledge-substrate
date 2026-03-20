@@ -85,6 +85,18 @@ rks note add paper <paper_id> --content "Need manual comparison with the contrad
 rks note list paper <paper_id>
 ```
 
+Use paper tags when triaging reading queues or workflow buckets:
+
+```bash
+rks papers list --limit 20 --sort created_at --order desc
+rks papers mark <paper_id> --tag read_later
+rks papers mark <paper_id> --tag survey
+rks papers list --tag read_later
+rks papers unmark <paper_id> --tag read_later
+rks papers tags <paper_id>
+rks papers read-later
+```
+
 When the task is organized around a concrete research investigation, create a project and keep working hypotheses there:
 
 ```bash

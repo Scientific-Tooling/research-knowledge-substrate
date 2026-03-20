@@ -29,6 +29,8 @@ The current implementation supports:
 - the same dual-track pattern for paper summarization
 - batch ingest and extraction workflows
 - task queue and paper status inspection for agent-mode operations
+- workspace inventory stats for tracked papers, stored PDFs, artifacts, tasks, and graph object counts
+- listing recent papers and managing paper tags (for example `read_later`, `survey`, `replication`)
 - config initialization, migration/version reporting, and graph snapshot export/import
 - stable agent-facing operations for paper status and claim-relation review over CLI and HTTP
 - bundled skill export for Codex, Claude Code, and other external agent tools
@@ -97,6 +99,13 @@ Use the exported skills to drive Codex, Claude Code, or other agent runtimes thr
 Inspect the graph:
 
 ```bash
+rks papers list --limit 20
+rks papers mark p_000001 --tag read_later
+rks papers mark p_000001 --tag survey
+rks papers list --tag survey
+rks papers unmark p_000001 --tag read_later
+rks papers tags p_000001
+rks papers read-later
 rks show paper p_000001
 rks note add paper p_000001 --content "Revisit the evaluation protocol."
 rks note list paper p_000001
@@ -180,6 +189,7 @@ rks batch ingest manifest.json
 rks batch extract claims manifest.json
 rks tasks list
 rks status paper p_000001
+rks stats
 ```
 
 Export, import, and serve the workspace:

@@ -61,12 +61,15 @@ Then inspect:
 ```bash
 rks show paper <paper_id>
 rks status paper <paper_id>
+rks papers mark <paper_id> --tag read_later
+rks papers tags <paper_id>
 ```
 
 Explain:
 
 - what artifacts were created
 - whether source PDF acquisition succeeded
+- how paper tags can represent reading queues like `read_later`
 
 ### 3. Show graph content
 

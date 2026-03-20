@@ -13,6 +13,7 @@ TABLES = [
     "hypotheses",
     "hypothesis_evidence_links",
     "papers",
+    "paper_tags",
     "claims",
     "methods",
     "datasets",

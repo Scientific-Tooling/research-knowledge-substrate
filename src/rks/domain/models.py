@@ -17,6 +17,7 @@ class PaperRecord:
     source_type: str
     source_ref: Optional[str]
     pdf_path: Optional[str]
+    reading_status: str
     text_artifact_id: Optional[str]
     created_at: str
     updated_at: str

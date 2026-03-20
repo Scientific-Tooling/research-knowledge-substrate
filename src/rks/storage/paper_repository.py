@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -8,6 +9,8 @@ from typing import Optional
 from rks.domain.models import ArtifactRecord, PaperRecord
 from rks.ids import next_id
 from rks.utils import utc_now
+
+PAPER_READING_STATUSES = ("unread", "read_later", "reading", "read")
 
 
 class PaperRepository:
@@ -253,3 +256,130 @@ class PaperRepository:
     def list_papers(self) -> list[PaperRecord]:
         rows = self.conn.execute("SELECT * FROM papers ORDER BY created_at ASC, id ASC").fetchall()
         return [PaperRecord(**dict(row)) for row in rows]
+
+    def count_papers(self, tag: str | None = None) -> int:
+        if tag is None:
+            row = self.conn.execute("SELECT COUNT(*) AS count FROM papers").fetchone()
+        else:
+            normalized = self._normalize_tag(tag)
+            row = self.conn.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM papers
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM paper_tags
+                    WHERE paper_tags.paper_id = papers.id AND paper_tags.tag = ?
+                )
+                """,
+                (normalized,),
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def list_recent_papers(
+        self,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        sort_by: str = "created_at",
+        order: str = "desc",
+        tag: str | None = None,
+    ) -> list[PaperRecord]:
+        if sort_by not in {"created_at", "updated_at"}:
+            raise ValueError("sort_by must be one of: created_at, updated_at")
+        if order not in {"asc", "desc"}:
+            raise ValueError("order must be one of: asc, desc")
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
+
+        direction = "DESC" if order == "desc" else "ASC"
+        query = "SELECT * FROM papers"
+        params: list[object] = []
+        if tag is not None:
+            normalized = self._normalize_tag(tag)
+            query += (
+                " WHERE EXISTS (SELECT 1 FROM paper_tags WHERE paper_tags.paper_id = papers.id AND paper_tags.tag = ?)"
+            )
+            params.append(normalized)
+        query += f" ORDER BY {sort_by} {direction}, id {direction} LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        rows = self.conn.execute(query, tuple(params)).fetchall()
+        return [PaperRecord(**dict(row)) for row in rows]
+
+    def set_reading_status(self, paper_id: str, reading_status: str) -> PaperRecord:
+        normalized = self._normalize_reading_status(reading_status)
+        self.get_paper(paper_id)
+        self.conn.execute(
+            "UPDATE papers SET reading_status = ?, updated_at = ? WHERE id = ?",
+            (normalized, utc_now(), paper_id),
+        )
+        self.conn.commit()
+        return self.get_paper(paper_id)
+
+    def list_tags_for_paper(self, paper_id: str) -> list[str]:
+        self.get_paper(paper_id)
+        rows = self.conn.execute(
+            "SELECT tag FROM paper_tags WHERE paper_id = ? ORDER BY tag ASC",
+            (paper_id,),
+        ).fetchall()
+        return [str(row["tag"]) for row in rows]
+
+    def add_tag(self, paper_id: str, tag: str) -> bool:
+        self.get_paper(paper_id)
+        normalized = self._normalize_tag(tag)
+        before = self.conn.total_changes
+        self.conn.execute(
+            "INSERT OR IGNORE INTO paper_tags(paper_id, tag, created_at) VALUES (?, ?, ?)",
+            (paper_id, normalized, utc_now()),
+        )
+        added = self.conn.total_changes > before
+        if added:
+            self.touch_paper(paper_id)
+            return True
+        self.conn.commit()
+        return False
+
+    def remove_tag(self, paper_id: str, tag: str) -> bool:
+        self.get_paper(paper_id)
+        normalized = self._normalize_tag(tag)
+        before = self.conn.total_changes
+        self.conn.execute(
+            "DELETE FROM paper_tags WHERE paper_id = ? AND tag = ?",
+            (paper_id, normalized),
+        )
+        deleted = self.conn.total_changes > before
+        if deleted:
+            self.touch_paper(paper_id)
+            return True
+        self.conn.commit()
+        return False
+
+    def list_tag_counts(self) -> dict[str, int]:
+        rows = self.conn.execute(
+            """
+            SELECT tag, COUNT(*) AS count
+            FROM paper_tags
+            GROUP BY tag
+            ORDER BY count DESC, tag ASC
+            """
+        ).fetchall()
+        return {str(row["tag"]): int(row["count"]) for row in rows}
+
+    def _normalize_reading_status(self, reading_status: str) -> str:
+        normalized = reading_status.strip().lower()
+        if normalized not in PAPER_READING_STATUSES:
+            supported = ", ".join(PAPER_READING_STATUSES)
+            raise ValueError(f"reading_status must be one of: {supported}")
+        return normalized
+
+    def _normalize_tag(self, tag: str) -> str:
+        normalized = tag.strip().lower()
+        if not normalized:
+            raise ValueError("tag must not be empty")
+        if len(normalized) > 64:
+            raise ValueError("tag must be <= 64 characters")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._:-]*", normalized):
+            raise ValueError("tag must match [a-z0-9][a-z0-9._:-]*")
+        return normalized

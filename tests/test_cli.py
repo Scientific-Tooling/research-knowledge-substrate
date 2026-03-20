@@ -45,6 +45,109 @@ class CliSmokeTest(unittest.TestCase):
         self.assertEqual(eval_args.evaluate_command, "baseline")
         self.assertEqual(str(eval_args.spec_path), "baseline.json")
 
+        stats_args = parser.parse_args(["stats"])
+        self.assertEqual(stats_args.command, "stats")
+
+        papers_list_args = parser.parse_args(["papers", "list", "--limit", "5"])
+        self.assertEqual(papers_list_args.command, "papers")
+        self.assertEqual(papers_list_args.papers_command, "list")
+        self.assertEqual(papers_list_args.limit, 5)
+
+        papers_mark_args = parser.parse_args(["papers", "mark", "p_000001", "--tag", "read_later"])
+        self.assertEqual(papers_mark_args.command, "papers")
+        self.assertEqual(papers_mark_args.papers_command, "mark")
+        self.assertEqual(papers_mark_args.tag, "read_later")
+
+        papers_unmark_args = parser.parse_args(["papers", "unmark", "p_000001", "--tag", "read_later"])
+        self.assertEqual(papers_unmark_args.command, "papers")
+        self.assertEqual(papers_unmark_args.papers_command, "unmark")
+        self.assertEqual(papers_unmark_args.tag, "read_later")
+
+    def test_stats_reports_workspace_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            pdf_path = tmp_path / "stats-paper.pdf"
+            pdf_path.write_bytes(
+                b"%PDF-1.4\nSparse attention improves long-context throughput.\n"
+            )
+
+            ingest_result = run_cli("ingest", "pdf", str(pdf_path), cwd=tmp_path)
+            self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
+            paper_id = json.loads(ingest_result.stdout)["id"]
+
+            before_result = run_cli("stats", cwd=tmp_path)
+            self.assertEqual(before_result.returncode, 0, before_result.stderr)
+            before_payload = json.loads(before_result.stdout)
+
+            self.assertEqual(before_payload["papers"]["tracked_count"], 1)
+            self.assertEqual(before_payload["papers"]["with_local_pdf_count"], 1)
+            self.assertEqual(before_payload["papers"]["without_local_pdf_count"], 0)
+            self.assertEqual(before_payload["objects"]["claim_count"], 0)
+            self.assertEqual(before_payload["quality"]["papers_with_zero_claim_count"], 1)
+            self.assertIn("source_pdf", before_payload["artifacts"]["by_type"])
+
+            extract_claims_result = run_cli("extract", "claims", paper_id, cwd=tmp_path)
+            self.assertEqual(extract_claims_result.returncode, 0, extract_claims_result.stderr)
+
+            after_result = run_cli("stats", cwd=tmp_path)
+            self.assertEqual(after_result.returncode, 0, after_result.stderr)
+            after_payload = json.loads(after_result.stdout)
+            self.assertGreaterEqual(after_payload["objects"]["claim_count"], 1)
+            self.assertEqual(after_payload["quality"]["papers_with_zero_claim_count"], 0)
+
+    def test_papers_list_and_mark_read_later(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            first_pdf = tmp_path / "first-paper.pdf"
+            first_pdf.write_bytes(b"%PDF-1.4\nFirst paper content.\n")
+            second_pdf = tmp_path / "second-paper.pdf"
+            second_pdf.write_bytes(b"%PDF-1.4\nSecond paper content.\n")
+
+            first_payload = json.loads(run_cli("ingest", "pdf", str(first_pdf), cwd=tmp_path).stdout)
+            second_payload = json.loads(run_cli("ingest", "pdf", str(second_pdf), cwd=tmp_path).stdout)
+
+            list_result = run_cli("papers", "list", "--limit", "10", "--sort", "created_at", "--order", "desc", cwd=tmp_path)
+            self.assertEqual(list_result.returncode, 0, list_result.stderr)
+            list_payload = json.loads(list_result.stdout)
+            self.assertEqual(list_payload["total_count"], 2)
+            self.assertEqual([paper["id"] for paper in list_payload["papers"]], [second_payload["id"], first_payload["id"]])
+
+            mark_result = run_cli("papers", "mark", first_payload["id"], "--tag", "read_later", cwd=tmp_path)
+            self.assertEqual(mark_result.returncode, 0, mark_result.stderr)
+            mark_payload = json.loads(mark_result.stdout)
+            self.assertTrue(mark_payload["added"])
+            self.assertEqual(mark_payload["tag"], "read_later")
+            self.assertIn("read_later", mark_payload["tags"])
+
+            custom_tag_result = run_cli("papers", "mark", first_payload["id"], "--tag", "survey", cwd=tmp_path)
+            self.assertEqual(custom_tag_result.returncode, 0, custom_tag_result.stderr)
+            custom_tag_payload = json.loads(custom_tag_result.stdout)
+            self.assertTrue(custom_tag_payload["added"])
+            self.assertIn("survey", custom_tag_payload["tags"])
+
+            read_later_result = run_cli("papers", "read-later", cwd=tmp_path)
+            self.assertEqual(read_later_result.returncode, 0, read_later_result.stderr)
+            read_later_payload = json.loads(read_later_result.stdout)
+            self.assertEqual(read_later_payload["total_count"], 1)
+            self.assertEqual(read_later_payload["papers"][0]["id"], first_payload["id"])
+
+            tag_filter_result = run_cli("papers", "list", "--tag", "survey", cwd=tmp_path)
+            self.assertEqual(tag_filter_result.returncode, 0, tag_filter_result.stderr)
+            tag_filter_payload = json.loads(tag_filter_result.stdout)
+            self.assertEqual(tag_filter_payload["total_count"], 1)
+            self.assertEqual(tag_filter_payload["papers"][0]["id"], first_payload["id"])
+
+            tags_result = run_cli("papers", "tags", first_payload["id"], cwd=tmp_path)
+            self.assertEqual(tags_result.returncode, 0, tags_result.stderr)
+            tags_payload = json.loads(tags_result.stdout)
+            self.assertEqual(set(tags_payload["tags"]), {"read_later", "survey"})
+
+            unmark_result = run_cli("papers", "unmark", first_payload["id"], "--tag", "read_later", cwd=tmp_path)
+            self.assertEqual(unmark_result.returncode, 0, unmark_result.stderr)
+            unmark_payload = json.loads(unmark_result.stdout)
+            self.assertTrue(unmark_payload["deleted"])
+            self.assertNotIn("read_later", unmark_payload["tags"])
+
     def test_skills_list_and_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

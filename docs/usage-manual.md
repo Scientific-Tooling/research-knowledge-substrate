@@ -119,6 +119,13 @@ rks summarize paper <paper_id> --mode agent
 ### 6.1 Object inspection
 
 ```bash
+rks papers list --limit 20
+rks papers mark <paper_id> --tag read_later
+rks papers mark <paper_id> --tag survey
+rks papers list --tag survey
+rks papers unmark <paper_id> --tag read_later
+rks papers tags <paper_id>
+rks papers read-later
 rks show paper <paper_id>
 rks claims <paper_id>
 rks concepts <paper_id>
@@ -130,6 +137,7 @@ rks show claim <claim_id>
 ### 6.2 Search and deterministic query
 
 ```bash
+rks stats
 rks search Transformer
 rks search "translation quality benchmark" --mode semantic
 rks query claims-about Transformer

@@ -56,6 +56,18 @@ Inspect paper workflow status:
 rks status paper <paper_id>
 ```
 
+Manage paper tags for reading queues or workflow buckets:
+
+```bash
+rks papers list --limit 20 --sort created_at --order desc
+rks papers mark <paper_id> --tag read_later
+rks papers mark <paper_id> --tag triage
+rks papers list --tag read_later
+rks papers unmark <paper_id> --tag read_later
+rks papers tags <paper_id>
+rks papers read-later
+```
+
 Inspect claim relation state:
 
 ```bash

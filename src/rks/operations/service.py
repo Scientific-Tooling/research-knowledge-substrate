@@ -577,6 +577,102 @@ class ResearchOperations:
     # Extraction quality metrics
     # ------------------------------------------------------------------
 
+    def workspace_stats(self) -> dict:
+        """Return workspace-level inventory and coverage statistics."""
+        conn = self.papers.conn
+
+        def scalar_count(query: str, params: tuple = ()) -> int:
+            row = conn.execute(query, params).fetchone()
+            return int(row[0]) if row is not None and row[0] is not None else 0
+
+        def grouped_counts(query: str, params: tuple = ()) -> dict[str, int]:
+            rows = conn.execute(query, params).fetchall()
+            payload: dict[str, int] = {}
+            for row in rows:
+                key = str(row[0] or "unknown")
+                payload[key] = int(row[1])
+            return payload
+
+        paper_count = scalar_count("SELECT COUNT(*) FROM papers")
+        papers_with_local_pdf_count = scalar_count(
+            "SELECT COUNT(*) FROM papers WHERE pdf_path IS NOT NULL AND TRIM(pdf_path) <> ''"
+        )
+        source_pdf_artifact_count = scalar_count(
+            "SELECT COUNT(*) FROM artifacts WHERE artifact_type = ?",
+            ("source_pdf",),
+        )
+        source_type_counts = grouped_counts(
+            """
+            SELECT COALESCE(source_type, 'unknown') AS source_type, COUNT(*) AS count
+            FROM papers
+            GROUP BY source_type
+            ORDER BY count DESC, source_type ASC
+            """
+        )
+        artifact_type_counts = grouped_counts(
+            """
+            SELECT COALESCE(artifact_type, 'unknown') AS artifact_type, COUNT(*) AS count
+            FROM artifacts
+            GROUP BY artifact_type
+            ORDER BY count DESC, artifact_type ASC
+            """
+        )
+        task_status_counts = grouped_counts(
+            """
+            SELECT COALESCE(status, 'unknown') AS status, COUNT(*) AS count
+            FROM tasks
+            GROUP BY status
+            ORDER BY count DESC, status ASC
+            """
+        )
+
+        quality = self.extraction_quality_report()
+        zero_claim_count = len(quality.get("zero_claim_papers", []))
+        zero_claim_rate = (zero_claim_count / paper_count) if paper_count else 0.0
+
+        return {
+            "papers": {
+                "tracked_count": paper_count,
+                "with_local_pdf_count": papers_with_local_pdf_count,
+                "without_local_pdf_count": max(paper_count - papers_with_local_pdf_count, 0),
+                "source_pdf_artifact_count": source_pdf_artifact_count,
+                "source_type_counts": source_type_counts,
+                "tag_count": scalar_count("SELECT COUNT(*) FROM paper_tags"),
+                "tag_distribution": self.papers.list_tag_counts(),
+            },
+            "objects": {
+                "claim_count": scalar_count("SELECT COUNT(*) FROM claims"),
+                "concept_count": scalar_count("SELECT COUNT(*) FROM concepts"),
+                "method_count": scalar_count("SELECT COUNT(*) FROM methods"),
+                "dataset_count": scalar_count("SELECT COUNT(*) FROM datasets"),
+                "edge_count": scalar_count("SELECT COUNT(*) FROM edges"),
+                "embedding_count": scalar_count("SELECT COUNT(*) FROM embeddings"),
+                "note_count": scalar_count("SELECT COUNT(*) FROM notes"),
+            },
+            "artifacts": {
+                "total_count": scalar_count("SELECT COUNT(*) FROM artifacts"),
+                "by_type": artifact_type_counts,
+            },
+            "tasks": {
+                "total_count": scalar_count("SELECT COUNT(*) FROM tasks"),
+                "by_status": task_status_counts,
+            },
+            "projects": {
+                "project_count": scalar_count("SELECT COUNT(*) FROM research_projects"),
+                "project_link_count": scalar_count("SELECT COUNT(*) FROM project_links"),
+                "hypothesis_count": scalar_count("SELECT COUNT(*) FROM hypotheses"),
+                "hypothesis_evidence_link_count": scalar_count("SELECT COUNT(*) FROM hypothesis_evidence_links"),
+            },
+            "quality": {
+                "total_claims": int(quality.get("total_claims", 0)),
+                "papers_with_zero_claim_count": zero_claim_count,
+                "zero_claim_rate": round(zero_claim_rate, 4),
+                "claims_per_paper": quality.get("claims_per_paper", {}),
+                "predicate_distribution": quality.get("predicate_distribution", {}),
+                "extraction_mode_distribution": quality.get("extraction_mode_distribution", {}),
+            },
+        }
+
     def extraction_quality_report(self) -> dict:
         """Compute extraction quality metrics across all papers.
 

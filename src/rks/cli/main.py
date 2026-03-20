@@ -82,6 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     extraction_quality_parser.set_defaults(handler=handle_extraction_quality)
 
+    stats_parser = subparsers.add_parser("stats", help="Show workspace counts and storage coverage metrics.")
+    stats_parser.set_defaults(handler=handle_stats)
+
     evaluate_parser = subparsers.add_parser("evaluate", help="Run quality baseline checks.")
     evaluate_subparsers = evaluate_parser.add_subparsers(dest="evaluate_command", required=True)
 
@@ -208,6 +211,69 @@ def build_parser() -> argparse.ArgumentParser:
     show_hypothesis_parser = show_subparsers.add_parser("hypothesis", help="Show a stored project hypothesis.")
     show_hypothesis_parser.add_argument("hypothesis_id", help="Hypothesis ID, for example h_000001.")
     show_hypothesis_parser.set_defaults(handler=handle_show_hypothesis)
+
+    papers_parser = subparsers.add_parser("papers", help="List and manage tracked papers.")
+    papers_subparsers = papers_parser.add_subparsers(dest="papers_command", required=True)
+
+    papers_list_parser = papers_subparsers.add_parser("list", help="List tracked papers.")
+    papers_list_parser.add_argument("--limit", type=int, default=20, help="Maximum papers to return.")
+    papers_list_parser.add_argument("--offset", type=int, default=0, help="Offset for pagination.")
+    papers_list_parser.add_argument(
+        "--sort",
+        choices=("created_at", "updated_at"),
+        default="created_at",
+        help="Sort field for returned papers.",
+    )
+    papers_list_parser.add_argument(
+        "--order",
+        choices=("asc", "desc"),
+        default="desc",
+        help="Sort direction.",
+    )
+    papers_list_parser.add_argument(
+        "--tag",
+        help="Optional tag filter (for example read_later).",
+    )
+    papers_list_parser.set_defaults(handler=handle_papers_list)
+
+    papers_mark_parser = papers_subparsers.add_parser("mark", help="Add a tag to a paper.")
+    papers_mark_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    papers_mark_parser.add_argument(
+        "--tag",
+        default="read_later",
+        help="Tag to add (for example read_later, survey, replication).",
+    )
+    papers_mark_parser.set_defaults(handler=handle_papers_mark)
+
+    papers_unmark_parser = papers_subparsers.add_parser("unmark", help="Remove a tag from a paper.")
+    papers_unmark_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    papers_unmark_parser.add_argument(
+        "--tag",
+        required=True,
+        help="Tag to remove.",
+    )
+    papers_unmark_parser.set_defaults(handler=handle_papers_unmark)
+
+    papers_tags_parser = papers_subparsers.add_parser("tags", help="List tags for a paper.")
+    papers_tags_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    papers_tags_parser.set_defaults(handler=handle_papers_tags)
+
+    papers_read_later_parser = papers_subparsers.add_parser("read-later", help="List papers marked as read_later.")
+    papers_read_later_parser.add_argument("--limit", type=int, default=20, help="Maximum papers to return.")
+    papers_read_later_parser.add_argument("--offset", type=int, default=0, help="Offset for pagination.")
+    papers_read_later_parser.add_argument(
+        "--sort",
+        choices=("created_at", "updated_at"),
+        default="created_at",
+        help="Sort field for returned papers.",
+    )
+    papers_read_later_parser.add_argument(
+        "--order",
+        choices=("asc", "desc"),
+        default="desc",
+        help="Sort direction.",
+    )
+    papers_read_later_parser.set_defaults(handler=handle_papers_read_later)
 
     project_parser = subparsers.add_parser("project", help="Create and organize research projects.")
     project_subparsers = project_parser.add_subparsers(dest="project_command", required=True)
@@ -872,6 +938,14 @@ def handle_extraction_quality(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_stats(args: argparse.Namespace) -> int:
+    del args
+    with _open_session() as session:
+        payload = _operations(session).workspace_stats()
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def handle_evaluate_baseline(args: argparse.Namespace) -> int:
     spec = _load_json_object(args.spec_path, "baseline spec")
     checks = _normalize_baseline_checks(spec)
@@ -1088,6 +1162,7 @@ def handle_show_paper(args: argparse.Namespace) -> int:
         paper = session.papers.get_paper(args.paper_id)
         artifacts = session.papers.get_artifacts_for_paper(args.paper_id)
         notes = session.notes.list_notes_for_target(target_id=args.paper_id, target_type="paper")
+        tags = session.papers.list_tags_for_paper(args.paper_id)
     payload = _paper_to_payload(paper)
     payload["artifacts"] = [
         {
@@ -1101,6 +1176,7 @@ def handle_show_paper(args: argparse.Namespace) -> int:
         for artifact in artifacts
     ]
     payload["notes"] = [_note_payload(note) for note in notes]
+    payload["tags"] = tags
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -1115,6 +1191,101 @@ def handle_show_project(args: argparse.Namespace) -> int:
 def handle_show_hypothesis(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = _operations(session).get_hypothesis(args.hypothesis_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_papers_list(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        papers = session.papers.list_recent_papers(
+            limit=args.limit,
+            offset=args.offset,
+            sort_by=args.sort,
+            order=args.order,
+            tag=args.tag,
+        )
+        total = session.papers.count_papers(tag=args.tag)
+        payload_papers = [_paper_with_tags_payload(session.papers, paper) for paper in papers]
+    payload = {
+        "count": len(papers),
+        "total_count": total,
+        "limit": args.limit,
+        "offset": args.offset,
+        "sort": args.sort,
+        "order": args.order,
+        "tag": args.tag,
+        "papers": payload_papers,
+    }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_papers_mark(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        added = session.papers.add_tag(args.paper_id, args.tag)
+        paper = session.papers.get_paper(args.paper_id)
+        tags = session.papers.list_tags_for_paper(args.paper_id)
+    payload = {
+        "paper_id": paper.id,
+        "tag": args.tag.strip().lower(),
+        "added": added,
+        "tags": tags,
+        "paper": _paper_to_payload(paper),
+    }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_papers_unmark(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        deleted = session.papers.remove_tag(args.paper_id, args.tag)
+        paper = session.papers.get_paper(args.paper_id)
+        tags = session.papers.list_tags_for_paper(args.paper_id)
+    payload = {
+        "paper_id": paper.id,
+        "tag": args.tag.strip().lower(),
+        "deleted": deleted,
+        "tags": tags,
+        "paper": _paper_to_payload(paper),
+    }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_papers_tags(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        paper = session.papers.get_paper(args.paper_id)
+        tags = session.papers.list_tags_for_paper(args.paper_id)
+    payload = {
+        "paper_id": paper.id,
+        "tags": tags,
+        "paper": _paper_to_payload(paper),
+    }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_papers_read_later(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        papers = session.papers.list_recent_papers(
+            limit=args.limit,
+            offset=args.offset,
+            sort_by=args.sort,
+            order=args.order,
+            tag="read_later",
+        )
+        total = session.papers.count_papers(tag="read_later")
+        payload_papers = [_paper_with_tags_payload(session.papers, paper) for paper in papers]
+    payload = {
+        "count": len(papers),
+        "total_count": total,
+        "limit": args.limit,
+        "offset": args.offset,
+        "sort": args.sort,
+        "order": args.order,
+        "tag": "read_later",
+        "papers": payload_papers,
+    }
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -2248,6 +2419,12 @@ def _paper_to_payload(paper) -> dict:
         "created_at": paper.created_at,
         "updated_at": paper.updated_at,
     }
+
+
+def _paper_with_tags_payload(paper_repo: PaperRepository, paper) -> dict:
+    payload = _paper_to_payload(paper)
+    payload["tags"] = paper_repo.list_tags_for_paper(paper.id)
+    return payload
 
 
 def _project_to_payload(project) -> dict:

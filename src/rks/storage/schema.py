@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS papers (
     source_type TEXT NOT NULL,
     source_ref TEXT,
     pdf_path TEXT,
+    reading_status TEXT NOT NULL DEFAULT 'unread',
     text_artifact_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -148,6 +149,13 @@ CREATE TABLE IF NOT EXISTS artifacts (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS paper_tags (
+    paper_id TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (paper_id, tag)
+);
+
 CREATE TABLE IF NOT EXISTS embeddings (
     id TEXT PRIMARY KEY,
     object_id TEXT NOT NULL,
@@ -174,10 +182,12 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE INDEX IF NOT EXISTS idx_papers_doi ON papers(doi);
 CREATE INDEX IF NOT EXISTS idx_papers_arxiv_id ON papers(arxiv_id);
+CREATE INDEX IF NOT EXISTS idx_papers_reading_status_created ON papers(reading_status, created_at);
 CREATE INDEX IF NOT EXISTS idx_claims_paper_id ON claims(paper_id);
 CREATE INDEX IF NOT EXISTS idx_methods_paper_id ON methods(paper_id);
 CREATE INDEX IF NOT EXISTS idx_datasets_paper_id ON datasets(paper_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_paper_id ON artifacts(paper_id);
+CREATE INDEX IF NOT EXISTS idx_paper_tags_tag_created ON paper_tags(tag, created_at);
 CREATE INDEX IF NOT EXISTS idx_embeddings_object ON embeddings(object_type, object_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_paper ON tasks(paper_id, status);
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id, relation_type);
