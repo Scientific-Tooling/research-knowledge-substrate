@@ -79,6 +79,14 @@ rks ingest url https://pubmed.ncbi.nlm.nih.gov/31452104/
 rks ingest url https://example.org/paper.pdf
 ```
 
+### 4.4 Duplicate paper detection and merge
+
+```bash
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
+```
+
 ## 5. Extraction Workflows
 
 ### 5.1 Text extraction
@@ -126,6 +134,9 @@ rks papers list --tag survey
 rks papers unmark <paper_id> --tag read_later
 rks papers tags <paper_id>
 rks papers read-later
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
 rks show paper <paper_id>
 rks claims <paper_id>
 rks concepts <paper_id>

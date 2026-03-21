@@ -158,6 +158,23 @@ Important fields:
 - `source_pdf.acquisition.status`
 - `artifacts`
 
+### 4.6 Duplicate paper handling
+
+When the same paper is ingested more than once (for example metadata-first and local-PDF later), detect and consolidate duplicates:
+
+```bash
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
+```
+
+Guidance:
+
+- `heuristic` mode uses DOI, arXiv ID, and normalized title
+- `identifiers` mode uses DOI and arXiv ID only
+- keep the canonical record as `target_paper_id`
+- after merge, verify with `rks show paper <target_paper_id>`
+
 ## 5. Extract Research Objects
 
 ### 5.1 Extract text

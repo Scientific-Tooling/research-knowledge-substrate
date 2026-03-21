@@ -67,6 +67,8 @@ The repository now has a hardened post-MVP base for extraction quality:
 - request logging to stderr for all HTTP GET and POST handlers with warning and exception levels for errors
 - input validation on all POST endpoints with clear missing-field error messages and malformed JSON rejection
 - unhandled exception safety in HTTP handlers returning 500 instead of dropping the connection
+- first-class `rks papers merge` command to consolidate duplicate paper IDs while re-homing notes, links, tags, tasks, and paper-scoped references
+- first-class `rks papers find-duplicates` command with `heuristic` and `identifiers` modes for duplicate-paper discovery
 
 ## Implemented Milestones
 

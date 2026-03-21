@@ -77,6 +77,14 @@ rks ingest url https://pubmed.ncbi.nlm.nih.gov/31452104/
 rks ingest url https://example.org/paper.pdf
 ```
 
+### 4.4 重复 paper 检测与合并
+
+```bash
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
+```
+
 ## 5. 抽取流程
 
 ### 5.1 抽取 text

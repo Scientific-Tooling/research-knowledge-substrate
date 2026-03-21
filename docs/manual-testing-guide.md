@@ -146,6 +146,43 @@ Expected result:
 - `note list` returns the stored note
 - `show paper` includes the note under `notes`
 
+## 4.6 Optional: Duplicate detection and merge
+
+Prepare two records for the same paper title:
+
+```bash
+printf '%s\n' '%PDF-1.4' 'duplicate paper A' > duplicate-a.pdf
+printf '%s\n' '%PDF-1.4' 'duplicate paper B' > duplicate-b.pdf
+rks ingest pdf duplicate-a.pdf --title "NCBI Conserved Domain Database"
+rks ingest pdf duplicate-b.pdf --title "NCBI conserved-domain database"
+```
+
+Then detect duplicates:
+
+```bash
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+```
+
+Expected result:
+
+- `heuristic` mode reports a duplicate group for the two paper IDs
+- `identifiers` mode may return zero groups when DOI/arXiv IDs are missing
+
+Then merge:
+
+```bash
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
+rks show paper <target_paper_id>
+rks show paper <source_paper_id>
+```
+
+Expected result:
+
+- merge output sets `source_deleted=true`
+- `show paper <target_paper_id>` succeeds
+- `show paper <source_paper_id>` returns `Paper not found`
+
 ## 5. Scenario 3: Claim Relation Candidate and Review Loop
 
 Use two or three papers to build comparable claims.

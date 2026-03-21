@@ -275,6 +275,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     papers_read_later_parser.set_defaults(handler=handle_papers_read_later)
 
+    papers_find_duplicates_parser = papers_subparsers.add_parser(
+        "find-duplicates",
+        help="Find likely duplicate papers by identifier and optional title heuristics.",
+    )
+    papers_find_duplicates_parser.add_argument(
+        "--mode",
+        choices=("heuristic", "identifiers"),
+        default="heuristic",
+        help="Detection mode. heuristic uses DOI/arXiv/title; identifiers uses DOI/arXiv only.",
+    )
+    papers_find_duplicates_parser.set_defaults(handler=handle_papers_find_duplicates)
+
+    papers_merge_parser = papers_subparsers.add_parser(
+        "merge",
+        help="Merge a duplicate paper into a target paper and delete the source paper.",
+    )
+    papers_merge_parser.add_argument("target_paper_id", help="Canonical paper ID to keep, for example p_000001.")
+    papers_merge_parser.add_argument("source_paper_id", help="Duplicate paper ID to merge and remove.")
+    papers_merge_parser.add_argument(
+        "--prefer",
+        choices=("target", "source"),
+        default="target",
+        help="When both papers have the same field or artifact type, prefer target or source.",
+    )
+    papers_merge_parser.set_defaults(handler=handle_papers_merge)
+
     project_parser = subparsers.add_parser("project", help="Create and organize research projects.")
     project_subparsers = project_parser.add_subparsers(dest="project_command", required=True)
 
@@ -1286,6 +1312,24 @@ def handle_papers_read_later(args: argparse.Namespace) -> int:
         "tag": "read_later",
         "papers": payload_papers,
     }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_papers_find_duplicates(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).find_duplicate_papers(mode=args.mode)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_papers_merge(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).merge_papers(
+            args.target_paper_id,
+            args.source_paper_id,
+            prefer=args.prefer,
+        )
     print(json.dumps(payload, indent=2))
     return 0
 

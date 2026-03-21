@@ -138,6 +138,27 @@ curl -s http://127.0.0.1:8765/api/papers/<paper_id>/notes
 curl -s -X POST http://127.0.0.1:8765/api/papers/<paper_id>/notes -H 'Content-Type: application/json' -d '{"content":"需要人工对照 follow-up reproduction。","created_by":"agent:review"}'
 ```
 
+### 5.3 重复 paper 检测与合并
+
+如果出现重复 paper，先检测再合并：
+
+```bash
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+```
+
+确认后合并到一个 canonical paper ID：
+
+```bash
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
+rks show paper <target_paper_id>
+```
+
+agent 建议：
+
+- 如果更关注精确率，优先使用 `--mode identifiers`
+- merge 时优先保留 metadata 更完整或已被 project/hypothesis 引用的记录作为 `target_paper_id`
+
 ## 6. Agent 模式的 request / import 闭环
 
 对于需要外部 agent 产出的任务，RKS 用 `agent` 模式暴露 request/import 边界。

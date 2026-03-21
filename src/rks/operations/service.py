@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from collections import defaultdict
 
 from rks.agent import load_task_reports
 from rks.config import load_paths
@@ -31,6 +33,7 @@ from rks.reasoning import (
     plan_research_request,
 )
 from rks.reasoning.summary import summarize_paper_heuristic
+from rks.utils import utc_now
 
 
 class ResearchOperations:
@@ -377,6 +380,346 @@ class ResearchOperations:
         )
         self.papers.touch_paper(paper_id)
         return _note_payload(note)
+
+    def find_duplicate_papers(self, *, mode: str = "heuristic") -> dict:
+        normalized_mode = mode.strip().lower()
+        if normalized_mode not in {"heuristic", "identifiers"}:
+            raise ValueError("mode must be one of: heuristic, identifiers")
+
+        papers = self.papers.list_papers()
+        paper_by_id = {paper.id: paper for paper in papers}
+        signal_to_paper_ids: dict[tuple[str, str], list[str]] = defaultdict(list)
+
+        for paper in papers:
+            doi_key = _normalized_optional_key(paper.doi)
+            if doi_key:
+                signal_to_paper_ids[("doi", doi_key)].append(paper.id)
+            arxiv_key = _normalized_optional_key(paper.arxiv_id)
+            if arxiv_key:
+                signal_to_paper_ids[("arxiv_id", arxiv_key)].append(paper.id)
+            if normalized_mode == "heuristic":
+                title_key = _normalized_title_key(paper.title)
+                if title_key:
+                    signal_to_paper_ids[("title", title_key)].append(paper.id)
+
+        duplicate_signal_keys = [
+            (kind, value, _dedupe_preserve_order(ids))
+            for (kind, value), ids in signal_to_paper_ids.items()
+            if len(set(ids)) > 1
+        ]
+        if not duplicate_signal_keys:
+            return {
+                "mode": normalized_mode,
+                "paper_count": len(papers),
+                "group_count": 0,
+                "groups": [],
+            }
+
+        duplicates_paper_ids = sorted({paper_id for _, _, ids in duplicate_signal_keys for paper_id in ids})
+        parent = {paper_id: paper_id for paper_id in duplicates_paper_ids}
+
+        def find(node_id: str) -> str:
+            root = node_id
+            while parent[root] != root:
+                root = parent[root]
+            while node_id != root:
+                next_node = parent[node_id]
+                parent[node_id] = root
+                node_id = next_node
+            return root
+
+        def union(left: str, right: str) -> None:
+            left_root = find(left)
+            right_root = find(right)
+            if left_root != right_root:
+                parent[right_root] = left_root
+
+        for _, _, ids in duplicate_signal_keys:
+            anchor = ids[0]
+            for candidate in ids[1:]:
+                union(anchor, candidate)
+
+        groups_by_root: dict[str, list[str]] = defaultdict(list)
+        for paper_id in duplicates_paper_ids:
+            groups_by_root[find(paper_id)].append(paper_id)
+
+        signals_by_root: dict[str, list[dict]] = defaultdict(list)
+        for kind, value, ids in duplicate_signal_keys:
+            roots = {find(paper_id) for paper_id in ids}
+            if len(roots) != 1:
+                continue
+            root = next(iter(roots))
+            signals_by_root[root].append(
+                {
+                    "kind": kind,
+                    "value": value,
+                    "paper_ids": ids,
+                }
+            )
+
+        group_rows = []
+        for root, group_ids in groups_by_root.items():
+            if len(group_ids) < 2:
+                continue
+            ordered_ids = sorted(group_ids)
+            group_rows.append((ordered_ids, signals_by_root.get(root, [])))
+        group_rows.sort(key=lambda item: (-len(item[0]), item[0][0]))
+
+        groups = []
+        for index, (group_ids, signals) in enumerate(group_rows, start=1):
+            papers_payload = []
+            for paper_id in group_ids:
+                payload = _paper_payload(paper_by_id[paper_id])
+                payload["tags"] = self.papers.list_tags_for_paper(paper_id)
+                papers_payload.append(payload)
+            signals.sort(key=lambda item: (item["kind"], item["value"]))
+            groups.append(
+                {
+                    "id": f"dup_{index:04d}",
+                    "paper_ids": group_ids,
+                    "papers": papers_payload,
+                    "signals": signals,
+                }
+            )
+
+        return {
+            "mode": normalized_mode,
+            "paper_count": len(papers),
+            "group_count": len(groups),
+            "groups": groups,
+        }
+
+    def merge_papers(self, target_paper_id: str, source_paper_id: str, *, prefer: str = "target") -> dict:
+        normalized_prefer = prefer.strip().lower()
+        if normalized_prefer not in {"target", "source"}:
+            raise ValueError("prefer must be one of: target, source")
+        if target_paper_id == source_paper_id:
+            raise ValueError("target_paper_id and source_paper_id must be different")
+
+        conn = self.papers.conn
+        target = self.papers.get_paper(target_paper_id)
+        source = self.papers.get_paper(source_paper_id)
+        timestamp = utc_now()
+
+        moved_claims = conn.execute(
+            "UPDATE claims SET paper_id = ?, updated_at = ? WHERE paper_id = ?",
+            (target_paper_id, timestamp, source_paper_id),
+        ).rowcount
+        moved_methods = conn.execute(
+            "UPDATE methods SET paper_id = ?, updated_at = ? WHERE paper_id = ?",
+            (target_paper_id, timestamp, source_paper_id),
+        ).rowcount
+        moved_datasets = conn.execute(
+            "UPDATE datasets SET paper_id = ?, updated_at = ? WHERE paper_id = ?",
+            (target_paper_id, timestamp, source_paper_id),
+        ).rowcount
+        moved_tasks = conn.execute(
+            "UPDATE tasks SET paper_id = ?, updated_at = ? WHERE paper_id = ?",
+            (target_paper_id, timestamp, source_paper_id),
+        ).rowcount
+        moved_notes = conn.execute(
+            """
+            UPDATE notes
+            SET target_id = ?
+            WHERE target_type = 'paper' AND target_id = ?
+            """,
+            (target_paper_id, source_paper_id),
+        ).rowcount
+
+        moved_edge_evidence = conn.execute(
+            """
+            UPDATE edges
+            SET evidence_paper_id = ?
+            WHERE evidence_paper_id = ?
+            """,
+            (target_paper_id, source_paper_id),
+        ).rowcount
+        moved_edge_sources = conn.execute(
+            """
+            UPDATE edges
+            SET source_id = ?
+            WHERE source_type = 'paper' AND source_id = ?
+            """,
+            (target_paper_id, source_paper_id),
+        ).rowcount
+        moved_edge_targets = conn.execute(
+            """
+            UPDATE edges
+            SET target_id = ?
+            WHERE target_type = 'paper' AND target_id = ?
+            """,
+            (target_paper_id, source_paper_id),
+        ).rowcount
+
+        before_tag_changes = conn.total_changes
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO paper_tags(paper_id, tag, created_at)
+            SELECT ?, tag, created_at
+            FROM paper_tags
+            WHERE paper_id = ?
+            """,
+            (target_paper_id, source_paper_id),
+        )
+        tags_added = conn.total_changes - before_tag_changes
+        source_tags_removed = conn.execute(
+            "DELETE FROM paper_tags WHERE paper_id = ?",
+            (source_paper_id,),
+        ).rowcount
+
+        moved_project_links = conn.execute(
+            """
+            UPDATE project_links
+            SET object_id = ?
+            WHERE object_type = 'paper' AND object_id = ?
+            """,
+            (target_paper_id, source_paper_id),
+        ).rowcount
+        deduped_project_links = _dedupe_project_paper_links(conn, target_paper_id)
+
+        moved_hypothesis_links = conn.execute(
+            """
+            UPDATE hypothesis_evidence_links
+            SET object_id = ?
+            WHERE object_type = 'paper' AND object_id = ?
+            """,
+            (target_paper_id, source_paper_id),
+        ).rowcount
+        deduped_hypothesis_links = _dedupe_hypothesis_paper_links(conn, target_paper_id)
+
+        artifact_summary = _merge_paper_artifacts(
+            conn,
+            target_paper_id=target_paper_id,
+            source_paper_id=source_paper_id,
+            prefer=normalized_prefer,
+        )
+        deduped_edges = _dedupe_paper_edges(conn, target_paper_id)
+
+        source_pdf_artifact = _latest_artifact_for_type(conn, target_paper_id, "source_pdf")
+        text_artifact = _latest_artifact_for_type(conn, target_paper_id, "extracted_text")
+        text_artifact_id = text_artifact["id"] if text_artifact is not None else None
+        pdf_path = source_pdf_artifact["path"] if source_pdf_artifact is not None else None
+
+        resolved_title = _pick_value(
+            target.title,
+            source.title,
+            prefer=normalized_prefer,
+            is_missing=lambda value: value is None or str(value).strip() == "",
+        ) or target.title
+        resolved_abstract = _pick_value(
+            target.abstract,
+            source.abstract,
+            prefer=normalized_prefer,
+            is_missing=lambda value: value is None or str(value).strip() == "",
+        )
+        resolved_authors_json = _pick_value(
+            target.authors_json,
+            source.authors_json,
+            prefer=normalized_prefer,
+            is_missing=_authors_json_missing,
+        ) or target.authors_json
+        resolved_year = _pick_value(
+            target.year,
+            source.year,
+            prefer=normalized_prefer,
+            is_missing=lambda value: value is None,
+        )
+        resolved_venue = _pick_value(
+            target.venue,
+            source.venue,
+            prefer=normalized_prefer,
+            is_missing=lambda value: value is None or str(value).strip() == "",
+        )
+        resolved_doi = _pick_value(
+            target.doi,
+            source.doi,
+            prefer=normalized_prefer,
+            is_missing=lambda value: value is None or str(value).strip() == "",
+        )
+        resolved_arxiv_id = _pick_value(
+            target.arxiv_id,
+            source.arxiv_id,
+            prefer=normalized_prefer,
+            is_missing=lambda value: value is None or str(value).strip() == "",
+        )
+        resolved_source_type = _pick_value(
+            target.source_type,
+            source.source_type,
+            prefer=normalized_prefer,
+            is_missing=lambda value: value is None or str(value).strip() == "",
+        ) or target.source_type
+        resolved_source_ref = _pick_value(
+            target.source_ref,
+            source.source_ref,
+            prefer=normalized_prefer,
+            is_missing=lambda value: value is None or str(value).strip() == "",
+        )
+        resolved_reading_status = _pick_reading_status(
+            target.reading_status,
+            source.reading_status,
+            prefer=normalized_prefer,
+        )
+
+        conn.execute(
+            """
+            UPDATE papers
+            SET title = ?, abstract = ?, authors_json = ?, year = ?, venue = ?, doi = ?, arxiv_id = ?,
+                source_type = ?, source_ref = ?, pdf_path = ?, reading_status = ?, text_artifact_id = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                resolved_title,
+                resolved_abstract,
+                resolved_authors_json,
+                resolved_year,
+                resolved_venue,
+                resolved_doi,
+                resolved_arxiv_id,
+                resolved_source_type,
+                resolved_source_ref,
+                pdf_path,
+                resolved_reading_status,
+                text_artifact_id,
+                timestamp,
+                target_paper_id,
+            ),
+        )
+
+        source_deleted = conn.execute(
+            "DELETE FROM papers WHERE id = ?",
+            (source_paper_id,),
+        ).rowcount > 0
+        conn.commit()
+
+        merged_paper = self.papers.get_paper(target_paper_id)
+        return {
+            "target_paper_id": target_paper_id,
+            "source_paper_id": source_paper_id,
+            "prefer": normalized_prefer,
+            "source_deleted": source_deleted,
+            "paper": _paper_payload(merged_paper),
+            "moves": {
+                "claims": moved_claims,
+                "methods": moved_methods,
+                "datasets": moved_datasets,
+                "tasks": moved_tasks,
+                "notes": moved_notes,
+                "edge_evidence": moved_edge_evidence,
+                "edge_source_nodes": moved_edge_sources,
+                "edge_target_nodes": moved_edge_targets,
+                "project_links_repointed": moved_project_links,
+                "project_links_deduped": deduped_project_links,
+                "hypothesis_links_repointed": moved_hypothesis_links,
+                "hypothesis_links_deduped": deduped_hypothesis_links,
+                "tags_added": tags_added,
+                "source_tags_removed": source_tags_removed,
+                "artifacts_moved": artifact_summary["moved"],
+                "artifacts_replaced": artifact_summary["replaced"],
+                "artifacts_deleted": artifact_summary["deleted"],
+                "edges_deduped": deduped_edges,
+            },
+        }
 
     def answer_question(self, question: str) -> dict:
         return build_research_answer(self.query, question)
@@ -2113,6 +2456,213 @@ class ResearchOperations:
             "datasets": datasets,
             "concepts": concepts,
         }
+
+
+def _pick_value(target_value, source_value, *, prefer: str, is_missing) -> object:
+    target_missing = is_missing(target_value)
+    source_missing = is_missing(source_value)
+    if prefer == "source":
+        if not source_missing:
+            return source_value
+        return target_value
+    if not target_missing:
+        return target_value
+    return source_value
+
+
+def _authors_json_missing(value: str | None) -> bool:
+    if value is None:
+        return True
+    text = value.strip()
+    if not text:
+        return True
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    if isinstance(parsed, list):
+        return len(parsed) == 0
+    return False
+
+
+def _pick_reading_status(target_status: str | None, source_status: str | None, *, prefer: str) -> str:
+    target = (target_status or "unread").strip() or "unread"
+    source = (source_status or "unread").strip() or "unread"
+    if prefer == "source":
+        if source != "unread":
+            return source
+        return target
+    if target != "unread":
+        return target
+    return source
+
+
+def _normalized_optional_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    return normalized or None
+
+
+def _normalized_title_key(title: str | None) -> str | None:
+    if title is None:
+        return None
+    collapsed = re.sub(r"\s+", " ", title.strip().lower())
+    normalized = re.sub(r"[^a-z0-9]+", " ", collapsed)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized or None
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
+def _delete_rows_by_ids(conn, table: str, ids: list[str]) -> int:
+    if not ids:
+        return 0
+    placeholders = ", ".join("?" for _ in ids)
+    return conn.execute(f"DELETE FROM {table} WHERE id IN ({placeholders})", tuple(ids)).rowcount
+
+
+def _latest_artifact_for_type(conn, paper_id: str, artifact_type: str):
+    return conn.execute(
+        """
+        SELECT *
+        FROM artifacts
+        WHERE paper_id = ? AND artifact_type = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (paper_id, artifact_type),
+    ).fetchone()
+
+
+def _merge_paper_artifacts(conn, *, target_paper_id: str, source_paper_id: str, prefer: str) -> dict:
+    target_rows = conn.execute(
+        "SELECT * FROM artifacts WHERE paper_id = ? ORDER BY created_at ASC, id ASC",
+        (target_paper_id,),
+    ).fetchall()
+    source_rows = conn.execute(
+        "SELECT * FROM artifacts WHERE paper_id = ? ORDER BY created_at ASC, id ASC",
+        (source_paper_id,),
+    ).fetchall()
+    target_by_type: dict[str, list] = defaultdict(list)
+    source_by_type: dict[str, list] = defaultdict(list)
+    for row in target_rows:
+        target_by_type[row["artifact_type"]].append(row)
+    for row in source_rows:
+        source_by_type[row["artifact_type"]].append(row)
+
+    moved = 0
+    replaced = 0
+    deleted = 0
+    for artifact_type, source_group in source_by_type.items():
+        target_group = target_by_type.get(artifact_type, [])
+        if not target_group:
+            ids = [row["id"] for row in source_group]
+            placeholders = ", ".join("?" for _ in ids)
+            moved += conn.execute(
+                f"UPDATE artifacts SET paper_id = ? WHERE id IN ({placeholders})",
+                (target_paper_id, *ids),
+            ).rowcount
+            continue
+
+        if prefer == "target":
+            deleted += _delete_rows_by_ids(conn, "artifacts", [row["id"] for row in source_group])
+            continue
+
+        keep_row = source_group[-1]
+        replaced += _delete_rows_by_ids(conn, "artifacts", [row["id"] for row in target_group])
+        extra_source_ids = [row["id"] for row in source_group[:-1]]
+        deleted += _delete_rows_by_ids(conn, "artifacts", extra_source_ids)
+        moved += conn.execute(
+            "UPDATE artifacts SET paper_id = ? WHERE id = ?",
+            (target_paper_id, keep_row["id"]),
+        ).rowcount
+
+    return {"moved": moved, "replaced": replaced, "deleted": deleted}
+
+
+def _dedupe_project_paper_links(conn, paper_id: str) -> int:
+    rows = conn.execute(
+        """
+        SELECT id, project_id, object_id, object_type, link_type
+        FROM project_links
+        WHERE object_type = 'paper' AND object_id = ?
+        ORDER BY created_at ASC, id ASC
+        """,
+        (paper_id,),
+    ).fetchall()
+    keep: set[tuple[str, str, str, str]] = set()
+    duplicate_ids: list[str] = []
+    for row in rows:
+        key = (row["project_id"], row["object_id"], row["object_type"], row["link_type"])
+        if key in keep:
+            duplicate_ids.append(row["id"])
+            continue
+        keep.add(key)
+    return _delete_rows_by_ids(conn, "project_links", duplicate_ids)
+
+
+def _dedupe_hypothesis_paper_links(conn, paper_id: str) -> int:
+    rows = conn.execute(
+        """
+        SELECT id, hypothesis_id, object_id, object_type, relation_type
+        FROM hypothesis_evidence_links
+        WHERE object_type = 'paper' AND object_id = ?
+        ORDER BY created_at ASC, id ASC
+        """,
+        (paper_id,),
+    ).fetchall()
+    keep: set[tuple[str, str, str, str]] = set()
+    duplicate_ids: list[str] = []
+    for row in rows:
+        key = (row["hypothesis_id"], row["object_id"], row["object_type"], row["relation_type"])
+        if key in keep:
+            duplicate_ids.append(row["id"])
+            continue
+        keep.add(key)
+    return _delete_rows_by_ids(conn, "hypothesis_evidence_links", duplicate_ids)
+
+
+def _dedupe_paper_edges(conn, paper_id: str) -> int:
+    rows = conn.execute(
+        """
+        SELECT id, source_id, source_type, relation_type, target_id, target_type, evidence_paper_id, confidence, metadata_json, created_by
+        FROM edges
+        WHERE (source_type = 'paper' AND source_id = ?)
+           OR (target_type = 'paper' AND target_id = ?)
+           OR evidence_paper_id = ?
+        ORDER BY created_at ASC, id ASC
+        """,
+        (paper_id, paper_id, paper_id),
+    ).fetchall()
+    keep: set[tuple] = set()
+    duplicate_ids: list[str] = []
+    for row in rows:
+        key = (
+            row["source_id"],
+            row["source_type"],
+            row["relation_type"],
+            row["target_id"],
+            row["target_type"],
+            row["evidence_paper_id"],
+            row["confidence"],
+            row["metadata_json"],
+            row["created_by"],
+        )
+        if key in keep:
+            duplicate_ids.append(row["id"])
+            continue
+        keep.add(key)
+    return _delete_rows_by_ids(conn, "edges", duplicate_ids)
 
 
 def _paper_payload(paper) -> dict:

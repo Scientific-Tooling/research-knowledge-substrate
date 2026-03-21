@@ -63,6 +63,18 @@ class CliSmokeTest(unittest.TestCase):
         self.assertEqual(papers_unmark_args.papers_command, "unmark")
         self.assertEqual(papers_unmark_args.tag, "read_later")
 
+        papers_merge_args = parser.parse_args(["papers", "merge", "p_000001", "p_000002"])
+        self.assertEqual(papers_merge_args.command, "papers")
+        self.assertEqual(papers_merge_args.papers_command, "merge")
+        self.assertEqual(papers_merge_args.target_paper_id, "p_000001")
+        self.assertEqual(papers_merge_args.source_paper_id, "p_000002")
+        self.assertEqual(papers_merge_args.prefer, "target")
+
+        papers_find_duplicates_args = parser.parse_args(["papers", "find-duplicates", "--mode", "identifiers"])
+        self.assertEqual(papers_find_duplicates_args.command, "papers")
+        self.assertEqual(papers_find_duplicates_args.papers_command, "find-duplicates")
+        self.assertEqual(papers_find_duplicates_args.mode, "identifiers")
+
     def test_stats_reports_workspace_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -147,6 +159,177 @@ class CliSmokeTest(unittest.TestCase):
             unmark_payload = json.loads(unmark_result.stdout)
             self.assertTrue(unmark_payload["deleted"])
             self.assertNotIn("read_later", unmark_payload["tags"])
+
+    def test_papers_merge_rehomes_references_and_deletes_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            canonical_pdf = tmp_path / "canonical.pdf"
+            canonical_pdf.write_bytes(b"%PDF-1.4\nCanonical record text.\n")
+            duplicate_pdf = tmp_path / "duplicate.pdf"
+            duplicate_pdf.write_bytes(b"%PDF-1.4\nDuplicate record text.\n")
+
+            canonical = json.loads(run_cli("ingest", "pdf", str(canonical_pdf), cwd=tmp_path).stdout)
+            duplicate = json.loads(run_cli("ingest", "pdf", str(duplicate_pdf), cwd=tmp_path).stdout)
+
+            self.assertEqual(run_cli("papers", "mark", canonical["id"], "--tag", "read_later", cwd=tmp_path).returncode, 0)
+            self.assertEqual(run_cli("papers", "mark", duplicate["id"], "--tag", "survey", cwd=tmp_path).returncode, 0)
+
+            note_result = run_cli(
+                "note",
+                "add",
+                "paper",
+                duplicate["id"],
+                "--content",
+                "duplicate-note",
+                cwd=tmp_path,
+            )
+            self.assertEqual(note_result.returncode, 0, note_result.stderr)
+
+            project_id = json.loads(
+                run_cli(
+                    "project",
+                    "create",
+                    "--name",
+                    "Merge Test Project",
+                    "--research-question",
+                    "Does merge preserve links?",
+                    cwd=tmp_path,
+                ).stdout
+            )["id"]
+            self.assertEqual(
+                run_cli("project", "add-paper", project_id, canonical["id"], "--link-type", "key_evidence", cwd=tmp_path).returncode,
+                0,
+            )
+            self.assertEqual(
+                run_cli("project", "add-paper", project_id, duplicate["id"], "--link-type", "key_evidence", cwd=tmp_path).returncode,
+                0,
+            )
+
+            hypothesis_id = json.loads(
+                run_cli(
+                    "hypothesis",
+                    "create",
+                    project_id,
+                    "--text",
+                    "merge should preserve evidence",
+                    "--status",
+                    "active",
+                    cwd=tmp_path,
+                ).stdout
+            )["id"]
+            self.assertEqual(
+                run_cli("hypothesis", "add-evidence", hypothesis_id, "paper", canonical["id"], cwd=tmp_path).returncode,
+                0,
+            )
+            self.assertEqual(
+                run_cli("hypothesis", "add-evidence", hypothesis_id, "paper", duplicate["id"], cwd=tmp_path).returncode,
+                0,
+            )
+
+            merge_result = run_cli("papers", "merge", canonical["id"], duplicate["id"], cwd=tmp_path)
+            self.assertEqual(merge_result.returncode, 0, merge_result.stderr)
+            merge_payload = json.loads(merge_result.stdout)
+            self.assertEqual(merge_payload["target_paper_id"], canonical["id"])
+            self.assertEqual(merge_payload["source_paper_id"], duplicate["id"])
+            self.assertTrue(merge_payload["source_deleted"])
+            self.assertEqual(merge_payload["paper"]["id"], canonical["id"])
+            self.assertEqual(merge_payload["paper"]["pdf_path"], canonical["pdf_path"])
+            self.assertGreaterEqual(merge_payload["moves"]["notes"], 1)
+
+            source_show = run_cli("show", "paper", duplicate["id"], cwd=tmp_path)
+            self.assertNotEqual(source_show.returncode, 0)
+            self.assertIn("Paper not found", source_show.stderr)
+
+            target_show = run_cli("show", "paper", canonical["id"], cwd=tmp_path)
+            self.assertEqual(target_show.returncode, 0, target_show.stderr)
+            target_payload = json.loads(target_show.stdout)
+            self.assertEqual({tag for tag in target_payload["tags"]}, {"read_later", "survey"})
+            self.assertTrue(any(note["content"] == "duplicate-note" for note in target_payload["notes"]))
+
+            project_papers = json.loads(run_cli("project", "papers", project_id, cwd=tmp_path).stdout)
+            self.assertEqual(len(project_papers), 1)
+            self.assertEqual(project_papers[0]["paper"]["id"], canonical["id"])
+
+            evidence_payload = json.loads(run_cli("hypothesis", "evidence", hypothesis_id, cwd=tmp_path).stdout)
+            self.assertEqual(len(evidence_payload), 1)
+            self.assertEqual(evidence_payload[0]["link"]["object_id"], canonical["id"])
+
+    def test_papers_merge_prefer_source_replaces_conflicting_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            target_pdf = tmp_path / "target.pdf"
+            target_pdf.write_bytes(b"%PDF-1.4\nTarget artifact content.\n")
+            source_pdf = tmp_path / "source.pdf"
+            source_pdf.write_bytes(b"%PDF-1.4\nSource artifact content.\n")
+
+            target = json.loads(run_cli("ingest", "pdf", str(target_pdf), cwd=tmp_path).stdout)
+            source = json.loads(run_cli("ingest", "pdf", str(source_pdf), cwd=tmp_path).stdout)
+
+            merge_result = run_cli("papers", "merge", target["id"], source["id"], "--prefer", "source", cwd=tmp_path)
+            self.assertEqual(merge_result.returncode, 0, merge_result.stderr)
+            merge_payload = json.loads(merge_result.stdout)
+            self.assertEqual(merge_payload["paper"]["id"], target["id"])
+            self.assertEqual(merge_payload["paper"]["pdf_path"], source["pdf_path"])
+            self.assertGreaterEqual(merge_payload["moves"]["artifacts_replaced"], 1)
+
+    def test_papers_find_duplicates_detects_title_based_duplicates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            first_pdf = tmp_path / "dup-a.pdf"
+            first_pdf.write_bytes(b"%PDF-1.4\nDuplicate A.\n")
+            second_pdf = tmp_path / "dup-b.pdf"
+            second_pdf.write_bytes(b"%PDF-1.4\nDuplicate B.\n")
+            unique_pdf = tmp_path / "unique.pdf"
+            unique_pdf.write_bytes(b"%PDF-1.4\nUnique.\n")
+
+            first = json.loads(
+                run_cli(
+                    "ingest",
+                    "pdf",
+                    str(first_pdf),
+                    "--title",
+                    "NCBI Conserved Domain Database",
+                    cwd=tmp_path,
+                ).stdout
+            )
+            second = json.loads(
+                run_cli(
+                    "ingest",
+                    "pdf",
+                    str(second_pdf),
+                    "--title",
+                    "  NCBI   conserved-domain database  ",
+                    cwd=tmp_path,
+                ).stdout
+            )
+            _unique = json.loads(
+                run_cli(
+                    "ingest",
+                    "pdf",
+                    str(unique_pdf),
+                    "--title",
+                    "Completely Different Paper",
+                    cwd=tmp_path,
+                ).stdout
+            )
+
+            heuristic_result = run_cli("papers", "find-duplicates", cwd=tmp_path)
+            self.assertEqual(heuristic_result.returncode, 0, heuristic_result.stderr)
+            heuristic_payload = json.loads(heuristic_result.stdout)
+            self.assertEqual(heuristic_payload["mode"], "heuristic")
+            self.assertEqual(heuristic_payload["group_count"], 1)
+            self.assertEqual(
+                set(heuristic_payload["groups"][0]["paper_ids"]),
+                {first["id"], second["id"]},
+            )
+            signal_kinds = {signal["kind"] for signal in heuristic_payload["groups"][0]["signals"]}
+            self.assertIn("title", signal_kinds)
+
+            identifier_result = run_cli("papers", "find-duplicates", "--mode", "identifiers", cwd=tmp_path)
+            self.assertEqual(identifier_result.returncode, 0, identifier_result.stderr)
+            identifier_payload = json.loads(identifier_result.stdout)
+            self.assertEqual(identifier_payload["mode"], "identifiers")
+            self.assertEqual(identifier_payload["group_count"], 0)
 
     def test_skills_list_and_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

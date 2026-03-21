@@ -135,6 +135,23 @@ rks status paper <paper_id>
 - `source_pdf.acquisition.status`
 - `artifacts`
 
+### 4.6 重复 paper 处理
+
+如果同一篇 paper 被重复 ingest（例如先 ingest DOI，再 ingest 本地 PDF），可以先检测再合并：
+
+```bash
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
+```
+
+使用建议：
+
+- `heuristic` 模式会使用 DOI、arXiv ID、规范化标题
+- `identifiers` 模式只使用 DOI、arXiv ID
+- `target_paper_id` 选你希望保留的 canonical 记录
+- merge 后用 `rks show paper <target_paper_id>` 复核结果
+
 ## 5. 抽取研究对象
 
 ### 5.1 抽取 text

@@ -31,6 +31,8 @@ The current implementation supports:
 - task queue and paper status inspection for agent-mode operations
 - workspace inventory stats for tracked papers, stored PDFs, artifacts, tasks, and graph object counts
 - listing recent papers and managing paper tags (for example `read_later`, `survey`, `replication`)
+- first-class paper merge for consolidating duplicate records into one canonical paper ID
+- first-class duplicate-paper detection with heuristic or identifier-only modes
 - config initialization, migration/version reporting, and graph snapshot export/import
 - stable agent-facing operations for paper status and claim-relation review over CLI and HTTP
 - bundled skill export for Codex, Claude Code, and other external agent tools
@@ -106,6 +108,9 @@ rks papers list --tag survey
 rks papers unmark p_000001 --tag read_later
 rks papers tags p_000001
 rks papers read-later
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+rks papers merge p_000001 p_000002 --prefer target
 rks show paper p_000001
 rks note add paper p_000001 --content "Revisit the evaluation protocol."
 rks note list paper p_000001

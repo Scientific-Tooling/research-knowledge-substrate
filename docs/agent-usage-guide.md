@@ -138,6 +138,27 @@ curl -s http://127.0.0.1:8765/api/papers/<paper_id>/notes
 curl -s -X POST http://127.0.0.1:8765/api/papers/<paper_id>/notes -H 'Content-Type: application/json' -d '{"content":"Need manual comparison against the follow-up reproduction.","created_by":"agent:review"}'
 ```
 
+### 5.3 Duplicate detection and consolidation
+
+If duplicate records appear, detect before merge:
+
+```bash
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+```
+
+Then consolidate to one canonical paper ID:
+
+```bash
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
+rks show paper <target_paper_id>
+```
+
+Agent rule:
+
+- prefer `--mode identifiers` when precision is more important than recall
+- in merge operations, use metadata-rich or project-linked paper as `target_paper_id`
+
 ## 6. Agent Request / Import Loops
 
 For tasks that rely on an external agent, RKS exposes an `agent` mode with a request/import boundary.

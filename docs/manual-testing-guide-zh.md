@@ -243,6 +243,43 @@ rks show paper <paper_id>
 - `note list` 能看到刚写入的内容
 - `show paper` 的 `notes` 字段包含这条笔记
 
+## 4.6 可选：重复 paper 检测与合并
+
+先准备两条同标题记录：
+
+```bash
+printf '%s\n' '%PDF-1.4' 'duplicate paper A' > duplicate-a.pdf
+printf '%s\n' '%PDF-1.4' 'duplicate paper B' > duplicate-b.pdf
+rks ingest pdf duplicate-a.pdf --title "NCBI Conserved Domain Database"
+rks ingest pdf duplicate-b.pdf --title "NCBI conserved-domain database"
+```
+
+执行重复检测：
+
+```bash
+rks papers find-duplicates
+rks papers find-duplicates --mode identifiers
+```
+
+预期结果：
+
+- `heuristic` 模式能识别出这两条记录是重复组
+- 如果缺少 DOI/arXiv，`identifiers` 模式可能返回 0 组
+
+再执行合并：
+
+```bash
+rks papers merge <target_paper_id> <source_paper_id> --prefer target
+rks show paper <target_paper_id>
+rks show paper <source_paper_id>
+```
+
+预期结果：
+
+- merge 输出里 `source_deleted=true`
+- `show paper <target_paper_id>` 成功
+- `show paper <source_paper_id>` 返回 `Paper not found`
+
 ## 5. 场景三：claim relation 的候选与审阅闭环
 
 这个场景建议用两到三个 paper 构造可对比的 claim。
