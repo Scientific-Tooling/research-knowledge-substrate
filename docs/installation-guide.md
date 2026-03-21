@@ -115,18 +115,24 @@ uv pip install research-knowledge-substrate
 
 ## 5. Initialize the Workspace
 
-After installation, initialize the local workspace:
+After installation, set your data directory and initialize the database in one step:
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 ```
+
+This writes `~/.rks/config.json` with the data directory path, creates the directory if needed, and initializes the database. The `rks` command will use this path from any working directory.
 
 Inspect the effective configuration:
 
 ```bash
 rks config show
+```
+
+To change the data directory later:
+
+```bash
+rks config set data-dir /new/path
 ```
 
 ## 6. Verify the Installation
@@ -136,7 +142,7 @@ At minimum, run:
 ```bash
 rks --help
 rks config show
-rks init-db
+rks doctor
 ```
 
 If these commands work, the installation is basically healthy.
@@ -235,7 +241,7 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
-If you only want to clear workspace data, you can remove the local `data/` directory, but that will also remove the local database and artifacts.
+If you only want to clear workspace data, you can remove the directory you passed to `rks init`, but that will also remove the local database and artifacts. After clearing, run `rks init <path>` again to reinitialize.
 
 ## 10. Common Problems
 

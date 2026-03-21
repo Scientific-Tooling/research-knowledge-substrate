@@ -115,18 +115,24 @@ uv pip install research-knowledge-substrate
 
 ## 5. 初始化工作区
 
-安装完成后，建议立刻初始化：
+安装完成后，指定数据目录并初始化数据库：
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 ```
+
+该命令会将路径写入 `~/.rks/config.json`，并创建数据库。此后在任意目录运行 `rks` 均可访问同一份数据。
 
 查看生效配置：
 
 ```bash
 rks config show
+```
+
+如需修改数据目录：
+
+```bash
+rks config set data-dir /new/path
 ```
 
 ## 6. 验证安装是否成功
@@ -136,7 +142,7 @@ rks config show
 ```bash
 rks --help
 rks config show
-rks init-db
+rks doctor
 ```
 
 如果命令能正常执行，说明安装基本成功。

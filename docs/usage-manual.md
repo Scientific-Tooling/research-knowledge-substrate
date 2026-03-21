@@ -25,14 +25,14 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
-Initialize local RKS state:
+Set your data directory and initialize local RKS state:
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 rks config show
 ```
+
+The `rks init <path>` command writes `~/.rks/config.json` and initializes the database. Run `rks` from any directory after this.
 
 ## 3. Quick Start (10-minute path)
 

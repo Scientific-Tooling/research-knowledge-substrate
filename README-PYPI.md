@@ -19,13 +19,13 @@ python3 -m venv .venv
 python -m pip install research-knowledge-substrate
 ```
 
-Initialize a workspace:
+Set your data directory and initialize the database:
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 ```
+
+Configuration is stored in `~/.rks/config.json`. The `rks` command works from any directory after this.
 
 ## Quick Start
 

@@ -24,13 +24,13 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
-Initialize the local workspace:
+Set your data directory and initialize the database:
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 ```
+
+This writes `~/.rks/config.json` and initializes the database. Run `rks` from any directory after this.
 
 Inspect the active configuration:
 
@@ -38,7 +38,7 @@ Inspect the active configuration:
 rks config show
 ```
 
-Important fields:
+Important fields in `effective`:
 
 - `data_dir`
 - `reference_pdf_acquisition`

@@ -33,7 +33,9 @@ The current implementation supports:
 - listing recent papers and managing paper tags (for example `read_later`, `survey`, `replication`)
 - first-class paper merge for consolidating duplicate records into one canonical paper ID
 - first-class duplicate-paper detection with heuristic or identifier-only modes
-- config initialization, migration/version reporting, and graph snapshot export/import
+- first-class `rks init <path>` for global data directory setup stored in `~/.rks/config.json`
+- config inspection and update via `rks config show` and `rks config set data-dir`
+- migration/version reporting and graph snapshot export/import
 - stable agent-facing operations for paper status and claim-relation review over CLI and HTTP
 - bundled skill export for Codex, Claude Code, and other external agent tools
 - a local HTTP service and lightweight UI with request logging, input validation, and structured error responses
@@ -50,12 +52,10 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
-Initialize the local database:
+Set your data directory and initialize the database:
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 ```
 
 Ingest a PDF:

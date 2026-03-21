@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from rks import __version__
@@ -15,7 +16,16 @@ from rks.agent import (
     record_task_report,
 )
 from rks.agent_skills import SKILL_BUNDLE_VERSION, export_bundled_skills, list_bundled_skills
-from rks.config import config_path, load_app_config, load_llm_config, load_paths, write_default_config
+from rks.config import (
+    ConfigError,
+    config_path,
+    global_config_path,
+    load_app_config,
+    load_global_config,
+    load_llm_config,
+    load_paths,
+    write_global_config,
+)
 from rks.extraction import (
     extract_claims_for_paper,
     extract_claims_with_llm,
@@ -71,8 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rks")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    init_parser = subparsers.add_parser("init-db", help="Initialize the local RKS SQLite database.")
-    init_parser.set_defaults(handler=handle_init_db)
+    init_parser = subparsers.add_parser("init", help="Set the global RKS data directory and initialize the database.")
+    init_parser.add_argument("path", type=Path, help="Directory to store RKS data (PDFs, database, artifacts).")
+    init_parser.set_defaults(handler=handle_init)
+
+    init_db_parser = subparsers.add_parser("init-db", help="Initialize the RKS SQLite database (requires prior `rks init`).")
+    init_db_parser.set_defaults(handler=handle_init_db)
 
     doctor_parser = subparsers.add_parser("doctor", help="Run installation and environment self-checks.")
     doctor_parser.set_defaults(handler=handle_doctor)
@@ -98,11 +112,15 @@ def build_parser() -> argparse.ArgumentParser:
     config_parser = subparsers.add_parser("config", help="Manage RKS configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
 
-    config_init_parser = config_subparsers.add_parser("init", help="Write a default config file into the workspace root.")
-    config_init_parser.set_defaults(handler=handle_config_init)
-
-    config_show_parser = config_subparsers.add_parser("show", help="Show the effective merged config.")
+    config_show_parser = config_subparsers.add_parser("show", help="Show the effective configuration and global config path.")
     config_show_parser.set_defaults(handler=handle_config_show)
+
+    config_set_parser = config_subparsers.add_parser("set", help="Set a configuration value in the global config.")
+    config_set_subparsers = config_set_parser.add_subparsers(dest="config_set_key", required=True)
+
+    config_set_data_dir_parser = config_set_subparsers.add_parser("data-dir", help="Set the global data directory path.")
+    config_set_data_dir_parser.add_argument("path", type=Path, help="Absolute or relative path to the data directory.")
+    config_set_data_dir_parser.set_defaults(handler=handle_config_set_data_dir)
 
     skills_parser = subparsers.add_parser("skills", help="Inspect or export bundled agent skills.")
     skills_subparsers = skills_parser.add_subparsers(dest="skills_command", required=True)
@@ -828,7 +846,41 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.handler(args))
+    try:
+        return int(args.handler(args))
+    except ConfigError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+def handle_init(args: argparse.Namespace) -> int:
+    data_dir = args.path.expanduser().resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    global_cfg = load_global_config()
+    global_cfg["data_dir"] = str(data_dir)
+    cfg_path = write_global_config(global_cfg)
+    # Initialize the database
+    from rks.storage import connect_db, initialize_db
+    from rks.storage.db import apply_migrations
+    db_path = data_dir / "rks.sqlite3"
+    conn = connect_db(db_path)
+    try:
+        initialize_db(conn)
+        apply_migrations(conn)
+    finally:
+        conn.close()
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "data_dir": str(data_dir),
+                "global_config": str(cfg_path),
+                "db_path": str(db_path),
+            },
+            indent=2,
+        )
+    )
+    return 0
 
 
 def handle_init_db(args: argparse.Namespace) -> int:
@@ -838,28 +890,50 @@ def handle_init_db(args: argparse.Namespace) -> int:
     return 0
 
 
-def handle_config_init(args: argparse.Namespace) -> int:
-    del args
-    destination = write_default_config(config_path())
-    print(json.dumps({"config_path": str(destination)}, indent=2))
-    return 0
-
-
 def handle_config_show(args: argparse.Namespace) -> int:
     del args
-    app_config = load_app_config()
+    gcfg_path = global_config_path()
+    global_cfg = load_global_config()
+    try:
+        app_config = load_app_config()
+        effective: dict = {
+            "data_dir": str(app_config.data_dir),
+            "reference_pdf_acquisition": app_config.reference_pdf_acquisition,
+            "llm": {
+                "base_url": app_config.llm_base_url,
+                "model": app_config.llm_model,
+                "api_key_env": app_config.llm_api_key_env,
+            },
+        }
+    except ConfigError:
+        effective = None
     print(
         json.dumps(
             {
-                "root": str(app_config.root),
-                "data_dir": str(app_config.data_dir),
-                "reference_pdf_acquisition": app_config.reference_pdf_acquisition,
-                "llm": {
-                    "base_url": app_config.llm_base_url,
-                    "model": app_config.llm_model,
-                    "api_key_env": app_config.llm_api_key_env,
-                },
-                "config_path": str(config_path(app_config.root)),
+                "global_config_path": str(gcfg_path),
+                "global_config_exists": gcfg_path.exists(),
+                "effective": effective,
+                "raw_global_config": global_cfg,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def handle_config_set_data_dir(args: argparse.Namespace) -> int:
+    data_dir = args.path.expanduser().resolve()
+    global_cfg = load_global_config()
+    old_value = global_cfg.get("data_dir")
+    global_cfg["data_dir"] = str(data_dir)
+    cfg_path = write_global_config(global_cfg)
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "global_config": str(cfg_path),
+                "data_dir": str(data_dir),
+                "previous_data_dir": old_value,
             },
             indent=2,
         )
@@ -885,23 +959,35 @@ def handle_skills_export(args: argparse.Namespace) -> int:
 
 def handle_doctor(args: argparse.Namespace) -> int:
     del args
-    app_config = load_app_config()
-    paths = load_paths()
-    config_exists = config_path(app_config.root).exists()
-    data_dir_exists = paths.data_dir.exists()
-    db_exists = paths.db_path.exists()
+    gcfg_path = global_config_path()
+    global_cfg_exists = gcfg_path.exists()
+    global_cfg_has_data_dir = "data_dir" in load_global_config()
+
+    try:
+        app_config = load_app_config()
+        paths = load_paths()
+        data_dir_exists = paths.data_dir.exists()
+        db_exists = paths.db_path.exists()
+        data_dir_str = str(paths.data_dir)
+        db_path_str = str(paths.db_path)
+    except ConfigError:
+        data_dir_exists = False
+        db_exists = False
+        data_dir_str = None
+        db_path_str = None
+
     checks = {
-        "config_file": {
-            "ok": config_exists,
-            "path": str(config_path(app_config.root)),
+        "global_config": {
+            "ok": global_cfg_has_data_dir,
+            "path": str(gcfg_path),
         },
         "data_dir": {
             "ok": data_dir_exists,
-            "path": str(paths.data_dir),
+            "path": data_dir_str,
         },
         "database": {
             "ok": db_exists,
-            "path": str(paths.db_path),
+            "path": db_path_str,
         },
         "migrations": {
             "ok": True,
@@ -918,9 +1004,9 @@ def handle_doctor(args: argparse.Namespace) -> int:
         "version": __version__,
         "overall_status": overall_status,
         "paths": {
-            "root": str(app_config.root),
-            "data_dir": str(paths.data_dir),
-            "db_path": str(paths.db_path),
+            "global_config": str(gcfg_path),
+            "data_dir": data_dir_str,
+            "db_path": db_path_str,
         },
         "checks": checks,
         "recommended_actions": _doctor_recommended_actions(checks),
@@ -945,11 +1031,9 @@ def handle_migrate(args: argparse.Namespace) -> int:
 
 def _doctor_recommended_actions(checks: dict) -> list[str]:
     actions = []
-    if not checks["config_file"]["ok"]:
-        actions.append("rks config init")
-    if not checks["database"]["ok"]:
-        actions.append("rks init-db")
-    if not checks["data_dir"]["ok"] and "rks init-db" not in actions:
+    if not checks["global_config"]["ok"]:
+        actions.append("rks init <path>  # set your data directory")
+    elif not checks["data_dir"]["ok"] or not checks["database"]["ok"]:
         actions.append("rks init-db")
     if not actions:
         actions.append("rks --help")

@@ -38,13 +38,13 @@ python -m pip install -e .
 Initialize RKS:
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 rks config show
 ```
 
-Important fields for agents:
+This writes `~/.rks/config.json` with the data directory and initializes the database. The `rks` command works from any directory after this.
+
+Important fields for agents (under `effective`):
 
 - `data_dir`
 - `reference_pdf_acquisition`

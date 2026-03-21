@@ -24,13 +24,13 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
-初始化本地工作区：
+指定数据目录并初始化数据库：
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 ```
+
+该命令写入 `~/.rks/config.json`，并初始化数据库，此后在任意目录运行 `rks` 均可访问同一份数据。
 
 查看当前配置：
 
@@ -38,7 +38,7 @@ rks migrate
 rks config show
 ```
 
-常用配置关注点：
+常用配置关注点（位于 `effective` 字段下）：
 
 - `data_dir`：数据目录
 - `reference_pdf_acquisition`：参考文献 ingest 时是否尝试获取 PDF

@@ -29,9 +29,7 @@ python -m pip install -e .
 Initialize the workspace:
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 ```
 
 Inspect configuration:
@@ -42,8 +40,8 @@ rks config show
 
 Pay attention to:
 
-- `data_dir`
-- `reference_pdf_acquisition`, which should normally be `auto`
+- `effective.data_dir`
+- `effective.reference_pdf_acquisition`, which should normally be `auto`
 
 ## 3. Scenario 1: Local PDF Ingest and Basic Extraction
 

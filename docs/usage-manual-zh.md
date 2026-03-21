@@ -24,14 +24,14 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
-初始化本地状态：
+指定数据目录并初始化本地状态：
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 rks config show
 ```
+
+`rks init <path>` 会写入 `~/.rks/config.json` 并初始化数据库，此后在任意目录运行 `rks` 均可访问同一份数据。
 
 ## 3. 快速上手（10 分钟路径）
 

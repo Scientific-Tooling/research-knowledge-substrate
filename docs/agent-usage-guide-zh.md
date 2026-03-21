@@ -38,13 +38,13 @@ python -m pip install -e .
 初始化 RKS：
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 rks config show
 ```
 
-agent 需要特别关注：
+`rks init <path>` 会写入 `~/.rks/config.json` 并初始化数据库，此后在任意目录运行 `rks` 均可访问同一份数据。
+
+agent 需要特别关注（位于 `effective` 字段下）：
 
 - `data_dir`
 - `reference_pdf_acquisition`

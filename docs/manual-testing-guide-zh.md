@@ -29,9 +29,7 @@ python -m pip install -e .
 初始化本地工作区：
 
 ```bash
-rks config init
-rks init-db
-rks migrate
+rks init ~/rks-data
 ```
 
 建议先查看当前配置：
@@ -42,8 +40,8 @@ rks config show
 
 重点确认：
 
-- `data_dir` 指向当前工作目录下的数据目录
-- `reference_pdf_acquisition` 默认是 `auto`
+- `effective.data_dir` 指向正确的数据目录
+- `effective.reference_pdf_acquisition` 默认是 `auto`
 
 ## 2.1 使用 Codex 作为外部 agent 操作 RKS
 
