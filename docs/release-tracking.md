@@ -6,12 +6,12 @@ This document tracks work since the latest release tag so it is clear when to cu
 
 - Last release tag: `v0.1.0`
 - Release tag commit: `c037ea7` (2026-03-19)
-- Current `HEAD`: `045ee47` (2026-03-20)
+- Current `HEAD`: `ea1e555` (2026-03-21)
 
 ## Delta Since `v0.1.0`
 
-- Commit count: 4
-- Diff summary: 26 files changed, 777 insertions, 9 deletions
+- Commit count: 5
+- Diff summary: 34 files changed, 1732 insertions, 9 deletions
 
 ## Work Log
 
@@ -20,7 +20,7 @@ This document tracks work since the latest release tag so it is clear when to cu
 | 2026-03-19 | `6ec827c` | docs | Added GitHub ZIP download installation path in EN/ZH install guides. | Documentation only; does not require release alone. |
 | 2026-03-20 | `27ecb46` | feature | Added `rks stats`, `rks papers list/mark/unmark/tags/read-later`, new `paper_tags` table, and `reading_status` schema support. Updated docs/skills/tests. | User-facing CLI features plus schema migrations; strong release signal. |
 | 2026-03-20 | `5b586b7` | fix | Made migration flow resilient when `papers.reading_status` exists but migration history is missing. Added regression test. | Stability fix for migration path; release-worthy with the feature set above. |
-| 2026-03-21 | `unreleased` | feature | Added `rks papers find-duplicates` (`heuristic` / `identifiers`) and first-class `rks papers merge`. Re-homing logic now consolidates notes, links, tags, tasks, and paper-scoped references; docs and tests updated (EN/ZH). | User-facing paper-management capability expansion; strengthens `v0.2.0` release signal. |
+| 2026-03-21 | `ea1e555` | feature | Added `rks papers find-duplicates` (`heuristic` / `identifiers`) and first-class `rks papers merge`. Re-homing logic now consolidates notes, links, tags, tasks, and paper-scoped references; docs and tests updated (EN/ZH). | User-facing paper-management capability expansion; strengthens `v0.2.0` release signal. |
 
 ## Release Decision Rules
 
