@@ -614,6 +614,27 @@ def build_parser() -> argparse.ArgumentParser:
     tasks_fail_parser.add_argument("message", help="Failure message to record.")
     tasks_fail_parser.set_defaults(handler=handle_tasks_fail)
 
+    tasks_wait_parser = tasks_subparsers.add_parser(
+        "wait",
+        help="Block until a task reaches a terminal state (completed or failed).",
+    )
+    tasks_wait_parser.add_argument("task_id", help="Task ID, for example t_000001.")
+    tasks_wait_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        metavar="SECONDS",
+        help="Maximum seconds to wait before giving up (default: 300).",
+    )
+    tasks_wait_parser.add_argument(
+        "--interval",
+        type=float,
+        default=2.0,
+        metavar="SECONDS",
+        help="Poll interval in seconds (default: 2).",
+    )
+    tasks_wait_parser.set_defaults(handler=handle_tasks_wait)
+
     review_parser = subparsers.add_parser("review", help="Promote or retract reviewed graph facts.")
     review_subparsers = review_parser.add_subparsers(dest="review_command", required=True)
 
@@ -914,7 +935,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.handler(args))
     except ConfigError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(json.dumps({"error": "config_error", "message": str(exc)}, indent=2), file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(json.dumps({"error": "internal_error", "type": type(exc).__name__, "message": str(exc)}, indent=2), file=sys.stderr)
         return 1
 
 
@@ -2277,6 +2301,34 @@ def handle_tasks_fail(args: argparse.Namespace) -> int:
         record_task_report(session.papers, load_paths(), task, note="Task marked as failed.", error={"message": args.message})
     print(json.dumps(_task_payload(task), indent=2))
     return 0
+
+
+def handle_tasks_wait(args: argparse.Namespace) -> int:
+    import time
+
+    terminal = {"completed", "failed"}
+    deadline = time.monotonic() + args.timeout
+    while True:
+        with _open_session() as session:
+            task = session.tasks.get_task(args.task_id)
+        if task.status in terminal:
+            print(json.dumps(_task_payload(task), indent=2))
+            return 0 if task.status == "completed" else 1
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            print(
+                json.dumps(
+                    {
+                        "error": "timeout",
+                        "message": f"Task {args.task_id} did not reach a terminal state within {args.timeout}s.",
+                        "task": _task_payload(task),
+                    },
+                    indent=2,
+                ),
+                file=sys.stderr,
+            )
+            return 1
+        time.sleep(min(args.interval, remaining))
 
 
 def handle_review_promote_claim_relation(args: argparse.Namespace) -> int:

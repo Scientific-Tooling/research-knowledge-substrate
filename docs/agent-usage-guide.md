@@ -364,6 +364,18 @@ rks tasks list --paper-id <paper_id>
 rks tasks show <task_id>
 ```
 
+Block until a task completes instead of polling manually:
+
+```bash
+rks tasks wait <task_id>               # default: 300s timeout, 2s poll interval
+rks tasks wait <task_id> --timeout 60  # fail after 60s
+rks tasks wait <task_id> --interval 5  # poll every 5s
+```
+
+Exit code 0 = completed, exit code 1 = failed or timed out. On timeout, a JSON error is written to stderr.
+
+CLI errors are always emitted as JSON. `config_error` means the data directory is not configured; `internal_error` includes the exception type and message. Both go to stderr so stdout stays clean for parsers.
+
 Mark failure:
 
 ```bash

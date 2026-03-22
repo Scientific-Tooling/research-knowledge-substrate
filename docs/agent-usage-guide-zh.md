@@ -369,6 +369,18 @@ rks tasks list --paper-id <paper_id>
 rks tasks show <task_id>
 ```
 
+阻塞等待任务完成（代替手动轮询）：
+
+```bash
+rks tasks wait <task_id>               # 默认：超时 300s，轮询间隔 2s
+rks tasks wait <task_id> --timeout 60  # 60s 后超时
+rks tasks wait <task_id> --interval 5  # 每 5s 轮询一次
+```
+
+退出码 0 = completed，退出码 1 = failed 或超时。超时时，JSON 格式的错误信息写入 stderr。
+
+CLI 错误始终以 JSON 格式输出。`config_error` 表示数据目录未配置；`internal_error` 包含异常类型和消息。两者均写入 stderr，stdout 保持纯 JSON 供解析器使用。
+
 标记失败：
 
 ```bash
