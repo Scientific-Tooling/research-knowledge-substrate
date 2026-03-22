@@ -15,6 +15,7 @@ from rks.llm import (
     SUMMARY_SCHEMA_VERSION,
     TEXT_SCHEMA_VERSION,
     build_dual_track_request,
+    check_concept_alias_format,
     validate_claims_result_payload,
     validate_datasets_result_payload,
     validate_methods_result_payload,
@@ -73,10 +74,20 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
             "experiments, results, conclusion, or discussion). "
             "Put the dataset name (if any) in `context.dataset`. "
             "Put a short verbatim supporting quote in `evidence.quote`. "
-            "Also include an optional top-level `concept_aliases` list. "
-            "Each entry must have `canonical` (the preferred concept name) and `aliases` "
-            "(a list of synonymous terms found in this paper, e.g. abbreviations, full names, "
-            "or alternate spellings). This reduces concept fragmentation across papers."
+            "Also include a top-level `concept_aliases` list for every concept mentioned "
+            "in the claims. Each entry must have `canonical` and `aliases`. "
+            "Rules for `canonical`: "
+            "(1) Use the full English name, not an abbreviation — "
+            "GOOD: 'Bidirectional Encoder Representations from Transformers', BAD: 'BERT'. "
+            "(2) Singular noun phrase, no leading articles ('a', 'an', 'the'). "
+            "(3) Title Case; preserve ALL-CAPS acronyms as-is. "
+            "(4) If the paper writes 'Full Name (ABBREV)', set canonical to 'Full Name' "
+            "and put 'ABBREV' in aliases. "
+            "(5) Use the standard field name where one exists "
+            "(e.g. 'Attention Mechanism', not 'Attention mechanisms model'). "
+            "`aliases` must include ALL surface forms seen in this paper: "
+            "abbreviations, lowercase variants, hyphenated forms, plural forms. "
+            "This ensures concepts from different papers merge into a single node."
         ),
         input_payload=text_payload,
         expected_output_schema={
@@ -399,6 +410,14 @@ def import_claims_result(
         evidence = dict(claim.get("evidence", {}))
         evidence.setdefault("schema_version", CLAIMS_SCHEMA_VERSION)
         claim["evidence"] = evidence
+
+    # Warn about concept_aliases naming quality without blocking import.
+    alias_warnings = check_concept_alias_format(raw)
+    if alias_warnings:
+        import logging
+        _log = logging.getLogger(__name__)
+        for w in alias_warnings:
+            _log.warning("concept_alias_format [paper=%s]: %s", paper_id, w)
 
     # Apply concept aliases before claim persistence so concept resolution benefits immediately.
     concept_aliases = raw.get("concept_aliases", []) if isinstance(raw, dict) else []

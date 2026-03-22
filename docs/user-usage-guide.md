@@ -170,7 +170,7 @@ rks papers merge <target_paper_id> <source_paper_id> --prefer target
 
 Guidance:
 
-- `heuristic` mode uses DOI, arXiv ID, and normalized title
+- `title` mode uses DOI, arXiv ID, and normalized title
 - `identifiers` mode uses DOI and arXiv ID only
 - keep the canonical record as `target_paper_id`
 - after merge, verify with `rks show paper <target_paper_id>`
@@ -186,7 +186,6 @@ rks extract text <paper_id>
 Explicit modes:
 
 ```bash
-rks extract text <paper_id> --mode heuristic
 rks extract text <paper_id> --mode llm-api
 rks extract text <paper_id> --mode agent
 ```
@@ -200,7 +199,6 @@ rks extract claims <paper_id>
 Common modes:
 
 ```bash
-rks extract claims <paper_id> --mode heuristic
 rks extract claims <paper_id> --mode llm-api
 rks extract claims <paper_id> --mode agent
 ```

@@ -99,7 +99,6 @@ rks papers merge <target_paper_id> <source_paper_id> --prefer target
 
 ```bash
 rks extract text <paper_id>
-rks extract text <paper_id> --mode heuristic
 rks extract text <paper_id> --mode llm-api
 rks extract text <paper_id> --mode agent
 ```
@@ -108,7 +107,6 @@ rks extract text <paper_id> --mode agent
 
 ```bash
 rks extract claims <paper_id>
-rks extract claims <paper_id> --mode heuristic
 rks extract claims <paper_id> --mode llm-api
 rks extract claims <paper_id> --mode agent
 ```
@@ -284,7 +282,7 @@ curl -s "http://127.0.0.1:8765/api/output/brief?topic=Sparse%20Attention"
 
 - 检查 `RKS_LLM_API_KEY`
 - 检查 `llm.base_url`
-- 可切回 `--mode heuristic` 做本地兜底
+- 检查 LLM provider 配置（base_url、model、api_key）
 
 ### 13.3 导入后输出缺失
 

@@ -261,7 +261,7 @@ rks papers find-duplicates --mode identifiers
 
 预期结果：
 
-- `heuristic` 模式能识别出这两条记录是重复组
+- `title` 模式能识别出这两条记录是重复组
 - 如果缺少 DOI/arXiv，`identifiers` 模式可能返回 0 组
 
 再执行合并：

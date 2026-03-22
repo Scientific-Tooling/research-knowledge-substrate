@@ -169,11 +169,11 @@ class EdgeRepository:
     def list_papers_supporting_claim(self, claim_id: str, paper_repo) -> list:
         rows = self.conn.execute(
             """
-            SELECT target_id
+            SELECT source_id
             FROM edges
-            WHERE source_id = ? AND relation_type = 'supported_by' AND target_type = 'paper'
-            ORDER BY target_id ASC
+            WHERE target_id = ? AND relation_type = 'supports' AND source_type = 'paper'
+            ORDER BY source_id ASC
             """,
             (claim_id,),
         ).fetchall()
-        return [paper_repo.get_paper(row["target_id"]) for row in rows]
+        return [paper_repo.get_paper(row["source_id"]) for row in rows]

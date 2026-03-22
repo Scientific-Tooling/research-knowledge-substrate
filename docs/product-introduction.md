@@ -113,8 +113,6 @@ LLM-backed tasks follow a dual-track contract:
 - `llm-api`: RKS calls provider APIs directly
 - `agent`: external agent performs the task and imports results back
 
-If a local deterministic fallback exists, `heuristic` mode is also available.
-
 This design keeps automation flexible while maintaining clear boundaries and auditability.
 
 ## 8. Typical End-to-end Workflow

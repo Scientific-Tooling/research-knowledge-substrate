@@ -11,7 +11,6 @@ TABLES = [
     "research_projects",
     "project_links",
     "hypotheses",
-    "hypothesis_evidence_links",
     "papers",
     "paper_tags",
     "claims",

@@ -51,11 +51,11 @@ def link_claims_for_paper(
             metadata={"predicate": claim.predicate},
         )
         edge_repo.create_edge(
-            source_id=claim.id,
-            source_type="claim",
-            relation_type="supported_by",
-            target_id=paper_id,
-            target_type="paper",
+            source_id=paper_id,
+            source_type="paper",
+            relation_type="supports",
+            target_id=claim.id,
+            target_type="claim",
             evidence_paper_id=paper_id,
             confidence=claim.confidence,
             metadata={"predicate": claim.predicate},

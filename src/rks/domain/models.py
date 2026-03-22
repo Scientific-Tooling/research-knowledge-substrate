@@ -101,6 +101,11 @@ class ConceptRecord:
     status: str
     created_at: str
     updated_at: str
+    # Rigid designator (Kripke): a well-known abbreviation such as "BERT" or
+    # "LLM" that unambiguously identifies this concept across papers.  Stored
+    # as a dedicated indexed column so lookup by abbreviation is O(1) and takes
+    # precedence over name / aliases_json during concept resolution.
+    canonical_abbrev: Optional[str] = None
 
 
 @dataclass(frozen=True)
