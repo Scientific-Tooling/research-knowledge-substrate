@@ -262,11 +262,31 @@ rks batch extract claims manifest.json
 rks batch output brief manifest.json
 ```
 
-Export/import graph snapshot:
+Export/import graph snapshot (DB tables only, no files):
 
 ```bash
 rks export graph snapshot.json
 rks import graph snapshot.json
+```
+
+Export/import full workspace (DB tables + all artifact files, machine-portable):
+
+```bash
+rks export workspace ~/my_workspace.tar.gz
+rks import workspace ~/my_workspace.tar.gz
+```
+
+The workspace archive bundles everything — PDFs, extracted text, and all other artifact files — alongside the graph snapshot. File paths are stored as relative paths inside the archive and rewritten to absolute paths under the active `data_dir` on import. Use this to move an entire RKS workspace between machines:
+
+```bash
+# Source machine
+rks export workspace ~/rks_backup.tar.gz
+
+# Transfer archive (scp, USB, cloud, etc.)
+scp ~/rks_backup.tar.gz user@newmachine:~/
+
+# New machine (after rks init)
+rks import workspace ~/rks_backup.tar.gz
 ```
 
 ## 12. Local Service and HTTP Mirror
