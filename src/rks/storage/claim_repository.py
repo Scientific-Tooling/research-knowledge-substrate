@@ -17,7 +17,7 @@ class ClaimRepository:
         self,
         paper_id: str,
         claims: list[dict],
-        created_by: str = "system:heuristic",
+        created_by: str = "system:pipeline",
     ) -> list[ClaimRecord]:
         timestamp = utc_now()
         existing_by_fingerprint = self._existing_claims_by_fingerprint(paper_id)

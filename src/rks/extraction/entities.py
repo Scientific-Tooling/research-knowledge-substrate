@@ -83,7 +83,7 @@ def extract_methods_for_paper(
         "methods",
         "methods.json",
         methods,
-        {"count": len(methods), "extractor": "heuristic", "extractor_version": METHOD_EXTRACTOR_VERSION},
+        {"count": len(methods), "extractor": "regex", "extractor_version": METHOD_EXTRACTOR_VERSION},
     )
     _rebuild_research_object_edges(
         claim_repo=claim_repo,
@@ -169,7 +169,7 @@ def extract_datasets_for_paper(
         {
             "name": candidate["name"],
             "description": candidate["description"],
-            "source": "heuristic",
+            "source": "regex",
         }
         for candidate in candidates.values()
     ]
@@ -181,7 +181,7 @@ def extract_datasets_for_paper(
         "datasets",
         "datasets.json",
         datasets,
-        {"count": len(datasets), "extractor": "heuristic", "extractor_version": DATASET_EXTRACTOR_VERSION},
+        {"count": len(datasets), "extractor": "regex", "extractor_version": DATASET_EXTRACTOR_VERSION},
     )
     _rebuild_research_object_edges(
         claim_repo=claim_repo,

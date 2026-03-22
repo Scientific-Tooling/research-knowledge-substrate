@@ -16,7 +16,7 @@ from rks.reasoning.output import (
     build_topic_reading_list,
     build_topic_review_priorities,
 )
-from rks.reasoning.summary import summarize_paper_heuristic
+from rks.reasoning.summary import summarize_paper_from_graph
 
 __all__ = [
     "plan_research_request",
@@ -35,5 +35,5 @@ __all__ = [
     "build_topic_open_questions",
     "build_topic_reading_list",
     "build_topic_review_priorities",
-    "summarize_paper_heuristic",
+    "summarize_paper_from_graph",
 ]

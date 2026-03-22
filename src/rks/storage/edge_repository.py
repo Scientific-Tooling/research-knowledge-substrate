@@ -36,7 +36,7 @@ class EdgeRepository:
         evidence_paper_id: str | None,
         confidence: float | None,
         metadata: dict | None,
-        created_by: str = "system:heuristic",
+        created_by: str = "system:pipeline",
     ) -> EdgeRecord:
         edge_id = next_id(self.conn, "edge")
         timestamp = utc_now()

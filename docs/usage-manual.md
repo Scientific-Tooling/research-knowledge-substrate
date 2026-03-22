@@ -101,7 +101,6 @@ rks papers merge <target_paper_id> <source_paper_id> --prefer target
 
 ```bash
 rks extract text <paper_id>
-rks extract text <paper_id> --mode heuristic
 rks extract text <paper_id> --mode llm-api
 rks extract text <paper_id> --mode agent
 ```
@@ -110,7 +109,6 @@ rks extract text <paper_id> --mode agent
 
 ```bash
 rks extract claims <paper_id>
-rks extract claims <paper_id> --mode heuristic
 rks extract claims <paper_id> --mode llm-api
 rks extract claims <paper_id> --mode agent
 ```
@@ -151,6 +149,8 @@ rks concepts <paper_id>
 rks methods <paper_id>
 rks datasets <paper_id>
 rks show claim <claim_id>
+rks concept add-alias <concept_id> <alias>
+rks concept merge <source_concept_id> <target_concept_id>
 ```
 
 ### 6.2 Search and deterministic query
@@ -297,7 +297,7 @@ curl -s "http://127.0.0.1:8765/api/output/brief?topic=Sparse%20Attention"
 
 - check `RKS_LLM_API_KEY`
 - verify provider endpoint (`llm.base_url`)
-- retry with `--mode heuristic` when available
+- retry with `--mode agent` to delegate extraction to the surrounding agent
 
 ### 13.3 Missing outputs after ingestion
 

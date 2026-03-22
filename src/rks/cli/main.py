@@ -208,7 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_paper_output_parser.add_argument(
         "--apply",
         action="store_true",
-        help="Execute the missing local heuristic steps instead of only planning them.",
+        help="Execute the missing local steps instead of only planning them.",
     )
     prepare_paper_output_parser.set_defaults(handler=handle_prepare_paper_output)
 
@@ -304,13 +304,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     papers_find_duplicates_parser = papers_subparsers.add_parser(
         "find-duplicates",
-        help="Find likely duplicate papers by identifier and optional title heuristics.",
+        help="Find likely duplicate papers by identifier and optional title matching.",
     )
     papers_find_duplicates_parser.add_argument(
         "--mode",
-        choices=("heuristic", "identifiers"),
-        default="heuristic",
-        help="Detection mode. heuristic uses DOI/arXiv/title; identifiers uses DOI/arXiv only.",
+        choices=("title", "identifiers"),
+        default="title",
+        help="Detection mode. title uses DOI/arXiv/title; identifiers uses DOI/arXiv only.",
     )
     papers_find_duplicates_parser.set_defaults(handler=handle_papers_find_duplicates)
 
@@ -438,6 +438,21 @@ def build_parser() -> argparse.ArgumentParser:
     concepts_parser = subparsers.add_parser("concepts", help="List concepts linked to a paper.")
     concepts_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     concepts_parser.set_defaults(handler=handle_concepts)
+
+    concept_parser = subparsers.add_parser("concept", help="Manage stored concepts.")
+    concept_subparsers = concept_parser.add_subparsers(dest="concept_command", required=True)
+
+    concept_add_alias_parser = concept_subparsers.add_parser("add-alias", help="Add an alias to a concept.")
+    concept_add_alias_parser.add_argument("concept_id", help="Concept ID, for example k_000001.")
+    concept_add_alias_parser.add_argument("alias", help="Alias term to add.")
+    concept_add_alias_parser.set_defaults(handler=handle_concept_add_alias)
+
+    concept_merge_parser = concept_subparsers.add_parser(
+        "merge", help="Merge source concept into target, re-homing all claims and edges."
+    )
+    concept_merge_parser.add_argument("source_id", help="Concept ID to absorb and delete, for example k_000002.")
+    concept_merge_parser.add_argument("target_id", help="Concept ID to keep, for example k_000001.")
+    concept_merge_parser.set_defaults(handler=handle_concept_merge)
 
     search_parser = subparsers.add_parser("search", help="Run local text search across papers, claims, and concepts.")
     search_parser.add_argument("query", help="Search query text.")
@@ -1725,6 +1740,20 @@ def handle_concepts(args: argparse.Namespace) -> int:
             embedding_provider=LocalHashEmbeddingProvider(),
         )
         payload = query.concepts_for_paper(args.paper_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_concept_add_alias(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).add_concept_alias(args.concept_id, args.alias)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_concept_merge(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).merge_concepts(args.source_id, args.target_id)
     print(json.dumps(payload, indent=2))
     return 0
 

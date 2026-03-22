@@ -93,6 +93,64 @@ class ConceptRepository:
                 matches.append(record)
         return matches
 
+    def add_aliases(self, concept_id: str, new_aliases: list[str]) -> ConceptRecord:
+        concept = self.get_concept(concept_id)
+        existing: set[str] = set(json.loads(concept.aliases_json or "[]"))
+        for alias in new_aliases:
+            for candidate in alias_candidates(alias):
+                existing.add(candidate)
+        self.conn.execute(
+            "UPDATE concepts SET aliases_json = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(sorted(existing), sort_keys=True), utc_now(), concept_id),
+        )
+        self.conn.commit()
+        return self.get_concept(concept_id)
+
+    def merge_into(self, source_id: str, target_id: str) -> dict:
+        source = self.get_concept(source_id)
+        target = self.get_concept(target_id)
+        timestamp = utc_now()
+
+        absorbed = [source.name] + json.loads(source.aliases_json or "[]")
+        self.add_aliases(target_id, absorbed)
+
+        moved_subject = self.conn.execute(
+            "UPDATE claims SET subject_concept_id = ?, updated_at = ? WHERE subject_concept_id = ?",
+            (target_id, timestamp, source_id),
+        ).rowcount
+        moved_object = self.conn.execute(
+            "UPDATE claims SET object_concept_id = ?, updated_at = ? WHERE object_concept_id = ?",
+            (target_id, timestamp, source_id),
+        ).rowcount
+        moved_edge_sources = self.conn.execute(
+            "UPDATE edges SET source_id = ? WHERE source_type = 'concept' AND source_id = ?",
+            (target_id, source_id),
+        ).rowcount
+        moved_edge_targets = self.conn.execute(
+            "UPDATE edges SET target_id = ? WHERE target_type = 'concept' AND target_id = ?",
+            (target_id, source_id),
+        ).rowcount
+        self.conn.execute(
+            "DELETE FROM embeddings WHERE object_id = ? AND object_type = 'concept'",
+            (source_id,),
+        )
+        self.conn.execute("DELETE FROM concepts WHERE id = ?", (source_id,))
+        self.conn.commit()
+
+        return {
+            "source_id": source_id,
+            "target_id": target_id,
+            "source_name": source.name,
+            "target_name": target.name,
+            "absorbed_aliases": absorbed,
+            "moves": {
+                "claims_subject": moved_subject,
+                "claims_object": moved_object,
+                "edge_source_nodes": moved_edge_sources,
+                "edge_target_nodes": moved_edge_targets,
+            },
+        }
+
     def list_concepts(self) -> list[ConceptRecord]:
         rows = self.conn.execute("SELECT * FROM concepts ORDER BY created_at ASC, id ASC").fetchall()
         return [ConceptRecord(**dict(row)) for row in rows]

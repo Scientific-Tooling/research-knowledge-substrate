@@ -7,7 +7,7 @@ from rks.config import AppPaths
 from rks.storage import ClaimRepository, ConceptRepository, PaperRepository
 
 
-def summarize_paper_heuristic(
+def summarize_paper_from_graph(
     paths: AppPaths,
     paper_repo: PaperRepository,
     claim_repo: ClaimRepository,
@@ -40,7 +40,7 @@ def summarize_paper_heuristic(
         "evidence_paper_ids": [paper.id],
         "citations": [{"claim_id": claim.id, "paper_id": paper.id} for claim in claims[:5]],
         "open_questions": [] if claims else ["No extracted claims are available yet."],
-        "mode": "heuristic",
+        "mode": "local",
     }
     return persist_summary_artifact(
         paper_repo=paper_repo,

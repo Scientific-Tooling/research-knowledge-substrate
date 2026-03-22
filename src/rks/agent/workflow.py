@@ -36,7 +36,7 @@ def create_text_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -
         instruction=(
             "Extract readable research text from the PDF document. "
             "The source PDF path is provided in `source_pdf` — read it directly "
-            "for best results. The `rough_text` field contains a heuristic "
+            "for best results. The `rough_text` field contains a PDF-extracted "
             "pre-extraction that may be incomplete. Return JSON with keys: "
             "`text`, `paragraphs`, `warnings`."
         ),
@@ -72,7 +72,11 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
             "Put the paper section in `context.section` (abstract, introduction, method, "
             "experiments, results, conclusion, or discussion). "
             "Put the dataset name (if any) in `context.dataset`. "
-            "Put a short verbatim supporting quote in `evidence.quote`."
+            "Put a short verbatim supporting quote in `evidence.quote`. "
+            "Also include an optional top-level `concept_aliases` list. "
+            "Each entry must have `canonical` (the preferred concept name) and `aliases` "
+            "(a list of synonymous terms found in this paper, e.g. abbreviations, full names, "
+            "or alternate spellings). This reduces concept fragmentation across papers."
         ),
         input_payload=text_payload,
         expected_output_schema={
@@ -92,7 +96,13 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
                     },
                     "confidence": "float",
                 }
-            ]
+            ],
+            "concept_aliases": [
+                {
+                    "canonical": "string",
+                    "aliases": ["string"],
+                }
+            ],
         },
         schema_version=CLAIMS_SCHEMA_VERSION,
     )
@@ -383,11 +393,24 @@ def import_claims_result(
     paper_id: str,
     json_path: Path,
 ):
-    claims = validate_claims_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
+    raw = json.loads(json_path.read_text(encoding="utf-8"))
+    claims = validate_claims_result_payload(raw)
     for claim in claims:
         evidence = dict(claim.get("evidence", {}))
         evidence.setdefault("schema_version", CLAIMS_SCHEMA_VERSION)
         claim["evidence"] = evidence
+
+    # Apply concept aliases before claim persistence so concept resolution benefits immediately.
+    concept_aliases = raw.get("concept_aliases", []) if isinstance(raw, dict) else []
+    for entry in concept_aliases:
+        canonical = entry.get("canonical", "").strip()
+        aliases = [a for a in entry.get("aliases", []) if isinstance(a, str) and a.strip()]
+        if not canonical:
+            continue
+        concept = concept_repo.get_or_create(canonical)
+        if aliases:
+            concept_repo.add_aliases(concept.id, aliases)
+
     return persist_claims_for_paper(
         paths=paths,
         paper_repo=paper_repo,

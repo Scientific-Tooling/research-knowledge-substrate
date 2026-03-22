@@ -12,7 +12,7 @@ from rks.utils import ensure_dir, utc_now
 
 def extract_text_for_paper(repo: PaperRepository, paths: AppPaths, paper: PaperRecord) -> ArtifactRecord:
     payload = _build_text_payload(Path(paper.pdf_path) if paper.pdf_path else None)
-    payload["extraction_mode"] = "heuristic"
+    payload["extraction_mode"] = "pdf-extractor"
     return write_text_artifact(repo=repo, paths=paths, paper_id=paper.id, payload=payload)
 
 
@@ -56,7 +56,7 @@ def write_text_artifact(
     normalized_payload["created_at"] = normalized_payload.get("created_at") or utc_now()
     normalized_payload["paragraphs"] = [paragraph for paragraph in normalized_payload.get("paragraphs", []) if paragraph]
     normalized_payload["extractor_version"] = normalized_payload.get("extractor_version") or PDF_EXTRACTOR_VERSION
-    normalized_payload["extraction_mode"] = normalized_payload.get("extraction_mode") or "heuristic"
+    normalized_payload["extraction_mode"] = normalized_payload.get("extraction_mode") or "pdf-extractor"
     normalized_payload["schema_version"] = normalized_payload.get("schema_version")
     normalized_payload["paragraph_records"] = _normalize_paragraph_records(normalized_payload)
     normalized_payload["lineage"] = {

@@ -55,7 +55,7 @@ class QualityHardeningTest(unittest.TestCase):
             text_metadata = text_artifact["metadata"]
             self.assertEqual(text_metadata["extractor"], "pdf_stream_decoder")
             self.assertEqual(text_metadata["extractor_version"], "1.0")
-            self.assertEqual(text_metadata["mode"], "heuristic")
+            self.assertEqual(text_metadata["mode"], "pdf-extractor")
             self.assertEqual(text_metadata["lineage"]["paper_id"], paper_id)
 
             text_payload = json.loads(Path(text_artifact["path"]).read_text(encoding="utf-8"))
@@ -187,7 +187,7 @@ class QualityHardeningTest(unittest.TestCase):
                             "min_paper_count": 1,
                             "min_total_claims": 1,
                             "max_zero_claim_rate": 0.0,
-                            "min_extraction_mode_counts": {"heuristic": 1},
+                            "min_extraction_mode_counts": {"pdf-extractor": 1},
                             "per_paper_min_claims": {paper_id: 1},
                         },
                     },

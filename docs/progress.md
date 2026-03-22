@@ -68,7 +68,11 @@ The repository now has a hardened post-MVP base for extraction quality:
 - input validation on all POST endpoints with clear missing-field error messages and malformed JSON rejection
 - unhandled exception safety in HTTP handlers returning 500 instead of dropping the connection
 - first-class `rks papers merge` command to consolidate duplicate paper IDs while re-homing notes, links, tags, tasks, and paper-scoped references
-- first-class `rks papers find-duplicates` command with `heuristic` and `identifiers` modes for duplicate-paper discovery
+- first-class `rks papers find-duplicates` command with `title` and `identifiers` modes for duplicate-paper discovery
+- removed heuristic extraction as a user-facing mode; extraction mode choices are now `llm-api` and `agent` only; internal provenance labels updated to `pdf-extractor` and `regex`
+- `rks concept add-alias <concept_id> <alias>` command to register synonym terms so future imports route to an existing concept
+- `rks concept merge <source_id> <target_id>` command to consolidate fragmented concept nodes, re-homing all claims and edges and absorbing source aliases into target
+- `concept_aliases` optional field in `claims.v3` schema — agents can return canonical-to-synonym mappings alongside claims; import applies them before concept resolution to prevent fragmentation at ingest time
 
 ## Implemented Milestones
 

@@ -32,7 +32,7 @@ from rks.reasoning import (
     build_topic_review_priorities,
     plan_research_request,
 )
-from rks.reasoning.summary import summarize_paper_heuristic
+from rks.reasoning.summary import summarize_paper_from_graph
 from rks.utils import utc_now
 
 
@@ -381,10 +381,10 @@ class ResearchOperations:
         self.papers.touch_paper(paper_id)
         return _note_payload(note)
 
-    def find_duplicate_papers(self, *, mode: str = "heuristic") -> dict:
+    def find_duplicate_papers(self, *, mode: str = "title") -> dict:
         normalized_mode = mode.strip().lower()
-        if normalized_mode not in {"heuristic", "identifiers"}:
-            raise ValueError("mode must be one of: heuristic, identifiers")
+        if normalized_mode not in {"title", "identifiers"}:
+            raise ValueError("mode must be one of: title, identifiers")
 
         papers = self.papers.list_papers()
         paper_by_id = {paper.id: paper for paper in papers}
@@ -397,7 +397,7 @@ class ResearchOperations:
             arxiv_key = _normalized_optional_key(paper.arxiv_id)
             if arxiv_key:
                 signal_to_paper_ids[("arxiv_id", arxiv_key)].append(paper.id)
-            if normalized_mode == "heuristic":
+            if normalized_mode == "title":
                 title_key = _normalized_title_key(paper.title)
                 if title_key:
                     signal_to_paper_ids[("title", title_key)].append(paper.id)
@@ -721,6 +721,19 @@ class ResearchOperations:
             },
         }
 
+    def add_concept_alias(self, concept_id: str, alias: str) -> dict:
+        concept = self.concepts.add_aliases(concept_id, [alias])
+        return {
+            "concept_id": concept.id,
+            "name": concept.name,
+            "aliases": json.loads(concept.aliases_json or "[]"),
+        }
+
+    def merge_concepts(self, source_id: str, target_id: str) -> dict:
+        if source_id == target_id:
+            raise ValueError("source_id and target_id must be different")
+        return self.concepts.merge_into(source_id, target_id)
+
     def answer_question(self, question: str) -> dict:
         return build_research_answer(self.query, question)
 
@@ -887,7 +900,7 @@ class ResearchOperations:
                         }
                     )
                 elif action["code"] == "summarize_paper":
-                    payload = summarize_paper_heuristic(
+                    payload = summarize_paper_from_graph(
                         paths=paths,
                         paper_repo=self.papers,
                         claim_repo=self.claims,

@@ -317,7 +317,7 @@ class CliSmokeTest(unittest.TestCase):
             heuristic_result = run_cli("papers", "find-duplicates", cwd=tmp_path)
             self.assertEqual(heuristic_result.returncode, 0, heuristic_result.stderr)
             heuristic_payload = json.loads(heuristic_result.stdout)
-            self.assertEqual(heuristic_payload["mode"], "heuristic")
+            self.assertEqual(heuristic_payload["mode"], "title")
             self.assertEqual(heuristic_payload["group_count"], 1)
             self.assertEqual(
                 set(heuristic_payload["groups"][0]["paper_ids"]),
@@ -810,6 +810,149 @@ class CliSmokeTest(unittest.TestCase):
             planner_payload = json.loads(planner_result.stdout)
             self.assertEqual(planner_payload["scope"]["type"], "project")
             self.assertEqual(planner_payload["recommended_surface"], "project_review_priorities")
+
+
+class ConceptManagementTest(unittest.TestCase):
+    def _ingest_pdf(self, tmp_path: Path, name: str = "paper.pdf") -> str:
+        pdf = tmp_path / name
+        pdf.write_bytes(b"%PDF-1.4\nTest content.\n")
+        return json.loads(run_cli("ingest", "pdf", str(pdf), cwd=tmp_path).stdout)["id"]
+
+    def _make_claim(self, paper_id: str, subject: str, obj: str) -> dict:
+        return {
+            "text": f"{subject} affects {obj}.",
+            "predicate": "affects",
+            "object_text": obj,
+            "context": {"subject_text": subject},
+            "evidence": {"paper_id": paper_id},
+            "confidence": 0.9,
+        }
+
+    def _import_claims(self, tmp_path: Path, paper_id: str, payload: dict, name: str = "claims.json") -> dict:
+        p = tmp_path / name
+        p.write_text(json.dumps(payload), encoding="utf-8")
+        result = run_cli("import", "claims", paper_id, str(p), cwd=tmp_path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def _get_concepts(self, tmp_path: Path, paper_id: str) -> list:
+        return json.loads(run_cli("concepts", paper_id, cwd=tmp_path).stdout)
+
+    def test_concept_add_alias_appends_and_enables_lookup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            paper_id = self._ingest_pdf(tmp_path)
+            self._import_claims(tmp_path, paper_id, {"claims": [self._make_claim(paper_id, "mTOR", "cell growth")]})
+
+            concepts = self._get_concepts(tmp_path, paper_id)
+            self.assertTrue(concepts, "expected at least one concept after import")
+            mtor = concepts[0]
+
+            add_result = run_cli("concept", "add-alias", mtor["id"], "mechanistic target of rapamycin", cwd=tmp_path)
+            self.assertEqual(add_result.returncode, 0, add_result.stderr)
+            add_payload = json.loads(add_result.stdout)
+            self.assertEqual(add_payload["concept_id"], mtor["id"])
+            self.assertTrue(
+                any("rapamycin" in a.lower() for a in add_payload["aliases"]),
+                f"expected rapamycin in aliases, got: {add_payload['aliases']}",
+            )
+
+            # Importing a second paper with the alias term should reuse the same concept.
+            paper2_id = self._ingest_pdf(tmp_path, "paper2.pdf")
+            self._import_claims(
+                tmp_path,
+                paper2_id,
+                {"claims": [self._make_claim(paper2_id, "mechanistic target of rapamycin", "S6K1")]},
+                name="claims2.json",
+            )
+            concepts2 = self._get_concepts(tmp_path, paper2_id)
+            concept_ids = {c["id"] for c in concepts2}
+            self.assertIn(mtor["id"], concept_ids, "alias term should resolve to the original concept")
+
+    def test_concept_merge_rehomes_claims_and_deletes_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            paper_id = self._ingest_pdf(tmp_path)
+            self._import_claims(
+                tmp_path,
+                paper_id,
+                {
+                    "claims": [
+                        self._make_claim(paper_id, "mTOR", "cell growth"),
+                        self._make_claim(paper_id, "mechanistic target of rapamycin", "autophagy"),
+                    ]
+                },
+            )
+
+            concepts = self._get_concepts(tmp_path, paper_id)
+            concept_names = {c["name"]: c["id"] for c in concepts}
+            self.assertGreaterEqual(len(concept_names), 2, f"expected 2+ concepts, got: {list(concept_names)}")
+
+            # Pick any two distinct concepts; merge the second into the first.
+            ids = list(concept_names.values())
+            target_id, source_id = ids[0], ids[1]
+
+            merge_result = run_cli("concept", "merge", source_id, target_id, cwd=tmp_path)
+            self.assertEqual(merge_result.returncode, 0, merge_result.stderr)
+            payload = json.loads(merge_result.stdout)
+            self.assertEqual(payload["source_id"], source_id)
+            self.assertEqual(payload["target_id"], target_id)
+            total_moved = sum(payload["moves"].values())
+            self.assertGreaterEqual(total_moved, 1)
+
+            # Source concept should be gone; target should remain.
+            concepts_after = self._get_concepts(tmp_path, paper_id)
+            ids_after = {c["id"] for c in concepts_after}
+            self.assertNotIn(source_id, ids_after)
+            self.assertIn(target_id, ids_after)
+
+    def test_import_claims_applies_concept_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            paper_id = self._ingest_pdf(tmp_path)
+            self._import_claims(
+                tmp_path,
+                paper_id,
+                {
+                    "claims": [self._make_claim(paper_id, "mTOR", "S6K1")],
+                    "concept_aliases": [
+                        {
+                            "canonical": "mTOR",
+                            "aliases": ["mechanistic target of rapamycin", "FRAP1", "RAFT1"],
+                        }
+                    ],
+                },
+            )
+
+            concepts = self._get_concepts(tmp_path, paper_id)
+            mtor_concept = next((c for c in concepts if "mtor" in c["name"].lower()), None)
+            self.assertIsNotNone(mtor_concept, f"expected mTOR concept, got: {[c['name'] for c in concepts]}")
+
+            # Verify alias lookup works: importing a second paper with the alias term
+            # should resolve to the same concept, not create a new one.
+            paper2_id = self._ingest_pdf(tmp_path, "paper2.pdf")
+            self._import_claims(
+                tmp_path,
+                paper2_id,
+                {"claims": [self._make_claim(paper2_id, "mechanistic target of rapamycin", "autophagy")]},
+                name="claims2.json",
+            )
+            concepts2 = self._get_concepts(tmp_path, paper2_id)
+            ids2 = {c["id"] for c in concepts2}
+            self.assertIn(
+                mtor_concept["id"],
+                ids2,
+                "alias should route to the concept created during import with concept_aliases",
+            )
+
+            # Verify add-alias on the same concept returns the alias in its list.
+            add_result = run_cli("concept", "add-alias", mtor_concept["id"], "FKBP12-rapamycin-associated protein", cwd=tmp_path)
+            self.assertEqual(add_result.returncode, 0, add_result.stderr)
+            add_payload = json.loads(add_result.stdout)
+            self.assertTrue(
+                any("fkbp" in a.lower() or "rapamycin" in a.lower() for a in add_payload["aliases"]),
+                f"expected FKBP alias in list, got: {add_payload['aliases']}",
+            )
 
 
 if __name__ == "__main__":

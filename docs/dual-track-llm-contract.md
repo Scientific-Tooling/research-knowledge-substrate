@@ -7,8 +7,6 @@ Any RKS feature that can invoke an LLM must expose the same two LLM-facing integ
 - `llm-api`
 - `agent`
 
-If the feature also has a local non-LLM fallback, it may additionally expose `heuristic`.
-
 This is not optional. It is a system contract.
 
 ## Why
@@ -26,10 +24,6 @@ For any LLM-capable task:
 
 - `--mode llm-api`
 - `--mode agent`
-
-If a local fallback exists:
-
-- `--mode heuristic`
 
 ## Standard Request Artifact
 
@@ -73,7 +67,7 @@ The `llm-api` track includes:
 
 - retry logic with exponential backoff (up to 3 attempts)
 - a 60-second timeout per request
-- direct PDF-to-LLM: the source PDF is sent as base64 alongside the text prompt so the LLM can read the actual document even when heuristic extraction fails
+- direct PDF-to-LLM: the source PDF is sent as base64 alongside the text prompt so the LLM can read the actual document
 
 The `agent` track now surfaces the source PDF path at the top level of text extraction requests so the external agent can read the PDF directly.
 

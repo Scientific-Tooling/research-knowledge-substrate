@@ -83,7 +83,7 @@ def extract_claims_for_paper(
         edge_repo=edge_repo,
         paper_id=paper_id,
         claims=claims,
-        extractor="heuristic",
+        extractor="regex",
     )
 
 
@@ -441,7 +441,7 @@ def _clean_phrase(value: str) -> str | None:
 def _normalized_evidence(candidate_entry: dict, paper_id: str) -> dict:
     return {
         "paper_id": paper_id,
-        "extraction": "heuristic",
+        "extraction": "regex",
         "extractor_version": CLAIM_EXTRACTOR_VERSION,
         "section": candidate_entry["section"],
         "paragraph_index": candidate_entry.get("paragraph_index"),

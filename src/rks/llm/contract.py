@@ -5,7 +5,7 @@ DUAL_TRACK_SPEC_VERSION = "v1"
 ALL_EXTRACTION_MODES = ("llm-api", "agent")
 
 TEXT_SCHEMA_VERSION = "text.v1"
-CLAIMS_SCHEMA_VERSION = "claims.v2"
+CLAIMS_SCHEMA_VERSION = "claims.v3"
 METHODS_SCHEMA_VERSION = "methods.v1"
 DATASETS_SCHEMA_VERSION = "datasets.v1"
 SUMMARY_SCHEMA_VERSION = "summary.v1"
@@ -51,10 +51,12 @@ _VALID_CLAIM_SECTIONS = {"abstract", "introduction", "method", "experiments", "r
 
 
 def validate_claims_result_payload(payload) -> list[dict]:
-    """Validate a claims extraction result (claims.v1 and claims.v2).
+    """Validate a claims extraction result (claims.v1, claims.v2, and claims.v3).
 
     Required per claim: text, predicate, context (with subject_text), evidence, confidence.
     Optional (claims.v2): context.section, context.dataset, evidence.quote.
+    Optional (claims.v3): top-level concept_aliases list — each entry needs canonical (str)
+        and aliases (list of str). Used to reduce concept fragmentation at import time.
     """
     claims = payload.get("claims") if isinstance(payload, dict) else payload
     if not isinstance(claims, list):
@@ -86,6 +88,23 @@ def validate_claims_result_payload(payload) -> list[dict]:
         quote = claim["evidence"].get("quote")
         if quote is not None and not isinstance(quote, str):
             raise ValueError(f"Claim at index {index} has a non-string `evidence.quote`.")
+
+    # Optional v3 field: concept_aliases
+    if isinstance(payload, dict) and "concept_aliases" in payload:
+        concept_aliases = payload["concept_aliases"]
+        if not isinstance(concept_aliases, list):
+            raise ValueError("concept_aliases must be a list.")
+        for idx, entry in enumerate(concept_aliases):
+            if not isinstance(entry, dict):
+                raise ValueError(f"concept_aliases entry at index {idx} must be an object.")
+            if "canonical" not in entry or not isinstance(entry["canonical"], str):
+                raise ValueError(f"concept_aliases entry at index {idx} is missing a string `canonical`.")
+            if "aliases" not in entry or not isinstance(entry["aliases"], list):
+                raise ValueError(f"concept_aliases entry at index {idx} is missing a list `aliases`.")
+            for alias in entry["aliases"]:
+                if not isinstance(alias, str):
+                    raise ValueError(f"concept_aliases entry at index {idx} has a non-string alias.")
+
     return claims
 
 

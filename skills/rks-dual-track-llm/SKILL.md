@@ -14,7 +14,7 @@ All LLM-backed RKS tasks must use the dual-track contract:
 - `llm-api`
 - `agent`
 
-If a local fallback exists, `heuristic` is allowed in addition.
+There is no `heuristic` mode. The only valid modes are `llm-api` and `agent`.
 
 Do not create task-specific ad hoc LLM flows.
 
