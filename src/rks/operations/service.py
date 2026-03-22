@@ -734,6 +734,9 @@ class ResearchOperations:
             raise ValueError("source_id and target_id must be different")
         return self.concepts.merge_into(source_id, target_id)
 
+    def find_duplicate_concepts(self, threshold: float = 0.75, limit: int = 20) -> list[dict]:
+        return self.concepts.find_duplicate_candidates(threshold=threshold, limit=limit)
+
     def answer_question(self, question: str) -> dict:
         return build_research_answer(self.query, question)
 

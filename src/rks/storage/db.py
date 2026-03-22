@@ -101,6 +101,39 @@ def _ensure_indexes(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_name ON concepts(name)")
     _ensure_column(conn, "datasets", "paper_id", "TEXT")
     _ensure_column(conn, "papers", "reading_status", "TEXT NOT NULL DEFAULT 'unread'")
+    _ensure_column(conn, "concepts", "canonical_abbrev", "TEXT")
+    _ensure_alias_index(conn)
+
+
+def _ensure_alias_index(conn: sqlite3.Connection) -> None:
+    """Backfill concept_alias_index from existing concepts rows.
+
+    Safe to call repeatedly: uses INSERT OR IGNORE so already-indexed entries
+    are skipped.  Only runs when the table exists (created by migration 0011).
+    """
+    if not _table_exists(conn, "concept_alias_index"):
+        return
+    import json as _json
+    rows = conn.execute("SELECT id, name, aliases_json, canonical_abbrev FROM concepts").fetchall()
+    for row in rows:
+        keys: set[str] = set()
+        name = row["name"] or ""
+        if name:
+            keys.add(name)
+            keys.add(name.lower())
+        abbrev = row["canonical_abbrev"]
+        if abbrev:
+            keys.add(abbrev)
+            keys.add(abbrev.lower())
+        for alias in _json.loads(row["aliases_json"] or "[]"):
+            if alias:
+                keys.add(alias)
+        concept_id = row["id"]
+        conn.executemany(
+            "INSERT OR IGNORE INTO concept_alias_index(alias_key, concept_id) VALUES(?, ?)",
+            [(k, concept_id) for k in keys if k],
+        )
+    conn.commit()
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:

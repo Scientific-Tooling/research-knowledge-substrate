@@ -57,53 +57,51 @@ class ConceptRepository:
                 inline_abbrev,
             ),
         )
+        # Maintain the alias reverse-index so future lookups are O(1).
+        _upsert_alias_index(self.conn, concept_id, canonical, inline_abbrev, aliases)
         self.conn.commit()
         return self.get_concept(concept_id)
 
     def find_by_name_or_alias(self, term: str):
         """Look up a concept by any of its surface forms.
 
-        Matching priority (Kripke + Frege):
-          1. canonical_abbrev  — rigid designator; unambiguous, O(1) via index
-          2. name              — normalised canonical full name
-          3. aliases_json      — all other surface variants (full table scan)
+        Fast path (O(1)): concept_alias_index reverse-lookup table.
+        Slow path (O(n)): full aliases_json scan, only reached when the index
+        table does not exist (pre-migration databases).
         """
         _, abbrev = extract_abbreviation(term)
         canonical = canonicalize_term(term)
 
-        # Priority 1: rigid designator match (indexed column)
+        # Build the set of keys to probe, ordered from most-specific to least.
+        probe_keys = []
         if abbrev:
-            row = self.conn.execute(
-                "SELECT * FROM concepts WHERE canonical_abbrev = ? LIMIT 1",
-                (abbrev,),
-            ).fetchone()
-            if row is not None:
-                return ConceptRecord(**dict(row))
+            probe_keys.append(abbrev)          # rigid designator (Kripke)
+            probe_keys.append(abbrev.lower())
+        probe_keys.append(canonical)           # normalised full name
+        probe_keys.append(canonical.lower())
 
-        # Priority 2: exact name match (indexed column)
-        row = self.conn.execute(
-            "SELECT * FROM concepts WHERE name = ? LIMIT 1",
-            (canonical,),
-        ).fetchone()
-        if row is not None:
-            return ConceptRecord(**dict(row))
+        # Fast path: single indexed lookup per key.
+        if _alias_index_exists(self.conn):
+            for key in probe_keys:
+                row = self.conn.execute(
+                    "SELECT concept_id FROM concept_alias_index WHERE alias_key = ? LIMIT 1",
+                    (key,),
+                ).fetchone()
+                if row is not None:
+                    return self.get_concept(row["concept_id"])
+            return None
 
-        # Priority 3: canonical_abbrev match on the canonicalized input itself
-        # (handles the case where the caller passes just "BERT" without brackets)
-        row = self.conn.execute(
-            "SELECT * FROM concepts WHERE canonical_abbrev = ? LIMIT 1",
-            (canonical,),
-        ).fetchone()
-        if row is not None:
-            return ConceptRecord(**dict(row))
-
-        # Priority 4: aliases_json scan (full table, unavoidable without alias index table)
+        # Slow path: legacy full-table scan (pre-migration databases only).
         rows = self.conn.execute("SELECT * FROM concepts ORDER BY name ASC").fetchall()
         for row in rows:
             aliases = json.loads(row["aliases_json"] or "[]")
-            if canonical in aliases or canonical.lower() in aliases:
+            if (
+                row["name"] == canonical
+                or row["canonical_abbrev"] == canonical
+                or canonical in aliases
+                or canonical.lower() in aliases
+            ):
                 return ConceptRecord(**dict(row))
-
         return None
 
     def get_concept(self, concept_id: str) -> ConceptRecord:
@@ -166,6 +164,8 @@ class ConceptRepository:
             f"UPDATE concepts SET {update_fields} WHERE id = ?",
             params,
         )
+        # Keep alias index in sync.
+        _upsert_alias_index(self.conn, concept_id, concept.name, new_abbrev, list(existing))
         self.conn.commit()
         return self.get_concept(concept_id)
 
@@ -183,6 +183,13 @@ class ConceptRepository:
                 (source.canonical_abbrev, timestamp, target_id),
             )
         self.add_aliases(target_id, absorbed)
+        # Re-point all alias index entries that still reference the source to target,
+        # then delete any residual source-only entries.
+        if _alias_index_exists(self.conn):
+            self.conn.execute(
+                "UPDATE concept_alias_index SET concept_id = ? WHERE concept_id = ?",
+                (target_id, source_id),
+            )
 
         moved_subject = self.conn.execute(
             "UPDATE claims SET subject_concept_id = ?, updated_at = ? WHERE subject_concept_id = ?",
@@ -225,11 +232,84 @@ class ConceptRepository:
         rows = self.conn.execute("SELECT * FROM concepts ORDER BY created_at ASC, id ASC").fetchall()
         return [ConceptRecord(**dict(row)) for row in rows]
 
+    def find_duplicate_candidates(
+        self, threshold: float = 0.75, limit: int = 20
+    ) -> list[dict]:
+        """Return pairs of concepts whose names are suspiciously similar.
+
+        Uses trigram (Jaccard) similarity on lowercased names so that
+        'Self Attention' and 'Self-Attention' score near 1.0 while
+        unrelated concepts score near 0.  Operates entirely in Python;
+        no external deps required (Wittgenstein: family resemblance).
+
+        Returns a list of dicts ordered by score descending, capped at *limit*.
+        Each dict carries both ConceptRecords and a ready-made merge hint.
+        """
+        concepts = self.list_concepts()
+        results: list[dict] = []
+
+        for i in range(len(concepts)):
+            for j in range(i + 1, len(concepts)):
+                a, b = concepts[i], concepts[j]
+                score = _trigram_similarity(a.name, b.name)
+                if score >= threshold:
+                    # Suggest keeping the concept with lower id (earlier created)
+                    # as target; user can override.
+                    target, source = (a, b) if a.id < b.id else (b, a)
+                    results.append(
+                        {
+                            "score": round(score, 4),
+                            "concept_a": _concept_summary(a),
+                            "concept_b": _concept_summary(b),
+                            "merge_hint": f"rks concept merge {source.id} {target.id}",
+                        }
+                    )
+
+        results.sort(key=lambda r: r["score"], reverse=True)
+        return results[:limit]
+
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Alias-index helpers
 # ---------------------------------------------------------------------------
 
+
+def _alias_index_exists(conn: sqlite3.Connection) -> bool:
+    """Return True when the concept_alias_index table is present."""
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='concept_alias_index' LIMIT 1"
+    ).fetchone()
+    return row is not None
+
+
+def _upsert_alias_index(
+    conn: sqlite3.Connection,
+    concept_id: str,
+    name: str,
+    canonical_abbrev: str | None,
+    aliases: list[str],
+) -> None:
+    """Insert or replace all keys for *concept_id* into concept_alias_index."""
+    if not _alias_index_exists(conn):
+        return
+    keys: set[str] = set()
+    if name:
+        keys.add(name)
+        keys.add(name.lower())
+    if canonical_abbrev:
+        keys.add(canonical_abbrev)
+        keys.add(canonical_abbrev.lower())
+    for alias in aliases:
+        if alias:
+            keys.add(alias)
+    conn.executemany(
+        "INSERT OR REPLACE INTO concept_alias_index(alias_key, concept_id) VALUES(?, ?)",
+        [(k, concept_id) for k in keys if k],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Parent-term helpers
 # Single-word tokens that are too generic to serve as a parent concept.
 # Multi-word entries allow matching a trailing phrase rather than just the
 # last token (Aristotle: genus must be a substantive upper category, not an
@@ -288,3 +368,31 @@ def _infer_parent_term(term: str) -> str | None:
             return candidate
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Similarity helpers (used by find_duplicate_candidates)
+# ---------------------------------------------------------------------------
+
+def _trigrams(s: str) -> set[str]:
+    """Return the set of character trigrams for *s* (padded with spaces)."""
+    s = f"  {s.lower()} "
+    return {s[i: i + 3] for i in range(len(s) - 2)}
+
+
+def _trigram_similarity(a: str, b: str) -> float:
+    """Jaccard similarity over character trigrams (no external dependencies)."""
+    ta = _trigrams(a)
+    tb = _trigrams(b)
+    union = ta | tb
+    if not union:
+        return 0.0
+    return len(ta & tb) / len(union)
+
+
+def _concept_summary(c: ConceptRecord) -> dict:
+    return {
+        "id": c.id,
+        "name": c.name,
+        "canonical_abbrev": c.canonical_abbrev,
+    }

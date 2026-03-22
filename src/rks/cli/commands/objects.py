@@ -47,6 +47,24 @@ def register(subparsers) -> None:
     concept_merge_parser.add_argument("target_id", help="Concept ID to keep, for example k_000001.")
     concept_merge_parser.set_defaults(handler=handle_concept_merge)
 
+    concept_dup_parser = concept_subparsers.add_parser(
+        "find-duplicates",
+        help="Find concept pairs that may refer to the same entity (trigram similarity).",
+    )
+    concept_dup_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.75,
+        help="Minimum trigram similarity score (0–1). Default: 0.75.",
+    )
+    concept_dup_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of pairs to return. Default: 20.",
+    )
+    concept_dup_parser.set_defaults(handler=handle_concept_find_duplicates)
+
     search_parser = subparsers.add_parser("search", help="Run local text search across papers, claims, and concepts.")
     search_parser.add_argument("query", help="Search query text.")
     search_parser.add_argument(
@@ -134,6 +152,16 @@ def handle_concept_add_alias(args: argparse.Namespace) -> int:
 def handle_concept_merge(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = _operations(session).merge_concepts(args.source_id, args.target_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_concept_find_duplicates(args: argparse.Namespace) -> int:
+    with _open_session() as session:
+        payload = _operations(session).find_duplicate_concepts(
+            threshold=args.threshold,
+            limit=args.limit,
+        )
     print(json.dumps(payload, indent=2))
     return 0
 
