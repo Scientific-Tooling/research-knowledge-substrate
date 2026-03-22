@@ -4,8 +4,11 @@ from rks.extraction.claims import (
     persist_claims_for_paper,
 )
 from rks.extraction.entities import (
+    extract_all_with_llm,
     extract_datasets_for_paper,
+    extract_datasets_with_llm,
     extract_methods_for_paper,
+    extract_methods_with_llm,
     persist_citations_for_paper,
 )
 from rks.extraction.text import (
@@ -17,10 +20,13 @@ from rks.extraction.text import (
 
 __all__ = [
     "build_text_source_input",
+    "extract_all_with_llm",
     "extract_claims_for_paper",
     "extract_claims_with_llm",
     "extract_datasets_for_paper",
+    "extract_datasets_with_llm",
     "extract_methods_for_paper",
+    "extract_methods_with_llm",
     "extract_text_for_paper",
     "extract_text_with_llm",
     "persist_claims_for_paper",

@@ -95,6 +95,51 @@ def extract_methods_for_paper(
     return stored_methods
 
 
+def extract_methods_with_llm(
+    paths: AppPaths,
+    paper_repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    concept_repo: ConceptRepository,
+    edge_repo: EdgeRepository,
+    method_repo: MethodRepository,
+    dataset_repo: DatasetRepository,
+    paper_id: str,
+    provider,
+) -> list:
+    text_payload = _load_text_payload(paper_repo, paper_id)
+    if not text_payload:
+        return []
+    raw_methods = provider.parse_methods(text_payload)
+    methods = []
+    for m in raw_methods:
+        concept = concept_repo.get_or_create(m["name"])
+        methods.append(
+            {
+                "name": m["name"],
+                "description": m.get("description") or "",
+                "about_concept_id": concept.id,
+            }
+        )
+    stored_methods = method_repo.replace_methods_for_paper(paper_id, methods)
+    _write_artifact(
+        paper_repo,
+        paths,
+        paper_id,
+        "methods",
+        "methods.json",
+        methods,
+        {"count": len(methods), "extractor": "llm_api", "extractor_version": METHOD_EXTRACTOR_VERSION},
+    )
+    _rebuild_research_object_edges(
+        claim_repo=claim_repo,
+        edge_repo=edge_repo,
+        paper_id=paper_id,
+        methods=stored_methods,
+        datasets=dataset_repo.list_datasets_for_paper(paper_id),
+    )
+    return stored_methods
+
+
 def extract_datasets_for_paper(
     paths: AppPaths,
     paper_repo: PaperRepository,
@@ -148,6 +193,159 @@ def extract_datasets_for_paper(
     return stored_datasets
 
 
+def extract_datasets_with_llm(
+    paths: AppPaths,
+    paper_repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    edge_repo: EdgeRepository,
+    dataset_repo: DatasetRepository,
+    method_repo: MethodRepository,
+    paper_id: str,
+    provider,
+) -> list:
+    text_payload = _load_text_payload(paper_repo, paper_id)
+    if not text_payload:
+        return []
+    raw_datasets = provider.parse_datasets(text_payload)
+    datasets = [
+        {
+            "name": d["name"],
+            "description": d.get("description") or "",
+            "source": d.get("source") or None,
+        }
+        for d in raw_datasets
+    ]
+    stored_datasets = dataset_repo.replace_datasets_for_paper(paper_id, datasets)
+    _write_artifact(
+        paper_repo,
+        paths,
+        paper_id,
+        "datasets",
+        "datasets.json",
+        datasets,
+        {"count": len(datasets), "extractor": "llm_api", "extractor_version": DATASET_EXTRACTOR_VERSION},
+    )
+    _rebuild_research_object_edges(
+        claim_repo=claim_repo,
+        edge_repo=edge_repo,
+        paper_id=paper_id,
+        methods=method_repo.list_methods_for_paper(paper_id),
+        datasets=stored_datasets,
+    )
+    return stored_datasets
+
+
+def extract_all_with_llm(
+    paths: AppPaths,
+    paper_repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    concept_repo: ConceptRepository,
+    edge_repo: EdgeRepository,
+    method_repo: MethodRepository,
+    dataset_repo: DatasetRepository,
+    paper_id: str,
+    provider,
+) -> dict:
+    """Single-pass combined extraction (paper.v1) for *paper_id*.
+
+    Calls ``provider.extract_all()`` once with the raw text source, then
+    persists text, claims, methods, datasets, and summary in sequence.
+    Returns a dict with item counts per stage.
+    """
+    from rks.extraction.claims import persist_claims_for_paper
+    from rks.extraction.text import build_text_source_input, write_text_artifact
+    from rks.reasoning.summary import persist_summary_artifact
+
+    paper = paper_repo.get_paper(paper_id)
+    text_source = build_text_source_input(paper)
+    result = provider.extract_all(text_source)
+
+    # 1. text
+    text_payload = {
+        "text": result["text"],
+        "paragraphs": result.get("paragraphs", []),
+        "warnings": result.get("warnings", []),
+        "extractor": "llm_api",
+        "extraction_mode": "llm-api-combined",
+    }
+    write_text_artifact(repo=paper_repo, paths=paths, paper_id=paper_id, payload=text_payload)
+
+    # 2. claims
+    stored_claims = persist_claims_for_paper(
+        paths=paths,
+        paper_repo=paper_repo,
+        claim_repo=claim_repo,
+        concept_repo=concept_repo,
+        edge_repo=edge_repo,
+        paper_id=paper_id,
+        claims=result.get("claims", []),
+        extractor="llm_api",
+    )
+
+    # 3. methods
+    methods = []
+    for m in result.get("methods", []):
+        concept = concept_repo.get_or_create(m["name"])
+        methods.append({
+            "name": m["name"],
+            "description": m.get("description") or "",
+            "about_concept_id": concept.id,
+        })
+    stored_methods = method_repo.replace_methods_for_paper(paper_id, methods)
+    _write_artifact(
+        paper_repo, paths, paper_id, "methods", "methods.json", methods,
+        {"count": len(methods), "extractor": "llm_api", "extractor_version": METHOD_EXTRACTOR_VERSION},
+    )
+
+    # 4. datasets
+    datasets = []
+    for d in result.get("datasets", []):
+        datasets.append({
+            "name": d["name"],
+            "description": d.get("description") or "",
+            "source": d.get("source") or None,
+        })
+    stored_datasets = dataset_repo.replace_datasets_for_paper(paper_id, datasets)
+    _write_artifact(
+        paper_repo, paths, paper_id, "datasets", "datasets.json", datasets,
+        {"count": len(datasets), "extractor": "llm_api", "extractor_version": DATASET_EXTRACTOR_VERSION},
+    )
+
+    _rebuild_research_object_edges(
+        claim_repo=claim_repo,
+        edge_repo=edge_repo,
+        paper_id=paper_id,
+        methods=stored_methods,
+        datasets=stored_datasets,
+    )
+
+    # 5. summary
+    summary_payload = {
+        "summary": result.get("summary", ""),
+        "evidence_claim_ids": result.get("evidence_claim_ids", []),
+        "evidence_paper_ids": result.get("evidence_paper_ids", [paper_id]),
+        "citations": result.get("citations", []),
+        "open_questions": result.get("open_questions", []),
+        "mode": "llm-api-combined",
+    }
+    persist_summary_artifact(
+        paper_repo=paper_repo,
+        paths=paths,
+        paper_id=paper_id,
+        payload=summary_payload,
+        artifact_type="paper_summary",
+        filename="paper_summary.json",
+    )
+
+    return {
+        "text": 1,
+        "claims": len(stored_claims),
+        "methods": len(stored_methods),
+        "datasets": len(stored_datasets),
+        "summary": 1,
+    }
+
+
 def persist_citations_for_paper(
     paths: AppPaths,
     paper_repo: PaperRepository,
@@ -162,17 +360,19 @@ def persist_citations_for_paper(
     stored: list[dict] = []
     for citation in normalized_citations:
         target = _resolve_citation_target(paper_repo, citation)
-        edge_repo.create_edge(
-            source_id=paper_id,
-            source_type="paper",
-            relation_type="cites",
-            target_id=target.id,
-            target_type="paper",
-            evidence_paper_id=paper_id,
-            confidence=0.75,
-            metadata={"doi": citation.get("doi"), "title": citation.get("title")},
-        )
-        stored.append({"target_paper_id": target.id, **citation})
+        target_paper_id = target.id if target is not None else None
+        if target is not None:
+            edge_repo.create_edge(
+                source_id=paper_id,
+                source_type="paper",
+                relation_type="cites",
+                target_id=target.id,
+                target_type="paper",
+                evidence_paper_id=paper_id,
+                confidence=0.75,
+                metadata={"doi": citation.get("doi"), "title": citation.get("title")},
+            )
+        stored.append({"target_paper_id": target_paper_id, **citation})
 
     _write_artifact(
         paper_repo,
@@ -357,6 +557,7 @@ def _normalize_citation(citation: dict) -> dict:
 
 
 def _resolve_citation_target(paper_repo: PaperRepository, citation: dict):
+    """Return an existing paper matching this citation, or None if not yet ingested."""
     if citation.get("doi"):
         existing = paper_repo.find_by_doi(citation["doi"])
         if existing is not None:
@@ -365,16 +566,4 @@ def _resolve_citation_target(paper_repo: PaperRepository, citation: dict):
         existing = paper_repo.find_by_title(citation["title"])
         if existing is not None:
             return existing
-    title = citation.get("title") or citation.get("doi") or "Unknown citation"
-    return paper_repo.create_paper_from_reference(
-        title=title,
-        abstract=None,
-        authors=[],
-        year=citation.get("year"),
-        venue=None,
-        doi=citation.get("doi"),
-        arxiv_id=None,
-        source_type="citation",
-        source_ref=citation.get("doi") or title,
-        pdf_path=None,
-    )
+    return None

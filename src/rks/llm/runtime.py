@@ -4,12 +4,9 @@ from __future__ import annotations
 def run_dual_track_mode(
     mode: str,
     *,
-    heuristic,
     llm_api,
     agent,
 ):
-    if mode == "heuristic":
-        return heuristic()
     if mode == "llm-api":
         return llm_api()
     if mode == "agent":

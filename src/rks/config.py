@@ -26,12 +26,16 @@ class LlmConfig:
     model: str
 
 
+ALL_AUTO_EXTRACT_MODES = ("none", "llm-api", "llm-api-combined", "agent")
+
+
 @dataclass(frozen=True)
 class AppConfig:
     root: Path
     data_dir: Path
     global_config_path: Path
     reference_pdf_acquisition: str
+    auto_extract_mode: str
     llm_base_url: str
     llm_model: str
     llm_api_key_env: list[str]
@@ -40,6 +44,7 @@ class AppConfig:
 DEFAULT_CONFIG = {
     "data_dir": "data",
     "reference_pdf_acquisition": "auto",
+    "auto_extract_mode": "none",
     "llm": {
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-4.1-mini",
@@ -87,6 +92,10 @@ def load_app_config() -> AppConfig:
                 "reference_pdf_acquisition",
                 payload["reference_pdf_acquisition"],
             )
+            payload["auto_extract_mode"] = loaded.get(
+                "auto_extract_mode",
+                payload["auto_extract_mode"],
+            )
             payload["llm"] = {**payload["llm"], **loaded.get("llm", {})}
 
     # Resolution order:
@@ -111,6 +120,9 @@ def load_app_config() -> AppConfig:
             payload["reference_pdf_acquisition"] = global_cfg.get(
                 "reference_pdf_acquisition", payload["reference_pdf_acquisition"]
             )
+            payload["auto_extract_mode"] = global_cfg.get(
+                "auto_extract_mode", payload["auto_extract_mode"]
+            )
             payload["llm"] = {**payload["llm"], **global_cfg.get("llm", {})}
         else:
             raise ConfigError(
@@ -124,6 +136,10 @@ def load_app_config() -> AppConfig:
         reference_pdf_acquisition=os.environ.get(
             "RKS_REFERENCE_PDF_ACQUISITION",
             payload["reference_pdf_acquisition"],
+        ),
+        auto_extract_mode=os.environ.get(
+            "RKS_AUTO_EXTRACT_MODE",
+            payload["auto_extract_mode"],
         ),
         llm_base_url=os.environ.get("RKS_LLM_BASE_URL", payload["llm"]["base_url"]),
         llm_model=os.environ.get("RKS_LLM_MODEL", payload["llm"]["model"]),

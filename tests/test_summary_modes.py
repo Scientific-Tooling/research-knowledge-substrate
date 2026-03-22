@@ -26,7 +26,7 @@ def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 class SummaryModeTest(unittest.TestCase):
-    def test_summary_heuristic_and_agent_modes(self) -> None:
+    def test_summary_agent_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             pdf_path = tmp_path / "summary-paper.pdf"
@@ -39,15 +39,6 @@ class SummaryModeTest(unittest.TestCase):
             ingest_result = run_cli("ingest", "pdf", str(pdf_path), cwd=tmp_path)
             self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
             paper_id = json.loads(ingest_result.stdout)["id"]
-
-            extract_claims_result = run_cli("extract", "claims", paper_id, cwd=tmp_path)
-            self.assertEqual(extract_claims_result.returncode, 0, extract_claims_result.stderr)
-
-            heuristic_result = run_cli("summarize", "paper", paper_id, cwd=tmp_path)
-            self.assertEqual(heuristic_result.returncode, 0, heuristic_result.stderr)
-            heuristic_payload = json.loads(heuristic_result.stdout)
-            self.assertIn("summary", heuristic_payload)
-            self.assertGreaterEqual(len(heuristic_payload["evidence_claim_ids"]), 1)
 
             request_result = run_cli("summarize", "paper", paper_id, "--mode", "agent", cwd=tmp_path)
             self.assertEqual(request_result.returncode, 0, request_result.stderr)

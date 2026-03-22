@@ -5,20 +5,26 @@ from pathlib import Path
 
 from rks.config import AppPaths
 from rks.extraction.claims import persist_claims_for_paper
+from rks.extraction.entities import extract_all_with_llm, extract_datasets_with_llm, extract_methods_with_llm
 from rks.extraction.text import build_text_source_input, write_text_artifact
 from rks.llm import (
+    CLAIMS_SCHEMA_VERSION,
+    DATASETS_SCHEMA_VERSION,
+    METHODS_SCHEMA_VERSION,
+    PAPER_SCHEMA_VERSION,
+    SUMMARY_SCHEMA_VERSION,
+    TEXT_SCHEMA_VERSION,
     build_dual_track_request,
     validate_claims_result_payload,
+    validate_datasets_result_payload,
+    validate_methods_result_payload,
+    validate_paper_result_payload,
     validate_summary_result_payload,
     validate_text_result_payload,
 )
 from rks.reasoning.summary import build_summary_input, persist_summary_artifact
-from rks.storage import ClaimRepository, ConceptRepository, EdgeRepository, PaperRepository
+from rks.storage import ClaimRepository, ConceptRepository, DatasetRepository, EdgeRepository, MethodRepository, PaperRepository
 from rks.utils import ensure_dir, utc_now
-
-TEXT_SCHEMA_VERSION = "text.v1"
-CLAIMS_SCHEMA_VERSION = "claims.v1"
-SUMMARY_SCHEMA_VERSION = "summary.v1"
 
 
 def create_text_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -> dict:
@@ -61,7 +67,12 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
         instruction=(
             "Extract structured research claims. Return JSON with top-level key `claims`. "
             "Each claim must contain `text`, `predicate`, `object_text`, `context`, "
-            "`evidence`, and `confidence`. Put the claim subject in `context.subject_text`."
+            "`evidence`, and `confidence`. "
+            "Put the claim subject in `context.subject_text`. "
+            "Put the paper section in `context.section` (abstract, introduction, method, "
+            "experiments, results, conclusion, or discussion). "
+            "Put the dataset name (if any) in `context.dataset`. "
+            "Put a short verbatim supporting quote in `evidence.quote`."
         ),
         input_payload=text_payload,
         expected_output_schema={
@@ -72,9 +83,12 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
                     "object_text": "string|null",
                     "context": {
                         "subject_text": "string",
+                        "section": "abstract|introduction|method|experiments|results|conclusion|discussion",
+                        "dataset": "string|null",
                     },
                     "evidence": {
                         "paper_id": paper_id,
+                        "quote": "string|null",
                     },
                     "confidence": "float",
                 }
@@ -90,6 +104,229 @@ def create_claims_request(repo: PaperRepository, paths: AppPaths, paper_id: str)
         "agent_claims_request.json",
         request,
     )
+
+
+def create_methods_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -> dict:
+    paper = repo.get_paper(paper_id)
+    if not paper.text_artifact_id:
+        raise ValueError(f"Paper {paper_id} does not have an extracted text artifact.")
+    artifact = repo.get_artifact(paper.text_artifact_id)
+    text_payload = json.loads(Path(artifact.path).read_text(encoding="utf-8"))
+    request = build_dual_track_request(
+        task="extract_methods",
+        paper_id=paper_id,
+        instruction=(
+            "Extract methods, models, algorithms, architectures, and frameworks from this paper. "
+            "Return JSON with top-level key `methods`. "
+            "Each method must contain `name` and `description`. "
+            "Set `proposed_by_this_paper` to true only if this paper introduces the method. "
+            "List known alternate names in `aliases`."
+        ),
+        input_payload=text_payload,
+        expected_output_schema={
+            "methods": [
+                {
+                    "name": "string",
+                    "description": "string",
+                    "proposed_by_this_paper": "bool",
+                    "aliases": ["string"],
+                }
+            ]
+        },
+        schema_version=METHODS_SCHEMA_VERSION,
+    )
+    return _write_request_artifact(
+        repo,
+        paths,
+        paper_id,
+        "agent_methods_request",
+        "agent_methods_request.json",
+        request,
+    )
+
+
+def import_methods_result(
+    paths: AppPaths,
+    paper_repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    concept_repo: ConceptRepository,
+    edge_repo: EdgeRepository,
+    method_repo: MethodRepository,
+    dataset_repo: DatasetRepository,
+    paper_id: str,
+    json_path: Path,
+):
+    raw = validate_methods_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
+    return extract_methods_with_llm(
+        paths=paths,
+        paper_repo=paper_repo,
+        claim_repo=claim_repo,
+        concept_repo=concept_repo,
+        edge_repo=edge_repo,
+        method_repo=method_repo,
+        dataset_repo=dataset_repo,
+        paper_id=paper_id,
+        provider=_StaticMethodsProvider(raw),
+    )
+
+
+class _StaticMethodsProvider:
+    """Wraps a pre-validated list so it can be passed where a live provider is expected."""
+
+    def __init__(self, methods: list[dict]):
+        self._methods = methods
+
+    def parse_methods(self, _text_payload: dict) -> list[dict]:
+        return self._methods
+
+
+def create_datasets_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -> dict:
+    paper = repo.get_paper(paper_id)
+    if not paper.text_artifact_id:
+        raise ValueError(f"Paper {paper_id} does not have an extracted text artifact.")
+    artifact = repo.get_artifact(paper.text_artifact_id)
+    text_payload = json.loads(Path(artifact.path).read_text(encoding="utf-8"))
+    request = build_dual_track_request(
+        task="extract_datasets",
+        paper_id=paper_id,
+        instruction=(
+            "Extract named datasets used or referenced in this paper. "
+            "Return JSON with top-level key `datasets`. "
+            "Each dataset must contain `name` and `description`. "
+            "Set `used_for` to train, eval, or both. "
+            "Set `source` to a URL or citation if mentioned."
+        ),
+        input_payload=text_payload,
+        expected_output_schema={
+            "datasets": [
+                {
+                    "name": "string",
+                    "description": "string",
+                    "used_for": "train|eval|both|null",
+                    "source": "string|null",
+                }
+            ]
+        },
+        schema_version=DATASETS_SCHEMA_VERSION,
+    )
+    return _write_request_artifact(
+        repo,
+        paths,
+        paper_id,
+        "agent_datasets_request",
+        "agent_datasets_request.json",
+        request,
+    )
+
+
+def create_extract_all_request(repo: PaperRepository, paths: AppPaths, paper_id: str) -> dict:
+    paper = repo.get_paper(paper_id)
+    input_payload = build_text_source_input(paper)
+    request = build_dual_track_request(
+        task="extract_all",
+        paper_id=paper_id,
+        instruction=(
+            "Perform a full single-pass extraction of the paper. "
+            "Return a JSON object with all of the following top-level keys: "
+            "`text` (string), `paragraphs` (list), `warnings` (list), "
+            "`claims` (list), `methods` (list), `datasets` (list), "
+            "`summary` (string), `evidence_claim_ids` (list), `open_questions` (list). "
+            "Each claim must include text, predicate, object_text, context (subject_text, section, dataset), "
+            "evidence (quote), and confidence. "
+            "Each method must include name, description, proposed_by_this_paper, aliases. "
+            "Each dataset must include name, description, used_for, source."
+        ),
+        input_payload=input_payload,
+        expected_output_schema={
+            "text": "string",
+            "paragraphs": ["string"],
+            "warnings": ["string"],
+            "claims": [{"text": "string", "predicate": "string", "object_text": "string|null",
+                        "context": {"subject_text": "string", "section": "string|null", "dataset": "string|null"},
+                        "evidence": {"quote": "string|null"}, "confidence": "float"}],
+            "methods": [{"name": "string", "description": "string",
+                         "proposed_by_this_paper": "bool", "aliases": ["string"]}],
+            "datasets": [{"name": "string", "description": "string",
+                          "used_for": "train|eval|both|null", "source": "string|null"}],
+            "summary": "string",
+            "evidence_claim_ids": ["string"],
+            "open_questions": ["string"],
+        },
+        schema_version=PAPER_SCHEMA_VERSION,
+    )
+    if input_payload.get("source_pdf"):
+        request["source_pdf"] = input_payload["source_pdf"]
+    return _write_request_artifact(
+        repo, paths, paper_id, "agent_extract_all_request", "agent_extract_all_request.json", request
+    )
+
+
+def import_extract_all_result(
+    paths: AppPaths,
+    paper_repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    concept_repo: ConceptRepository,
+    edge_repo: EdgeRepository,
+    method_repo: MethodRepository,
+    dataset_repo: DatasetRepository,
+    paper_id: str,
+    json_path: Path,
+) -> dict:
+    raw = validate_paper_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
+    return extract_all_with_llm(
+        paths=paths,
+        paper_repo=paper_repo,
+        claim_repo=claim_repo,
+        concept_repo=concept_repo,
+        edge_repo=edge_repo,
+        method_repo=method_repo,
+        dataset_repo=dataset_repo,
+        paper_id=paper_id,
+        provider=_StaticAllProvider(raw),
+    )
+
+
+class _StaticAllProvider:
+    """Wraps a pre-validated combined payload so it can be passed to extract_all_with_llm."""
+
+    def __init__(self, paper_result: dict):
+        self._paper_result = paper_result
+
+    def extract_all(self, _text_source: dict) -> dict:
+        return self._paper_result
+
+
+def import_datasets_result(
+    paths: AppPaths,
+    paper_repo: PaperRepository,
+    claim_repo: ClaimRepository,
+    edge_repo: EdgeRepository,
+    dataset_repo: DatasetRepository,
+    method_repo: MethodRepository,
+    paper_id: str,
+    json_path: Path,
+):
+    raw = validate_datasets_result_payload(json.loads(json_path.read_text(encoding="utf-8")))
+    return extract_datasets_with_llm(
+        paths=paths,
+        paper_repo=paper_repo,
+        claim_repo=claim_repo,
+        edge_repo=edge_repo,
+        dataset_repo=dataset_repo,
+        method_repo=method_repo,
+        paper_id=paper_id,
+        provider=_StaticDatasetsProvider(raw),
+    )
+
+
+class _StaticDatasetsProvider:
+    """Wraps a pre-validated list so it can be passed where a live provider is expected."""
+
+    def __init__(self, datasets: list[dict]):
+        self._datasets = datasets
+
+    def parse_datasets(self, _text_payload: dict) -> list[dict]:
+        return self._datasets
 
 
 def create_summary_request(
@@ -308,8 +545,14 @@ def _task_import_command(task_type: str, paper_id: str) -> str | None:
         return f"rks import text {paper_id} <agent-result.json>"
     if task_type == "extract_claims":
         return f"rks import claims {paper_id} <agent-result.json>"
+    if task_type == "extract_methods":
+        return f"rks import methods {paper_id} <agent-result.json>"
+    if task_type == "extract_datasets":
+        return f"rks import datasets {paper_id} <agent-result.json>"
     if task_type == "summarize_paper":
         return f"rks import summary {paper_id} <agent-result.json>"
+    if task_type == "extract_all":
+        return f"rks import all {paper_id} <agent-result.json>"
     return None
 
 
@@ -318,6 +561,12 @@ def _task_retry_command(task_type: str, paper_id: str) -> str | None:
         return f"rks extract text {paper_id} --mode agent"
     if task_type == "extract_claims":
         return f"rks extract claims {paper_id} --mode agent"
+    if task_type == "extract_methods":
+        return f"rks extract methods {paper_id} --mode agent"
+    if task_type == "extract_datasets":
+        return f"rks extract datasets {paper_id} --mode agent"
     if task_type == "summarize_paper":
         return f"rks summarize paper {paper_id} --mode agent"
+    if task_type == "extract_all":
+        return f"rks extract all {paper_id} --mode agent"
     return None

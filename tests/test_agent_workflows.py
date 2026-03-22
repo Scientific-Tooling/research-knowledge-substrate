@@ -41,12 +41,12 @@ class AgentWorkflowTest(unittest.TestCase):
             claims_request_result = run_cli("extract", "claims", paper_id, "--mode", "agent", cwd=tmp_path)
             self.assertEqual(claims_request_result.returncode, 0, claims_request_result.stderr)
             claims_request = json.loads(claims_request_result.stdout)
-            self.assertEqual(claims_request["schema_version"], "claims.v1")
+            self.assertEqual(claims_request["schema_version"], "claims.v2")
             self.assertTrue(claims_request["task_id"].startswith("t_"))
 
             tasks_list = json.loads(run_cli("tasks", "list", "--paper-id", paper_id, cwd=tmp_path).stdout)
             self.assertEqual(tasks_list[0]["status"], "queued")
-            self.assertEqual(tasks_list[0]["schema_version"], "claims.v1")
+            self.assertEqual(tasks_list[0]["schema_version"], "claims.v2")
 
             agent_claims_path = tmp_path / "agent_claims_result.json"
             agent_claims_path.write_text(
@@ -142,13 +142,12 @@ class AgentWorkflowTest(unittest.TestCase):
             extract_manifest = tmp_path / "extract.json"
             extract_manifest.write_text(json.dumps([{"paper_id": paper_id} for paper_id in paper_ids]), encoding="utf-8")
 
-            extract_result = run_cli("batch", "extract", "claims", str(extract_manifest), cwd=tmp_path)
+            extract_result = run_cli("batch", "extract", "claims", str(extract_manifest), "--mode", "agent", cwd=tmp_path)
             self.assertEqual(extract_result.returncode, 0, extract_result.stderr)
             extract_payload = json.loads(extract_result.stdout)
             self.assertEqual(extract_payload["count"], 2)
-            self.assertTrue(all(result["claim_count"] >= 1 for result in extract_payload["results"]))
+            self.assertTrue(all("task_id" in result for result in extract_payload["results"]))
             self.assertEqual(extract_payload["audit"]["success_count"], 2)
-            self.assertGreaterEqual(extract_payload["audit"]["total_claim_count"], 2)
 
             output_manifest = tmp_path / "output.json"
             output_manifest.write_text(

@@ -8,15 +8,22 @@ from pathlib import Path
 from rks import __version__
 from rks.agent import (
     create_claims_request,
+    create_datasets_request,
+    create_extract_all_request,
+    create_methods_request,
     create_summary_request,
     create_text_request,
     import_claims_result,
+    import_datasets_result,
+    import_extract_all_result,
+    import_methods_result,
     import_summary_result,
     import_text_result,
     record_task_report,
 )
 from rks.agent_skills import SKILL_BUNDLE_VERSION, export_bundled_skills, list_bundled_skills
 from rks.config import (
+    ALL_AUTO_EXTRACT_MODES,
     ConfigError,
     config_path,
     global_config_path,
@@ -27,11 +34,10 @@ from rks.config import (
     write_global_config,
 )
 from rks.extraction import (
-    extract_claims_for_paper,
+    extract_all_with_llm,
     extract_claims_with_llm,
-    extract_datasets_for_paper,
-    extract_methods_for_paper,
-    extract_text_for_paper,
+    extract_datasets_with_llm,
+    extract_methods_with_llm,
     extract_text_with_llm,
 )
 from rks.ingestion import (
@@ -41,6 +47,7 @@ from rks.ingestion import (
     ingest_pmid_reference,
     ingest_url_reference,
 )
+from rks.ingestion.pipeline import run_post_ingest_pipeline
 from rks.llm import ALL_EXTRACTION_MODES, run_dual_track_mode
 from rks.operations import ResearchOperations
 from rks.providers import (
@@ -51,7 +58,6 @@ from rks.providers import (
     PubmedMetadataProvider,
 )
 from rks.query import QueryService, index_embeddings
-from rks.reasoning import summarize_paper_heuristic
 from rks.reasoning.summary import build_summary_input, persist_summary_artifact
 from rks.storage import (
     CandidateRepository,
@@ -175,7 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch_extract_parser.add_argument(
         "--mode",
         choices=ALL_EXTRACTION_MODES,
-        default="heuristic",
+        default="llm-api",
         help="Execution mode for text, claims, or summary extraction.",
     )
     batch_extract_parser.set_defaults(handler=handle_batch_extract)
@@ -462,7 +468,7 @@ def build_parser() -> argparse.ArgumentParser:
     summarize_paper_parser.add_argument(
         "--mode",
         choices=ALL_EXTRACTION_MODES,
-        default="heuristic",
+        default="llm-api",
         help="Execution mode for paper summarization.",
     )
     summarize_paper_parser.set_defaults(handler=handle_summarize_paper)
@@ -475,28 +481,52 @@ def build_parser() -> argparse.ArgumentParser:
     extract_text_parser.add_argument(
         "--mode",
         choices=ALL_EXTRACTION_MODES,
-        default="heuristic",
+        default="llm-api",
         help="Execution mode for text extraction.",
     )
     extract_text_parser.set_defaults(handler=handle_extract_text)
 
-    extract_claims_parser = extract_subparsers.add_parser("claims", help="Extract heuristic claims for a paper.")
+    extract_claims_parser = extract_subparsers.add_parser("claims", help="Extract claims for a paper.")
     extract_claims_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     extract_claims_parser.add_argument(
         "--mode",
         choices=ALL_EXTRACTION_MODES,
-        default="heuristic",
+        default="llm-api",
         help="Execution mode for claim extraction.",
     )
     extract_claims_parser.set_defaults(handler=handle_extract_claims)
 
     extract_methods_parser = extract_subparsers.add_parser("methods", help="Extract methods for a paper.")
     extract_methods_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_methods_parser.add_argument(
+        "--mode",
+        choices=ALL_EXTRACTION_MODES,
+        default="llm-api",
+        help="Execution mode for method extraction.",
+    )
     extract_methods_parser.set_defaults(handler=handle_extract_methods)
 
     extract_datasets_parser = extract_subparsers.add_parser("datasets", help="Extract datasets for a paper.")
     extract_datasets_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_datasets_parser.add_argument(
+        "--mode",
+        choices=ALL_EXTRACTION_MODES,
+        default="llm-api",
+        help="Execution mode for dataset extraction.",
+    )
     extract_datasets_parser.set_defaults(handler=handle_extract_datasets)
+
+    extract_all_parser = extract_subparsers.add_parser(
+        "all", help="Single-pass combined extraction (text+claims+methods+datasets+summary) for a paper."
+    )
+    extract_all_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    extract_all_parser.add_argument(
+        "--mode",
+        choices=("llm-api", "agent"),
+        default="llm-api",
+        help="Execution mode: llm-api (synchronous) or agent (queue a single extract_all task).",
+    )
+    extract_all_parser.set_defaults(handler=handle_extract_all)
 
     import_parser = subparsers.add_parser("import", help="Import externally produced extraction results.")
     import_subparsers = import_parser.add_subparsers(dest="import_command", required=True)
@@ -511,10 +541,27 @@ def build_parser() -> argparse.ArgumentParser:
     import_claims_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
     import_claims_parser.set_defaults(handler=handle_import_claims)
 
+    import_methods_parser = import_subparsers.add_parser("methods", help="Import extracted methods JSON for a paper.")
+    import_methods_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    import_methods_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
+    import_methods_parser.set_defaults(handler=handle_import_methods)
+
+    import_datasets_parser = import_subparsers.add_parser("datasets", help="Import extracted datasets JSON for a paper.")
+    import_datasets_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    import_datasets_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
+    import_datasets_parser.set_defaults(handler=handle_import_datasets)
+
     import_summary_parser = import_subparsers.add_parser("summary", help="Import a paper summary JSON for a paper.")
     import_summary_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
     import_summary_parser.add_argument("json_path", type=Path, help="Path to a JSON file produced by an agent.")
     import_summary_parser.set_defaults(handler=handle_import_summary)
+
+    import_all_parser = import_subparsers.add_parser(
+        "all", help="Import a combined paper.v1 extraction result (text+claims+methods+datasets+summary)."
+    )
+    import_all_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    import_all_parser.add_argument("json_path", type=Path, help="Path to a paper.v1 JSON file produced by an agent.")
+    import_all_parser.set_defaults(handler=handle_import_all)
 
     import_graph_parser = import_subparsers.add_parser("graph", help="Import a graph snapshot JSON file.")
     import_graph_parser.add_argument("json_path", type=Path, help="Path to a graph snapshot JSON file.")
@@ -1077,67 +1124,92 @@ def handle_evaluate_baseline(args: argparse.Namespace) -> int:
 
 
 def handle_ingest_pdf(args: argparse.Namespace) -> int:
-    with _open_repository() as repo:
-        paper = ingest_pdf(repo=repo, paths=load_paths(), pdf_path=args.path, title=args.title)
-    print(json.dumps(_paper_to_payload(paper), indent=2))
+    paths = load_paths()
+    with _open_session() as session:
+        paper = ingest_pdf(repo=session.papers, paths=paths, pdf_path=args.path, title=args.title)
+        pipeline = _run_pipeline_if_configured(session, paths, paper.id)
+    payload = _paper_to_payload(paper)
+    if pipeline:
+        payload["pipeline"] = pipeline
+    print(json.dumps(payload, indent=2))
     return 0
 
 
 def handle_ingest_doi(args: argparse.Namespace) -> int:
+    paths = load_paths()
     app_config = load_app_config()
-    with _open_repository() as repo:
+    with _open_session() as session:
         paper = ingest_doi_reference(
-            repo=repo,
-            paths=load_paths(),
+            repo=session.papers,
+            paths=paths,
             doi=args.doi,
             provider=CrossrefMetadataProvider(),
             acquire_pdf=app_config.reference_pdf_acquisition == "auto",
         )
-    print(json.dumps(_paper_to_payload(paper), indent=2))
+        pipeline = _run_pipeline_if_configured(session, paths, paper.id)
+    payload = _paper_to_payload(paper)
+    if pipeline:
+        payload["pipeline"] = pipeline
+    print(json.dumps(payload, indent=2))
     return 0
 
 
 def handle_ingest_arxiv(args: argparse.Namespace) -> int:
+    paths = load_paths()
     app_config = load_app_config()
-    with _open_repository() as repo:
+    with _open_session() as session:
         paper = ingest_arxiv_reference(
-            repo=repo,
-            paths=load_paths(),
+            repo=session.papers,
+            paths=paths,
             arxiv_id=args.arxiv_id,
             provider=ArxivMetadataProvider(),
             acquire_pdf=app_config.reference_pdf_acquisition == "auto",
         )
-    print(json.dumps(_paper_to_payload(paper), indent=2))
+        pipeline = _run_pipeline_if_configured(session, paths, paper.id)
+    payload = _paper_to_payload(paper)
+    if pipeline:
+        payload["pipeline"] = pipeline
+    print(json.dumps(payload, indent=2))
     return 0
 
 
 def handle_ingest_pmid(args: argparse.Namespace) -> int:
+    paths = load_paths()
     app_config = load_app_config()
-    with _open_repository() as repo:
+    with _open_session() as session:
         paper = ingest_pmid_reference(
-            repo=repo,
-            paths=load_paths(),
+            repo=session.papers,
+            paths=paths,
             pmid=args.pmid,
             provider=PubmedMetadataProvider(),
             acquire_pdf=app_config.reference_pdf_acquisition == "auto",
         )
-    print(json.dumps(_paper_to_payload(paper), indent=2))
+        pipeline = _run_pipeline_if_configured(session, paths, paper.id)
+    payload = _paper_to_payload(paper)
+    if pipeline:
+        payload["pipeline"] = pipeline
+    print(json.dumps(payload, indent=2))
     return 0
 
 
 def handle_ingest_url(args: argparse.Namespace) -> int:
+    paths = load_paths()
     app_config = load_app_config()
-    with _open_repository() as repo:
+    with _open_session() as session:
         paper = ingest_url_reference(
-            repo=repo,
-            paths=load_paths(),
+            repo=session.papers,
+            paths=paths,
             url=args.url,
             crossref_provider=CrossrefMetadataProvider(),
             arxiv_provider=ArxivMetadataProvider(),
             pubmed_provider=PubmedMetadataProvider(),
             acquire_pdf=app_config.reference_pdf_acquisition == "auto",
         )
-    print(json.dumps(_paper_to_payload(paper), indent=2))
+        pipeline = _run_pipeline_if_configured(session, paths, paper.id)
+    payload = _paper_to_payload(paper)
+    if pipeline:
+        payload["pipeline"] = pipeline
+    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -1651,13 +1723,6 @@ def handle_summarize_paper(args: argparse.Namespace) -> int:
     with _open_session() as session:
         payload = run_dual_track_mode(
             args.mode,
-            heuristic=lambda: summarize_paper_heuristic(
-                paths=load_paths(),
-                paper_repo=session.papers,
-                claim_repo=session.claims,
-                concept_repo=session.concepts,
-                paper_id=args.paper_id,
-            ),
             llm_api=lambda: persist_summary_artifact(
                 paper_repo=session.papers,
                 paths=load_paths(),
@@ -1768,11 +1833,6 @@ def handle_extract_text(args: argparse.Namespace) -> int:
         paper = session.papers.get_paper(args.paper_id)
         payload = run_dual_track_mode(
             args.mode,
-            heuristic=lambda: _artifact_payload(
-                args.paper_id,
-                args.mode,
-                extract_text_for_paper(repo=session.papers, paths=paths, paper=paper),
-            ),
             llm_api=lambda: _artifact_payload(
                 args.paper_id,
                 args.mode,
@@ -1807,18 +1867,6 @@ def handle_extract_claims(args: argparse.Namespace) -> int:
     with _open_session() as session:
         claims_payload = run_dual_track_mode(
             args.mode,
-            heuristic=lambda: _claims_payload(
-                args.paper_id,
-                args.mode,
-                extract_claims_for_paper(
-                    paths=load_paths(),
-                    paper_repo=session.papers,
-                    claim_repo=session.claims,
-                    concept_repo=session.concepts,
-                    edge_repo=session.edges,
-                    paper_id=args.paper_id,
-                ),
-            ),
             llm_api=lambda: _claims_payload(
                 args.paper_id,
                 args.mode,
@@ -1863,9 +1911,121 @@ def handle_extract_claims(args: argparse.Namespace) -> int:
 
 
 def handle_extract_methods(args: argparse.Namespace) -> int:
+    paths = load_paths()
     with _open_session() as session:
-        methods = extract_methods_for_paper(
-            paths=load_paths(),
+        payload = run_dual_track_mode(
+            args.mode,
+            llm_api=lambda: _methods_payload(
+                args.paper_id,
+                args.mode,
+                extract_methods_with_llm(
+                    paths=paths,
+                    paper_repo=session.papers,
+                    claim_repo=session.claims,
+                    concept_repo=session.concepts,
+                    edge_repo=session.edges,
+                    method_repo=session.methods,
+                    dataset_repo=session.datasets,
+                    paper_id=args.paper_id,
+                    provider=OpenAICompatibleLlmProvider(load_llm_config()),
+                ),
+            ),
+            agent=lambda: {
+                **create_methods_request(repo=session.papers, paths=paths, paper_id=args.paper_id),
+                "mode": args.mode,
+            },
+        )
+        if args.mode == "agent":
+            task = session.tasks.create_task(
+                task_type="extract_methods",
+                paper_id=args.paper_id,
+                mode="agent",
+                request_artifact_id=payload["artifact_id"],
+                spec_version=payload["spec_version"],
+                schema_version=payload["schema_version"],
+            )
+            record_task_report(session.papers, paths, task, note="Queued from rks extract methods --mode agent.")
+            payload = {**payload, "task_id": task.id}
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_extract_datasets(args: argparse.Namespace) -> int:
+    paths = load_paths()
+    with _open_session() as session:
+        payload = run_dual_track_mode(
+            args.mode,
+            llm_api=lambda: _datasets_payload(
+                args.paper_id,
+                args.mode,
+                extract_datasets_with_llm(
+                    paths=paths,
+                    paper_repo=session.papers,
+                    claim_repo=session.claims,
+                    edge_repo=session.edges,
+                    dataset_repo=session.datasets,
+                    method_repo=session.methods,
+                    paper_id=args.paper_id,
+                    provider=OpenAICompatibleLlmProvider(load_llm_config()),
+                ),
+            ),
+            agent=lambda: {
+                **create_datasets_request(repo=session.papers, paths=paths, paper_id=args.paper_id),
+                "mode": args.mode,
+            },
+        )
+        if args.mode == "agent":
+            task = session.tasks.create_task(
+                task_type="extract_datasets",
+                paper_id=args.paper_id,
+                mode="agent",
+                request_artifact_id=payload["artifact_id"],
+                spec_version=payload["spec_version"],
+                schema_version=payload["schema_version"],
+            )
+            record_task_report(session.papers, paths, task, note="Queued from rks extract datasets --mode agent.")
+            payload = {**payload, "task_id": task.id}
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_extract_all(args: argparse.Namespace) -> int:
+    paths = load_paths()
+    with _open_session() as session:
+        if args.mode == "llm-api":
+            counts = extract_all_with_llm(
+                paths=paths,
+                paper_repo=session.papers,
+                claim_repo=session.claims,
+                concept_repo=session.concepts,
+                edge_repo=session.edges,
+                method_repo=session.methods,
+                dataset_repo=session.datasets,
+                paper_id=args.paper_id,
+                provider=OpenAICompatibleLlmProvider(load_llm_config()),
+            )
+            payload = {"paper_id": args.paper_id, "mode": args.mode, **counts}
+        else:  # agent
+            request = create_extract_all_request(repo=session.papers, paths=paths, paper_id=args.paper_id)
+            task = session.tasks.create_task(
+                task_type="extract_all",
+                paper_id=args.paper_id,
+                mode="agent",
+                request_artifact_id=request["artifact_id"],
+                spec_version=request["spec_version"],
+                schema_version=request["schema_version"],
+            )
+            record_task_report(session.papers, paths, task, note="Queued from rks extract all --mode agent.")
+            payload = {**request, "task_id": task.id, "mode": args.mode}
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_import_all(args: argparse.Namespace) -> int:
+    paths = load_paths()
+    with _open_session() as session:
+        counts = import_extract_all_result(
+            paths=paths,
             paper_repo=session.papers,
             claim_repo=session.claims,
             concept_repo=session.concepts,
@@ -1873,41 +2033,12 @@ def handle_extract_methods(args: argparse.Namespace) -> int:
             method_repo=session.methods,
             dataset_repo=session.datasets,
             paper_id=args.paper_id,
+            json_path=args.json_path,
         )
-    print(
-        json.dumps(
-            {
-                "paper_id": args.paper_id,
-                "method_count": len(methods),
-                "method_ids": [method.id for method in methods],
-            },
-            indent=2,
-        )
-    )
-    return 0
-
-
-def handle_extract_datasets(args: argparse.Namespace) -> int:
-    with _open_session() as session:
-        datasets = extract_datasets_for_paper(
-            paths=load_paths(),
-            paper_repo=session.papers,
-            claim_repo=session.claims,
-            edge_repo=session.edges,
-            dataset_repo=session.datasets,
-            method_repo=session.methods,
-            paper_id=args.paper_id,
-        )
-    print(
-        json.dumps(
-            {
-                "paper_id": args.paper_id,
-                "dataset_count": len(datasets),
-                "dataset_ids": [dataset.id for dataset in datasets],
-            },
-            indent=2,
-        )
-    )
+        task = session.tasks.complete_latest_task(args.paper_id, "extract_all", None)
+        if task is not None:
+            record_task_report(session.papers, paths, task, note="Imported agent combined result.")
+    print(json.dumps({"paper_id": args.paper_id, "mode": "agent", **counts}, indent=2))
     return 0
 
 
@@ -1970,6 +2101,47 @@ def handle_import_claims(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
+    return 0
+
+
+def handle_import_methods(args: argparse.Namespace) -> int:
+    paths = load_paths()
+    with _open_session() as session:
+        methods = import_methods_result(
+            paths=paths,
+            paper_repo=session.papers,
+            claim_repo=session.claims,
+            concept_repo=session.concepts,
+            edge_repo=session.edges,
+            method_repo=session.methods,
+            dataset_repo=session.datasets,
+            paper_id=args.paper_id,
+            json_path=args.json_path,
+        )
+        task = session.tasks.complete_latest_task(args.paper_id, "extract_methods", None)
+        if task is not None:
+            record_task_report(session.papers, paths, task, note="Imported agent methods result.")
+    print(json.dumps(_methods_payload(args.paper_id, "agent", methods), indent=2))
+    return 0
+
+
+def handle_import_datasets(args: argparse.Namespace) -> int:
+    paths = load_paths()
+    with _open_session() as session:
+        datasets = import_datasets_result(
+            paths=paths,
+            paper_repo=session.papers,
+            claim_repo=session.claims,
+            edge_repo=session.edges,
+            dataset_repo=session.datasets,
+            method_repo=session.methods,
+            paper_id=args.paper_id,
+            json_path=args.json_path,
+        )
+        task = session.tasks.complete_latest_task(args.paper_id, "extract_datasets", None)
+        if task is not None:
+            record_task_report(session.papers, paths, task, note="Imported agent datasets result.")
+    print(json.dumps(_datasets_payload(args.paper_id, "agent", datasets), indent=2))
     return 0
 
 
@@ -2591,12 +2763,52 @@ def _artifact_payload(paper_id: str, mode: str, artifact) -> dict:
     }
 
 
+def _run_pipeline_if_configured(session, paths, paper_id: str) -> dict | None:
+    """Run post-ingest pipeline when auto_extract_mode != 'none'."""
+    app_config = load_app_config()
+    mode = app_config.auto_extract_mode
+    if mode == "none":
+        return None
+    provider = OpenAICompatibleLlmProvider(load_llm_config()) if mode == "llm-api" else None
+    return run_post_ingest_pipeline(
+        paths=paths,
+        paper_repo=session.papers,
+        claim_repo=session.claims,
+        concept_repo=session.concepts,
+        edge_repo=session.edges,
+        method_repo=session.methods,
+        dataset_repo=session.datasets,
+        task_repo=session.tasks,
+        paper_id=paper_id,
+        mode=mode,
+        provider=provider,
+    )
+
+
 def _claims_payload(paper_id: str, mode: str, claims: list) -> dict:
     return {
         "paper_id": paper_id,
         "mode": mode,
         "claim_count": len(claims),
         "claim_ids": [claim.id for claim in claims],
+    }
+
+
+def _methods_payload(paper_id: str, mode: str, methods: list) -> dict:
+    return {
+        "paper_id": paper_id,
+        "mode": mode,
+        "method_count": len(methods),
+        "method_ids": [method.id for method in methods],
+    }
+
+
+def _datasets_payload(paper_id: str, mode: str, datasets: list) -> dict:
+    return {
+        "paper_id": paper_id,
+        "mode": mode,
+        "dataset_count": len(datasets),
+        "dataset_ids": [dataset.id for dataset in datasets],
     }
 
 
@@ -2803,82 +3015,75 @@ def _resolve_manifest_path(manifest_path: Path, candidate: str) -> Path:
 
 def _run_batch_extract_item(stage: str, paper_id: str, mode: str) -> dict:
     with _open_session() as session:
+        paths = load_paths()
         if stage == "text":
             paper = session.papers.get_paper(paper_id)
-            if mode == "heuristic":
-                artifact = extract_text_for_paper(session.papers, load_paths(), paper)
-                return _artifact_payload(paper_id, mode, artifact)
             if mode == "llm-api":
                 artifact = extract_text_with_llm(
                     repo=session.papers,
-                    paths=load_paths(),
+                    paths=paths,
                     paper=paper,
                     provider=OpenAICompatibleLlmProvider(load_llm_config()),
                 )
                 return _artifact_payload(paper_id, mode, artifact)
-            request = create_text_request(session.papers, load_paths(), paper_id)
+            request = create_text_request(session.papers, paths, paper_id)
             task = session.tasks.create_task(
                 "extract_text", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
             )
-            record_task_report(session.papers, load_paths(), task, note="Queued from rks batch extract text --mode agent.")
+            record_task_report(session.papers, paths, task, note="Queued from rks batch extract text --mode agent.")
             return {**request, "mode": "agent", "task_id": task.id}
 
         if stage == "claims":
-            if mode == "heuristic":
-                claims = extract_claims_for_paper(
-                    load_paths(), session.papers, session.claims, session.concepts, session.edges, paper_id
-                )
-                return _claims_payload(paper_id, mode, claims)
             if mode == "llm-api":
                 claims = extract_claims_with_llm(
-                    load_paths(),
-                    session.papers,
-                    session.claims,
-                    session.concepts,
-                    session.edges,
-                    paper_id,
+                    paths, session.papers, session.claims, session.concepts, session.edges, paper_id,
                     OpenAICompatibleLlmProvider(load_llm_config()),
                 )
                 return _claims_payload(paper_id, mode, claims)
-            request = create_claims_request(session.papers, load_paths(), paper_id)
+            request = create_claims_request(session.papers, paths, paper_id)
             task = session.tasks.create_task(
                 "extract_claims", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
             )
-            record_task_report(session.papers, load_paths(), task, note="Queued from rks batch extract claims --mode agent.")
+            record_task_report(session.papers, paths, task, note="Queued from rks batch extract claims --mode agent.")
             return {**request, "mode": "agent", "task_id": task.id}
 
         if stage == "methods":
-            methods = extract_methods_for_paper(
-                load_paths(),
-                session.papers,
-                session.claims,
-                session.concepts,
-                session.edges,
-                session.methods,
-                session.datasets,
-                paper_id,
+            if mode == "llm-api":
+                methods = extract_methods_with_llm(
+                    paths=paths, paper_repo=session.papers, claim_repo=session.claims,
+                    concept_repo=session.concepts, edge_repo=session.edges,
+                    method_repo=session.methods, dataset_repo=session.datasets,
+                    paper_id=paper_id, provider=OpenAICompatibleLlmProvider(load_llm_config()),
+                )
+                return _methods_payload(paper_id, mode, methods)
+            request = create_methods_request(session.papers, paths, paper_id)
+            task = session.tasks.create_task(
+                "extract_methods", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
             )
-            return {"paper_id": paper_id, "method_count": len(methods), "method_ids": [method.id for method in methods]}
+            record_task_report(session.papers, paths, task, note="Queued from rks batch extract methods --mode agent.")
+            return {**request, "mode": "agent", "task_id": task.id}
 
         if stage == "datasets":
-            datasets = extract_datasets_for_paper(
-                load_paths(),
-                session.papers,
-                session.claims,
-                session.edges,
-                session.datasets,
-                session.methods,
-                paper_id,
+            if mode == "llm-api":
+                datasets = extract_datasets_with_llm(
+                    paths=paths, paper_repo=session.papers, claim_repo=session.claims,
+                    edge_repo=session.edges, dataset_repo=session.datasets,
+                    method_repo=session.methods, paper_id=paper_id,
+                    provider=OpenAICompatibleLlmProvider(load_llm_config()),
+                )
+                return _datasets_payload(paper_id, mode, datasets)
+            request = create_datasets_request(session.papers, paths, paper_id)
+            task = session.tasks.create_task(
+                "extract_datasets", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
             )
-            return {"paper_id": paper_id, "dataset_count": len(datasets), "dataset_ids": [dataset.id for dataset in datasets]}
+            record_task_report(session.papers, paths, task, note="Queued from rks batch extract datasets --mode agent.")
+            return {**request, "mode": "agent", "task_id": task.id}
 
         if stage == "summary":
-            if mode == "heuristic":
-                return summarize_paper_heuristic(load_paths(), session.papers, session.claims, session.concepts, paper_id)
             if mode == "llm-api":
                 return persist_summary_artifact(
                     session.papers,
-                    load_paths(),
+                    paths,
                     paper_id,
                     {
                         **OpenAICompatibleLlmProvider(load_llm_config()).summarize_paper(
@@ -2890,12 +3095,12 @@ def _run_batch_extract_item(stage: str, paper_id: str, mode: str) -> dict:
                     "paper_summary.json",
                 )
             request = create_summary_request(
-                session.papers, session.claims, session.concepts, load_paths(), paper_id
+                session.papers, session.claims, session.concepts, paths, paper_id
             )
             task = session.tasks.create_task(
                 "summarize_paper", paper_id, "agent", request["artifact_id"], request["spec_version"], request["schema_version"]
             )
-            record_task_report(session.papers, load_paths(), task, note="Queued from rks batch extract summary --mode agent.")
+            record_task_report(session.papers, paths, task, note="Queued from rks batch extract summary --mode agent.")
             return {**request, "mode": "agent", "task_id": task.id}
 
     raise ValueError(f"Unsupported batch stage: {stage}")

@@ -8,7 +8,14 @@ import urllib.request
 from pathlib import Path
 
 from rks.config import LlmConfig
-from rks.llm import validate_claims_result_payload, validate_summary_result_payload, validate_text_result_payload
+from rks.llm import (
+    validate_claims_result_payload,
+    validate_datasets_result_payload,
+    validate_methods_result_payload,
+    validate_paper_result_payload,
+    validate_summary_result_payload,
+    validate_text_result_payload,
+)
 
 _DEFAULT_TIMEOUT = 60
 _MAX_RETRIES = 3
@@ -73,13 +80,84 @@ class OpenAICompatibleLlmProvider:
             "instructions": [
                 "Return only JSON.",
                 "Return a top-level key `claims`.",
-                "Each claim must include text, predicate, object_text, context, evidence, confidence.",
-                "Put subject_text inside context.subject_text.",
+                "Each claim must include: text, predicate, object_text, context, evidence, confidence.",
+                "Put the claim subject in context.subject_text.",
+                "Put the paper section in context.section — one of: abstract, introduction, method, experiments, results, conclusion, discussion.",
+                "Put the dataset name (if any) in context.dataset.",
+                "Put a short verbatim quote supporting the claim in evidence.quote.",
+                "Set confidence between 0.0 and 1.0 based on how directly the text supports the claim.",
             ],
             "input": text_payload,
         }
         response = self._chat_json(prompt)
         return validate_claims_result_payload(response)
+
+    def parse_methods(self, text_payload: dict) -> list[dict]:
+        prompt = {
+            "task": "extract_methods",
+            "instructions": [
+                "Return only JSON.",
+                "Return a top-level key `methods`.",
+                "Each method must include `name` and `description`.",
+                "Set `proposed_by_this_paper` to true only when this paper introduces the method.",
+                "Include known alternate names in `aliases` as a list of strings.",
+                "Focus on algorithms, models, architectures, and frameworks — not generic techniques.",
+            ],
+            "input": text_payload,
+        }
+        response = self._chat_json(prompt)
+        return validate_methods_result_payload(response)
+
+    def parse_datasets(self, text_payload: dict) -> list[dict]:
+        prompt = {
+            "task": "extract_datasets",
+            "instructions": [
+                "Return only JSON.",
+                "Return a top-level key `datasets`.",
+                "Each dataset must include `name` and `description`.",
+                "Set `used_for` to one of: train, eval, both.",
+                "Set `source` to a URL or citation string if mentioned.",
+                "Focus on named datasets — not generic data collections.",
+            ],
+            "input": text_payload,
+        }
+        response = self._chat_json(prompt)
+        return validate_datasets_result_payload(response)
+
+    def extract_all(self, text_source_input: dict) -> dict:
+        pdf_base64 = _read_pdf_base64(text_source_input.get("source_pdf"))
+        prompt = {
+            "task": "extract_paper_all",
+            "instructions": [
+                "Return only JSON.",
+                "Extract ALL of the following from the paper in a single response:",
+                "1. text: full readable research text as a string.",
+                "2. paragraphs: list of paragraph strings.",
+                "3. warnings: list of extraction warning strings (empty list if none).",
+                "4. claims: list of structured research claims. Each claim must include: text, predicate, object_text, context (with subject_text, section, dataset), evidence (with quote), confidence.",
+                "5. methods: list of methods/algorithms/architectures. Each must include name, description, proposed_by_this_paper (bool), aliases (list).",
+                "6. datasets: list of named datasets. Each must include name, description, used_for (train/eval/both), source.",
+                "7. summary: a concise one-paragraph summary of the paper's contributions.",
+                "8. evidence_claim_ids: empty list (claim IDs are not yet assigned).",
+                "9. open_questions: list of open research questions raised by the paper.",
+                "Return a single JSON object with all these top-level keys.",
+            ] if pdf_base64 else [
+                "Return only JSON.",
+                "Extract ALL of the following from the provided text in a single response:",
+                "1. text: full readable research text as a string.",
+                "2. paragraphs: list of paragraph strings.",
+                "3. warnings: list of extraction warning strings (empty list if none).",
+                "4. claims: list of structured research claims. Each claim must include: text, predicate, object_text, context (with subject_text, section, dataset), evidence (with quote), confidence.",
+                "5. methods: list of methods/algorithms/architectures. Each must include name, description, proposed_by_this_paper (bool), aliases (list).",
+                "6. datasets: list of named datasets. Each must include name, description, used_for (train/eval/both), source.",
+                "7. summary: a concise one-paragraph summary of the paper's contributions.",
+                "8. evidence_claim_ids: empty list (claim IDs are not yet assigned).",
+                "9. open_questions: list of open research questions raised by the paper.",
+                "Return a single JSON object with all these top-level keys.",
+            ],
+            "input": text_source_input,
+        }
+        return validate_paper_result_payload(self._chat_json(prompt, pdf_base64=pdf_base64))
 
     def summarize_paper(self, summary_input: dict) -> dict:
         prompt = {

@@ -10,8 +10,8 @@ This document tracks work since the latest release tag so it is clear when to cu
 
 ## Delta Since `v0.1.0`
 
-- Commit count: 7
-- Diff summary: 51 files changed, ~2000+ insertions
+- Commit count: 8+ (extraction pipeline work uncommitted)
+- Diff summary: 60+ files changed, ~3000+ insertions
 
 ## Work Log
 
@@ -22,6 +22,7 @@ This document tracks work since the latest release tag so it is clear when to cu
 | 2026-03-20 | `5b586b7` | fix | Made migration flow resilient when `papers.reading_status` exists but migration history is missing. Added regression test. | Stability fix for migration path; release-worthy with the feature set above. |
 | 2026-03-21 | `ea1e555` | feature | Added `rks papers find-duplicates` (`heuristic` / `identifiers`) and first-class `rks papers merge`. Re-homing logic now consolidates notes, links, tags, tasks, and paper-scoped references; docs and tests updated (EN/ZH). | User-facing paper-management capability expansion; strengthens `v0.2.0` release signal. |
 | 2026-03-21 | `8fad606` | feature | Added `rks init <path>` and global config at `~/.rks/config.json`. Data directory is now globally configured so `rks` works from any directory. Replaced CWD-based root fallback with explicit `ConfigError`. Added `rks config set data-dir`. Updated all EN/ZH docs. | User-facing usability fix; `rks` is now truly portable across directories. |
+| 2026-03-21 | (unreleased) | feature | Implemented full AI extraction pipeline: fixed citation stubs polluting papers list; added `methods.v1` / `datasets.v1` schemas; LLM+agent paths for methods/datasets; `claims.v2` with `context.section`, `context.dataset`, `evidence.quote`; `auto_extract_mode` config field (`none`/`heuristic`/`llm-api`/`llm-api-combined`/`agent`); `run_post_ingest_pipeline` auto-triggered after each ingest; `paper.v1` single-pass combined extraction (`rks extract all`, `rks import all`, `llm-api-combined` mode). | Major LLM extraction capability expansion; significant new surface for `v0.3.0`. |
 
 ## Release Decision Rules
 
@@ -34,12 +35,17 @@ Use this quick rubric after each merge:
 
 ## Current Recommendation
 
-- Recommended next tag: `v0.2.0`
-- Why:
+- Recommended next tag: `v0.2.0` (paper management) → `v0.3.0` (AI extraction pipeline)
+- Why `v0.2.0` first:
   - New paper-management and stats commands are user-visible.
   - Duplicate detection and merge workflows are now first-class user surfaces.
   - New migrations (`0008`, `0009`) change storage schema.
   - A migration resilience fix is already included and tested.
+- Why `v0.3.0` after:
+  - Full AI extraction pipeline: LLM/agent paths for text, claims (v2), methods, datasets, summary.
+  - `auto_extract_mode` makes AI extraction a first-class config option.
+  - `paper.v1` single-pass combined extraction (`rks extract all`) is a new user-facing command.
+  - `rks import all/methods/datasets` complete the agent round-trip.
 
 ## How To Update This File
 

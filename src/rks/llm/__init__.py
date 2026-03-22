@@ -1,8 +1,17 @@
 from rks.llm.contract import (
     ALL_EXTRACTION_MODES,
+    CLAIMS_SCHEMA_VERSION,
+    DATASETS_SCHEMA_VERSION,
     DUAL_TRACK_SPEC_VERSION,
+    METHODS_SCHEMA_VERSION,
+    PAPER_SCHEMA_VERSION,
+    SUMMARY_SCHEMA_VERSION,
+    TEXT_SCHEMA_VERSION,
     build_dual_track_request,
     validate_claims_result_payload,
+    validate_datasets_result_payload,
+    validate_methods_result_payload,
+    validate_paper_result_payload,
     validate_summary_result_payload,
     validate_text_result_payload,
 )
@@ -10,10 +19,19 @@ from rks.llm.runtime import run_dual_track_mode
 
 __all__ = [
     "ALL_EXTRACTION_MODES",
+    "CLAIMS_SCHEMA_VERSION",
+    "DATASETS_SCHEMA_VERSION",
     "DUAL_TRACK_SPEC_VERSION",
+    "METHODS_SCHEMA_VERSION",
+    "PAPER_SCHEMA_VERSION",
+    "SUMMARY_SCHEMA_VERSION",
+    "TEXT_SCHEMA_VERSION",
     "build_dual_track_request",
     "run_dual_track_mode",
     "validate_claims_result_payload",
+    "validate_datasets_result_payload",
+    "validate_methods_result_payload",
+    "validate_paper_result_payload",
     "validate_summary_result_payload",
     "validate_text_result_payload",
 ]
