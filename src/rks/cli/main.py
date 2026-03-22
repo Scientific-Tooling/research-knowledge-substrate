@@ -22,6 +22,7 @@ from rks.cli.commands import (
     evolution,
     query,
     output,
+    schema,
 )
 
 
@@ -45,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     evolution.register(subparsers)
     query.register(subparsers)
     output.register(subparsers)
+    schema.register(subparsers)
 
     return parser
 
