@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from rks.concepts.normalize import alias_candidates, canonicalize_term
+from rks.concepts.normalize import alias_candidates, canonicalize_term, extract_abbreviation
 from rks.domain.models import ConceptRecord
 from rks.ids import next_id
 from rks.utils import utc_now
@@ -20,8 +20,15 @@ class ConceptRepository:
 
         timestamp = utc_now()
         concept_id = next_id(self.conn, "concept")
+        # If the term contains a trailing abbreviation like "Long Short-Term Memory (LSTM)",
+        # strip it from the canonical name and register the abbreviation as an alias so
+        # that both forms resolve to the same node without extra manual steps.
+        _, inline_abbrev = extract_abbreviation(term)
         canonical = canonicalize_term(term)
-        aliases = sorted(set(alias_candidates(term)))
+        alias_set: set[str] = set(alias_candidates(term))
+        if inline_abbrev:
+            alias_set.update(alias_candidates(inline_abbrev))
+        aliases = sorted(alias_set)
         parent_concept_id = None
         if allow_parent:
             parent_term = _infer_parent_term(canonical)

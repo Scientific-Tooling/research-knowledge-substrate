@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 
 DUAL_TRACK_SPEC_VERSION = "v1"
 ALL_EXTRACTION_MODES = ("llm-api", "agent")
@@ -106,6 +108,68 @@ def validate_claims_result_payload(payload) -> list[dict]:
                     raise ValueError(f"concept_aliases entry at index {idx} has a non-string alias.")
 
     return claims
+
+
+def check_concept_alias_format(payload) -> list[str]:
+    """Return a list of human-readable warnings about concept_aliases naming quality.
+
+    These are non-fatal: import continues, but callers should surface warnings so
+    operators can audit LLM output quality over time.
+
+    Checks performed:
+    - canonical is all-lowercase (likely not Title Cased)
+    - canonical starts with a leading article
+    - canonical looks like an abbreviation (all-caps, ≤6 chars) — full name is preferred
+    - canonical is suspiciously long (>8 tokens, may be a sentence fragment)
+    - canonical ends with a trailing parenthetical that should have been split into aliases
+    """
+    if not isinstance(payload, dict):
+        return []
+    concept_aliases = payload.get("concept_aliases")
+    if not isinstance(concept_aliases, list):
+        return []
+
+    warnings: list[str] = []
+    _article_re = re.compile(r'^(the|a|an)\s', re.IGNORECASE)
+    _trailing_paren_re = re.compile(r'\s*\([^)]{1,10}\)\s*$')
+
+    for idx, entry in enumerate(concept_aliases):
+        if not isinstance(entry, dict):
+            continue
+        canonical = entry.get("canonical")
+        if not isinstance(canonical, str) or not canonical.strip():
+            continue
+
+        label = f"concept_aliases[{idx}].canonical '{canonical}'"
+
+        if canonical == canonical.lower() and len(canonical) > 3:
+            warnings.append(
+                f"{label}: all-lowercase; expected Title Case or ALL-CAPS acronym."
+            )
+
+        if _article_re.match(canonical):
+            warnings.append(
+                f"{label}: starts with a leading article; strip 'a/an/the'."
+            )
+
+        if canonical.isupper() and len(canonical) <= 6:
+            warnings.append(
+                f"{label}: looks like an abbreviation; prefer the full English name "
+                "and move this form to aliases."
+            )
+
+        if len(canonical.split()) > 8:
+            warnings.append(
+                f"{label}: has more than 8 tokens; may be a phrase rather than a concept name."
+            )
+
+        if _trailing_paren_re.search(canonical):
+            warnings.append(
+                f"{label}: contains a trailing parenthetical; move the bracketed form "
+                "to aliases and use the bare name as canonical."
+            )
+
+    return warnings
 
 
 def validate_summary_result_payload(payload: dict) -> dict:
