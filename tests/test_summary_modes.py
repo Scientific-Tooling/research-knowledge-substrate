@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
+    env["RKS_DATA_DIR"] = str(cwd)
     return subprocess.run(
         [sys.executable, "-m", "rks", *args],
         cwd=cwd,

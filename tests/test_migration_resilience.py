@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
+    env["RKS_DATA_DIR"] = str(cwd)
     return subprocess.run(
         [sys.executable, "-m", "rks", *args],
         cwd=cwd,
@@ -32,7 +33,7 @@ class MigrationResilienceTest(unittest.TestCase):
             first_migrate_result = run_cli("migrate", cwd=workspace)
             self.assertEqual(first_migrate_result.returncode, 0, first_migrate_result.stderr)
 
-            db_path = workspace / "data" / "rks.sqlite3"
+            db_path = workspace / "rks.sqlite3"
             with sqlite3.connect(db_path) as conn:
                 conn.execute(
                     "DELETE FROM schema_migrations WHERE version IN (?, ?)",

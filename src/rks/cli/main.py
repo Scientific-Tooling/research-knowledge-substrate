@@ -25,7 +25,6 @@ from rks.agent_skills import SKILL_BUNDLE_VERSION, export_bundled_skills, list_b
 from rks.config import (
     ALL_AUTO_EXTRACT_MODES,
     ConfigError,
-    config_path,
     global_config_path,
     load_app_config,
     load_global_config,
@@ -93,6 +92,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_db_parser = subparsers.add_parser("init-db", help="Initialize the RKS SQLite database (requires prior `rks init`).")
     init_db_parser.set_defaults(handler=handle_init_db)
+
+    clear_parser = subparsers.add_parser("clear", help="Delete all papers, artifacts, and the database. Keeps global config.")
+    clear_parser.add_argument("--yes", action="store_true", help="Confirm deletion. Required to actually clear data.")
+    clear_parser.set_defaults(handler=handle_clear)
 
     doctor_parser = subparsers.add_parser("doctor", help="Run installation and environment self-checks.")
     doctor_parser.set_defaults(handler=handle_doctor)
@@ -934,6 +937,52 @@ def handle_init_db(args: argparse.Namespace) -> int:
     del args
     with _open_repository() as repo:
         print(json.dumps({"status": "ok", "db_initialized": True}, indent=2))
+    return 0
+
+
+def handle_clear(args: argparse.Namespace) -> int:
+    import shutil
+    paths = load_paths()
+    if not args.yes:
+        print(
+            json.dumps(
+                {
+                    "status": "aborted",
+                    "reason": "Pass --yes to confirm. This will permanently delete all papers, artifacts, and the database.",
+                    "data_dir": str(paths.data_dir),
+                },
+                indent=2,
+            )
+        )
+        return 1
+    removed = []
+    for target in (paths.db_path, paths.papers_dir, paths.artifacts_dir):
+        if target.exists():
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+            removed.append(str(target))
+    # Re-initialize an empty database so the workspace is immediately usable
+    from rks.storage import connect_db, initialize_db
+    from rks.storage.db import apply_migrations
+    conn = connect_db(paths.db_path)
+    try:
+        initialize_db(conn)
+        apply_migrations(conn)
+    finally:
+        conn.close()
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "data_dir": str(paths.data_dir),
+                "removed": removed,
+                "db_reinitialized": True,
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

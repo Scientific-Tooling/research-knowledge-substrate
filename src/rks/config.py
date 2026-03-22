@@ -74,49 +74,21 @@ def write_global_config(data: dict) -> Path:
     return path
 
 
-def config_path(root: Path) -> Path:
-    """Return the path to a workspace-level rks.json (advanced override)."""
-    return root / "rks.json"
-
-
 def load_app_config() -> AppConfig:
     gcfg_path = global_config_path()
     payload = dict(DEFAULT_CONFIG)
     payload["llm"] = dict(DEFAULT_CONFIG["llm"])
 
-    def _merge_file(file_path: Path) -> None:
-        if file_path.exists():
-            loaded = json.loads(file_path.read_text(encoding="utf-8"))
-            payload["data_dir"] = loaded.get("data_dir", payload["data_dir"])
-            payload["reference_pdf_acquisition"] = loaded.get(
-                "reference_pdf_acquisition",
-                payload["reference_pdf_acquisition"],
-            )
-            payload["auto_extract_mode"] = loaded.get(
-                "auto_extract_mode",
-                payload["auto_extract_mode"],
-            )
-            payload["llm"] = {**payload["llm"], **loaded.get("llm", {})}
-
     # Resolution order:
-    # 1. RKS_DATA_DIR env var — direct absolute path override
-    # 2. RKS_ROOT env var — workspace root (+ optional workspace rks.json)
-    # 3. Global config (~/.config/rks/config.json) data_dir
-    # 4. ConfigError — ask user to run `rks init <path>`
+    # 1. RKS_DATA_DIR env var — direct absolute path override (used by tests)
+    # 2. Global config (~/.rks/config.json) data_dir
+    # 3. ConfigError — ask user to run `rks init <path>`
     if "RKS_DATA_DIR" in os.environ:
         data_dir = Path(os.environ["RKS_DATA_DIR"]).expanduser().resolve()
-        root = data_dir
-    elif "RKS_ROOT" in os.environ:
-        root = Path(os.environ["RKS_ROOT"]).expanduser().resolve()
-        _merge_file(root / "rks.json")
-        data_dir_raw = payload["data_dir"]
-        p = Path(data_dir_raw)
-        data_dir = p.resolve() if p.is_absolute() else (root / p).resolve()
     else:
         global_cfg = load_global_config()
         if "data_dir" in global_cfg:
             data_dir = Path(global_cfg["data_dir"]).expanduser().resolve()
-            root = data_dir
             payload["reference_pdf_acquisition"] = global_cfg.get(
                 "reference_pdf_acquisition", payload["reference_pdf_acquisition"]
             )
@@ -130,7 +102,7 @@ def load_app_config() -> AppConfig:
             )
 
     return AppConfig(
-        root=root,
+        root=data_dir,
         data_dir=data_dir,
         global_config_path=gcfg_path,
         reference_pdf_acquisition=os.environ.get(
@@ -178,7 +150,3 @@ def load_llm_config() -> LlmConfig:
     )
 
 
-def write_default_config(destination: Path) -> Path:
-    """Write a default workspace rks.json (advanced use)."""
-    destination.write_text(json.dumps(DEFAULT_CONFIG, indent=2), encoding="utf-8")
-    return destination

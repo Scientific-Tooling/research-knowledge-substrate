@@ -34,6 +34,14 @@ rks config show
 
 The `rks init <path>` command writes `~/.rks/config.json` and initializes the database. Run `rks` from any directory after this.
 
+To wipe all data and start fresh (keeps global config):
+
+```bash
+rks clear --yes
+```
+
+Without `--yes`, the command prints what would be deleted and exits safely.
+
 ## 3. Quick Start (10-minute path)
 
 ```bash

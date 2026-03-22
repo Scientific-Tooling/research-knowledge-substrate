@@ -33,6 +33,14 @@ rks config show
 
 `rks init <path>` 会写入 `~/.rks/config.json` 并初始化数据库，此后在任意目录运行 `rks` 均可访问同一份数据。
 
+清空全部数据、重新开始（保留全局配置）：
+
+```bash
+rks clear --yes
+```
+
+不带 `--yes` 时仅打印将要删除的内容并安全退出。
+
 ## 3. 快速上手（10 分钟路径）
 
 ```bash

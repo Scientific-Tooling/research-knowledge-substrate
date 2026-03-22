@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
 
 
 def ensure_dir(path: Path) -> Path:
