@@ -113,7 +113,6 @@ HTTP 应镜像 CLI 能力，不应独立演化为另一套产品语义。
 - `llm-api`：RKS 直接调用模型 API
 - `agent`：外部 agent 执行并通过 import 回写
 
-如果任务存在本地确定性实现，允许使用 `heuristic`。
 
 ## 8. 典型工作流
 

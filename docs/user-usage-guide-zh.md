@@ -147,7 +147,7 @@ rks papers merge <target_paper_id> <source_paper_id> --prefer target
 
 使用建议：
 
-- `heuristic` 模式会使用 DOI、arXiv ID、规范化标题
+- `title` 模式会使用 DOI、arXiv ID、规范化标题
 - `identifiers` 模式只使用 DOI、arXiv ID
 - `target_paper_id` 选你希望保留的 canonical 记录
 - merge 后用 `rks show paper <target_paper_id>` 复核结果
@@ -163,7 +163,6 @@ rks extract text <paper_id>
 如果要显式指定模式：
 
 ```bash
-rks extract text <paper_id> --mode heuristic
 rks extract text <paper_id> --mode llm-api
 rks extract text <paper_id> --mode agent
 ```
@@ -177,7 +176,6 @@ rks extract claims <paper_id>
 常用模式：
 
 ```bash
-rks extract claims <paper_id> --mode heuristic
 rks extract claims <paper_id> --mode llm-api
 rks extract claims <paper_id> --mode agent
 ```

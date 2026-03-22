@@ -164,7 +164,7 @@ rks papers find-duplicates --mode identifiers
 
 Expected result:
 
-- `heuristic` mode reports a duplicate group for the two paper IDs
+- `title` mode reports a duplicate group for the two paper IDs
 - `identifiers` mode may return zero groups when DOI/arXiv IDs are missing
 
 Then merge:

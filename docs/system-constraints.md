@@ -37,7 +37,6 @@ Required paths:
 
 - `llm-api`
 - `agent`
-- `heuristic` only when a real local fallback exists
 
 Implications:
 
