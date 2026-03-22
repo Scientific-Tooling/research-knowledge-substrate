@@ -20,26 +20,29 @@ class ConceptRepository:
 
         timestamp = utc_now()
         concept_id = next_id(self.conn, "concept")
-        # If the term contains a trailing abbreviation like "Long Short-Term Memory (LSTM)",
-        # strip it from the canonical name and register the abbreviation as an alias so
-        # that both forms resolve to the same node without extra manual steps.
+
+        # Split "Full Name (ABBREV)" into base name and rigid designator (Kripke).
+        # The abbreviation is stored in canonical_abbrev for O(1) priority lookup,
+        # and also added to aliases so all surface forms remain searchable.
         _, inline_abbrev = extract_abbreviation(term)
         canonical = canonicalize_term(term)
         alias_set: set[str] = set(alias_candidates(term))
         if inline_abbrev:
             alias_set.update(alias_candidates(inline_abbrev))
         aliases = sorted(alias_set)
+
         parent_concept_id = None
         if allow_parent:
             parent_term = _infer_parent_term(canonical)
             if parent_term:
                 parent_concept_id = self.get_or_create(parent_term, allow_parent=False).id
+
         self.conn.execute(
             """
             INSERT INTO concepts(
                 id, name, aliases_json, domain, parent_concept_id, description,
-                status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                status, created_at, updated_at, canonical_abbrev
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 concept_id,
@@ -51,18 +54,56 @@ class ConceptRepository:
                 "system",
                 timestamp,
                 timestamp,
+                inline_abbrev,
             ),
         )
         self.conn.commit()
         return self.get_concept(concept_id)
 
     def find_by_name_or_alias(self, term: str):
+        """Look up a concept by any of its surface forms.
+
+        Matching priority (Kripke + Frege):
+          1. canonical_abbrev  — rigid designator; unambiguous, O(1) via index
+          2. name              — normalised canonical full name
+          3. aliases_json      — all other surface variants (full table scan)
+        """
+        _, abbrev = extract_abbreviation(term)
         canonical = canonicalize_term(term)
+
+        # Priority 1: rigid designator match (indexed column)
+        if abbrev:
+            row = self.conn.execute(
+                "SELECT * FROM concepts WHERE canonical_abbrev = ? LIMIT 1",
+                (abbrev,),
+            ).fetchone()
+            if row is not None:
+                return ConceptRecord(**dict(row))
+
+        # Priority 2: exact name match (indexed column)
+        row = self.conn.execute(
+            "SELECT * FROM concepts WHERE name = ? LIMIT 1",
+            (canonical,),
+        ).fetchone()
+        if row is not None:
+            return ConceptRecord(**dict(row))
+
+        # Priority 3: canonical_abbrev match on the canonicalized input itself
+        # (handles the case where the caller passes just "BERT" without brackets)
+        row = self.conn.execute(
+            "SELECT * FROM concepts WHERE canonical_abbrev = ? LIMIT 1",
+            (canonical,),
+        ).fetchone()
+        if row is not None:
+            return ConceptRecord(**dict(row))
+
+        # Priority 4: aliases_json scan (full table, unavoidable without alias index table)
         rows = self.conn.execute("SELECT * FROM concepts ORDER BY name ASC").fetchall()
         for row in rows:
             aliases = json.loads(row["aliases_json"] or "[]")
-            if row["name"] == canonical or canonical in aliases or canonical.lower() in aliases:
+            if canonical in aliases or canonical.lower() in aliases:
                 return ConceptRecord(**dict(row))
+
         return None
 
     def get_concept(self, concept_id: str) -> ConceptRecord:
@@ -95,7 +136,7 @@ class ConceptRepository:
         for row in rows:
             record = ConceptRecord(**dict(row))
             aliases = json.loads(record.aliases_json or "[]")
-            haystacks = [record.name, *aliases]
+            haystacks = [record.name, record.canonical_abbrev, *aliases]
             if any(canonical.lower() in value.lower() for value in haystacks if value):
                 matches.append(record)
         return matches
@@ -103,12 +144,27 @@ class ConceptRepository:
     def add_aliases(self, concept_id: str, new_aliases: list[str]) -> ConceptRecord:
         concept = self.get_concept(concept_id)
         existing: set[str] = set(json.loads(concept.aliases_json or "[]"))
+        new_abbrev = concept.canonical_abbrev
+
         for alias in new_aliases:
+            # If a new alias contains an inline abbreviation, promote it to
+            # canonical_abbrev when the concept doesn't already have one.
+            _, abbrev = extract_abbreviation(alias)
+            if abbrev and new_abbrev is None:
+                new_abbrev = abbrev
             for candidate in alias_candidates(alias):
                 existing.add(candidate)
+
+        update_fields = "aliases_json = ?, updated_at = ?"
+        params: list = [json.dumps(sorted(existing), sort_keys=True), utc_now()]
+        if new_abbrev != concept.canonical_abbrev:
+            update_fields += ", canonical_abbrev = ?"
+            params.append(new_abbrev)
+        params.append(concept_id)
+
         self.conn.execute(
-            "UPDATE concepts SET aliases_json = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(sorted(existing), sort_keys=True), utc_now(), concept_id),
+            f"UPDATE concepts SET {update_fields} WHERE id = ?",
+            params,
         )
         self.conn.commit()
         return self.get_concept(concept_id)
@@ -119,6 +175,13 @@ class ConceptRepository:
         timestamp = utc_now()
 
         absorbed = [source.name] + json.loads(source.aliases_json or "[]")
+        # Absorb source aliases; also promote source's canonical_abbrev to target
+        # if target doesn't already have one (rigid designator inheritance).
+        if source.canonical_abbrev and not target.canonical_abbrev:
+            self.conn.execute(
+                "UPDATE concepts SET canonical_abbrev = ?, updated_at = ? WHERE id = ?",
+                (source.canonical_abbrev, timestamp, target_id),
+            )
         self.add_aliases(target_id, absorbed)
 
         moved_subject = self.conn.execute(
@@ -163,11 +226,65 @@ class ConceptRepository:
         return [ConceptRecord(**dict(row)) for row in rows]
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+# Single-word tokens that are too generic to serve as a parent concept.
+# Multi-word entries allow matching a trailing phrase rather than just the
+# last token (Aristotle: genus must be a substantive upper category, not an
+# accidental last word).
+_PARENT_STOPWORDS: frozenset[str] = frozenset({
+    # generic methodological nouns
+    "model", "method", "system", "approach", "dataset", "task",
+    "technique", "framework", "algorithm", "architecture", "strategy",
+    "procedure", "mechanism", "process", "pipeline", "module",
+    # generic relational nouns that create spurious parents
+    "result", "output", "input", "feature", "function", "layer",
+    "network", "representation", "embedding", "vector",
+    # trailing preposition phrases that should not become parents
+    "of", "for", "with", "via", "using", "based",
+})
+
+# Multi-word trailing phrases whose last word looks substantive but whose
+# full phrase is a functional stopword (e.g. "Mixture of Experts" should
+# not yield parent "Experts" — "of Experts" is the differentia, not the genus).
+_MULTI_WORD_STOPWORD_SUFFIXES: tuple[str, ...] = (
+    "of experts",
+    "of attention",
+    "of layers",
+    "of heads",
+    "of tokens",
+)
+
+
 def _infer_parent_term(term: str) -> str | None:
+    """Infer the Aristotelian genus for *term* (the substantive upper category).
+
+    Strategy:
+    1. Reject single-token terms (no genus possible).
+    2. Reject if the full trailing phrase matches a known multi-word stopword
+       suffix (e.g. "Sparse Mixture of Experts" → suffix "of Experts" blocked).
+    3. Walk tokens right-to-left and return the first token that is not in the
+       single-word stopword set.  This recovers "Transformer" from
+       "Vision Transformer" while still blocking "Gradient Descent Method"
+       (last meaningful word is "Descent", which is not a stopword, so the
+       parent becomes "Descent" — a valid narrower category).
+    4. Return None if no suitable token is found.
+    """
     parts = term.split()
     if len(parts) < 2:
         return None
-    candidate = canonicalize_term(parts[-1])
-    if candidate.lower() in {"model", "method", "system", "approach", "dataset", "task"}:
-        return None
-    return candidate
+
+    lowered = term.lower()
+    for suffix in _MULTI_WORD_STOPWORD_SUFFIXES:
+        if lowered.endswith(suffix):
+            return None
+
+    for token in reversed(parts):
+        candidate = canonicalize_term(token)
+        if candidate.lower() not in _PARENT_STOPWORDS:
+            # Only promote single-token parents to avoid overly broad nodes.
+            return candidate
+
+    return None
