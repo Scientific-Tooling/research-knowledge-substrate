@@ -90,6 +90,14 @@ Purpose:
 - regress answer, brief, disagreement, and opportunity outputs
 - produce concrete failure reports and reproduction steps
 
+## Global Constraints
+
+All skills share one universal rule that is injected into every exported `AGENTS.md` and `CLAUDE.md`:
+
+**Confirmation required** — an agent must never create a research object (paper, project, hypothesis, concept, etc.) as a side effect of another operation. If the target object for a requested action does not exist, the agent must stop, explain what is missing, and ask the user for explicit permission before creating it.
+
+Example: a user asks to add a note to a paper that is not yet in RKS. The agent must not silently ingest the paper — it must surface the missing paper and ask first.
+
 ## Why These Skills Exist
 
 Without explicit repository-specific skills, a general agent has to rediscover:
