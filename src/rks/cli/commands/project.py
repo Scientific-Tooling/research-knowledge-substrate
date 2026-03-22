@@ -68,7 +68,7 @@ def register(subparsers) -> None:
     hypothesis_add_evidence_parser.add_argument("hypothesis_id", help="Hypothesis ID, for example h_000001.")
     hypothesis_add_evidence_parser.add_argument("object_type", choices=("paper", "claim"))
     hypothesis_add_evidence_parser.add_argument("object_id", help="Target object ID.")
-    hypothesis_add_evidence_parser.add_argument("--relation-type", default="supported_by", help="Evidence relation label.")
+    hypothesis_add_evidence_parser.add_argument("--relation-type", default="supports", help="Evidence relation label.")
     hypothesis_add_evidence_parser.add_argument("--note", help="Optional note stored on the evidence link.")
     hypothesis_add_evidence_parser.add_argument("--created-by", default="human:user", help="Actor label for the evidence link.")
     hypothesis_add_evidence_parser.set_defaults(handler=handle_hypothesis_add_evidence)

@@ -529,7 +529,7 @@ def dispatch_post_request(path: str, body: bytes) -> tuple[int, str, bytes]:
                 hypothesis_id,
                 payload["object_type"],
                 payload["object_id"],
-                relation_type=payload.get("relation_type", "supported_by"),
+                relation_type=payload.get("relation_type", "supports"),
                 note=payload.get("note"),
                 created_by=payload.get("created_by", "human:http"),
             )

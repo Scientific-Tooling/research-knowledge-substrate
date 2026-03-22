@@ -78,33 +78,38 @@ class HypothesisRepository:
         created_by: str,
         metadata: dict | None = None,
     ) -> HypothesisEvidenceLinkRecord:
+        # Idempotent: return existing link if one with the same key already exists.
         existing = self.conn.execute(
             """
             SELECT *
-            FROM hypothesis_evidence_links
-            WHERE hypothesis_id = ? AND object_id = ? AND object_type = ? AND relation_type = ?
+            FROM edges
+            WHERE source_id = ? AND source_type = 'hypothesis'
+              AND target_id = ? AND target_type = ?
+              AND relation_type = ?
             ORDER BY created_at ASC, id ASC
             LIMIT 1
             """,
             (hypothesis_id, object_id, object_type, relation_type),
         ).fetchone()
         if existing is not None:
-            return HypothesisEvidenceLinkRecord(**dict(existing))
+            return _edge_row_to_link(existing)
 
-        link_id = next_id(self.conn, "hypothesis_evidence_link")
+        link_id = next_id(self.conn, "edge")
         timestamp = utc_now()
         self.conn.execute(
             """
-            INSERT INTO hypothesis_evidence_links(
-                id, hypothesis_id, object_id, object_type, relation_type, metadata_json, created_by, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO edges(
+                id, source_id, source_type, relation_type,
+                target_id, target_type,
+                evidence_paper_id, confidence, metadata_json, created_by, created_at
+            ) VALUES (?, ?, 'hypothesis', ?, ?, ?, NULL, NULL, ?, ?, ?)
             """,
             (
                 link_id,
                 hypothesis_id,
+                relation_type,
                 object_id,
                 object_type,
-                relation_type,
                 json.dumps(metadata or {}, sort_keys=True),
                 created_by,
                 timestamp,
@@ -115,21 +120,36 @@ class HypothesisRepository:
 
     def get_evidence_link(self, link_id: str) -> HypothesisEvidenceLinkRecord:
         row = self.conn.execute(
-            "SELECT * FROM hypothesis_evidence_links WHERE id = ?",
+            "SELECT * FROM edges WHERE id = ? AND source_type = 'hypothesis'",
             (link_id,),
         ).fetchone()
         if row is None:
             raise KeyError(f"Hypothesis evidence link not found: {link_id}")
-        return HypothesisEvidenceLinkRecord(**dict(row))
+        return _edge_row_to_link(row)
 
     def list_evidence_links_for_hypothesis(self, hypothesis_id: str) -> list[HypothesisEvidenceLinkRecord]:
         rows = self.conn.execute(
             """
             SELECT *
-            FROM hypothesis_evidence_links
-            WHERE hypothesis_id = ?
+            FROM edges
+            WHERE source_id = ? AND source_type = 'hypothesis'
             ORDER BY created_at ASC, id ASC
             """,
             (hypothesis_id,),
         ).fetchall()
-        return [HypothesisEvidenceLinkRecord(**dict(row)) for row in rows]
+        return [_edge_row_to_link(row) for row in rows]
+
+
+def _edge_row_to_link(row) -> HypothesisEvidenceLinkRecord:
+    """Map an edges row (source_type='hypothesis') to HypothesisEvidenceLinkRecord."""
+    d = dict(row)
+    return HypothesisEvidenceLinkRecord(
+        id=d["id"],
+        hypothesis_id=d["source_id"],
+        object_id=d["target_id"],
+        object_type=d["target_type"],
+        relation_type=d["relation_type"],
+        metadata_json=d.get("metadata_json"),
+        created_by=d["created_by"],
+        created_at=d["created_at"],
+    )

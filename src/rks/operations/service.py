@@ -281,7 +281,7 @@ class ResearchOperations:
         object_type: str,
         object_id: str,
         *,
-        relation_type: str = "supported_by",
+        relation_type: str = "supports",
         created_by: str = "human:user",
         note: str | None = None,
     ) -> dict:
@@ -579,9 +579,9 @@ class ResearchOperations:
 
         moved_hypothesis_links = conn.execute(
             """
-            UPDATE hypothesis_evidence_links
-            SET object_id = ?
-            WHERE object_type = 'paper' AND object_id = ?
+            UPDATE edges
+            SET target_id = ?
+            WHERE source_type = 'hypothesis' AND target_type = 'paper' AND target_id = ?
             """,
             (target_paper_id, source_paper_id),
         ).rowcount
@@ -1020,7 +1020,7 @@ class ResearchOperations:
                 "project_count": scalar_count("SELECT COUNT(*) FROM research_projects"),
                 "project_link_count": scalar_count("SELECT COUNT(*) FROM project_links"),
                 "hypothesis_count": scalar_count("SELECT COUNT(*) FROM hypotheses"),
-                "hypothesis_evidence_link_count": scalar_count("SELECT COUNT(*) FROM hypothesis_evidence_links"),
+                "hypothesis_evidence_link_count": scalar_count("SELECT COUNT(*) FROM edges WHERE source_type = 'hypothesis'"),
             },
             "quality": {
                 "total_claims": int(quality.get("total_claims", 0)),
@@ -1113,19 +1113,6 @@ class ResearchOperations:
             metadata=metadata,
             created_by=reviewed_by,
         )
-        if self.evolution is not None:
-            self.evolution.record_event(
-                event_type="relation_promoted",
-                subject_id=source_claim.id,
-                subject_type="claim",
-                detail={
-                    "relation_type": relation_type,
-                    "target_claim_id": target_claim.id,
-                    "confidence": confidence,
-                    "edge_id": edge.id,
-                },
-                created_by=reviewed_by,
-            )
         return _edge_payload(edge)
 
     def retract_claim_relation(self, source_claim_id: str, relation_type: str, target_claim_id: str) -> dict:
@@ -1134,17 +1121,6 @@ class ResearchOperations:
             relation_type=relation_type,
             target_id=target_claim_id,
         )
-        if self.evolution is not None and deleted:
-            self.evolution.record_event(
-                event_type="relation_retracted",
-                subject_id=source_claim_id,
-                subject_type="claim",
-                detail={
-                    "relation_type": relation_type,
-                    "target_claim_id": target_claim_id,
-                },
-                created_by="system:retract",
-            )
         return {
             "source_claim_id": source_claim_id,
             "relation_type": relation_type,
@@ -1334,9 +1310,9 @@ class ResearchOperations:
         contradiction_count = 0
         neutral_count = 0
         for link in evidence_links:
-            if link.relation_type in ("supported_by", "supports"):
+            if link.relation_type == "supports":
                 support_count += 1
-            elif link.relation_type in ("contradicted_by", "contradicts"):
+            elif link.relation_type == "contradicts":
                 contradiction_count += 1
             else:
                 neutral_count += 1
@@ -1410,9 +1386,9 @@ class ResearchOperations:
             if year_key not in buckets:
                 buckets[year_key] = {"support": 0, "contradiction": 0, "neutral": 0, "links": []}
             bucket = buckets[year_key]
-            if link.relation_type in ("supported_by", "supports"):
+            if link.relation_type == "supports":
                 bucket["support"] += 1
-            elif link.relation_type in ("contradicted_by", "contradicts"):
+            elif link.relation_type == "contradicts":
                 bucket["contradiction"] += 1
             else:
                 bucket["neutral"] += 1
@@ -2630,9 +2606,9 @@ def _dedupe_project_paper_links(conn, paper_id: str) -> int:
 def _dedupe_hypothesis_paper_links(conn, paper_id: str) -> int:
     rows = conn.execute(
         """
-        SELECT id, hypothesis_id, object_id, object_type, relation_type
-        FROM hypothesis_evidence_links
-        WHERE object_type = 'paper' AND object_id = ?
+        SELECT id, source_id, target_id, target_type, relation_type
+        FROM edges
+        WHERE source_type = 'hypothesis' AND target_type = 'paper' AND target_id = ?
         ORDER BY created_at ASC, id ASC
         """,
         (paper_id,),
@@ -2640,12 +2616,12 @@ def _dedupe_hypothesis_paper_links(conn, paper_id: str) -> int:
     keep: set[tuple[str, str, str, str]] = set()
     duplicate_ids: list[str] = []
     for row in rows:
-        key = (row["hypothesis_id"], row["object_id"], row["object_type"], row["relation_type"])
+        key = (row["source_id"], row["target_id"], row["target_type"], row["relation_type"])
         if key in keep:
             duplicate_ids.append(row["id"])
             continue
         keep.add(key)
-    return _delete_rows_by_ids(conn, "hypothesis_evidence_links", duplicate_ids)
+    return _delete_rows_by_ids(conn, "edges", duplicate_ids)
 
 
 def _dedupe_paper_edges(conn, paper_id: str) -> int:

@@ -13,7 +13,6 @@ ID_PREFIXES = {
     "project": "rp",
     "project_link": "pl",
     "hypothesis": "h",
-    "hypothesis_evidence_link": "hel",
     "task": "t",
     "edge": "e",
     "artifact": "a",

@@ -44,6 +44,6 @@ class MigrationResilienceTest(unittest.TestCase):
             second_migrate_result = run_cli("migrate", cwd=workspace)
             self.assertEqual(second_migrate_result.returncode, 0, second_migrate_result.stderr)
             second_payload = json.loads(second_migrate_result.stdout)
-            self.assertEqual(second_payload["current_version"], "0009_paper_tags.sql")
+            self.assertEqual(second_payload["current_version"], "0013_merge_hypothesis_evidence_into_edges.sql")
             self.assertIn("0008_paper_reading_status.sql", second_payload["applied_migrations"])
             self.assertIn("0009_paper_tags.sql", second_payload["applied_migrations"])
