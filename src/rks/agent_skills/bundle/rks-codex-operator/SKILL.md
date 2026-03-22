@@ -24,6 +24,7 @@ Use this skill for requests such as:
 - Never invent `paper_id`, `claim_id`, or `task_id`; always parse them from command output
 - When relation review is involved, inspect `inferred_relations` before promote or retract
 - After any write operation, re-read the affected object through at least one read path
+- **Confirmation required**: never create a research object (paper, project, hypothesis, concept, etc.) as a side effect of another operation. If the target object for a requested action does not exist, stop and ask the user for explicit permission before creating it.
 
 ## Standard Workflow
 

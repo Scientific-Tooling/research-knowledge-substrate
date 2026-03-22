@@ -194,6 +194,15 @@ curl -s -X POST http://127.0.0.1:8765/api/evolution/cluster-conflicts -H 'Conten
 curl -s -X POST "http://127.0.0.1:8765/api/evolution/build-timeline/<concept_id>" -H 'Content-Type: application/json' -d '{}'
 ```
 
+## Confirmation Required
+
+Never create a research object (paper, project, hypothesis, concept, etc.) as a side effect of another operation. If the target object for a requested action does not exist, stop and ask the user for explicit permission before creating it.
+
+Examples:
+- User asks to add a note to a paper → if the paper is not in RKS, do not ingest it automatically; ask first.
+- User asks to add evidence to a hypothesis → if the hypothesis does not exist, do not create it; ask first.
+- User asks to tag a paper that is not yet ingested → ask before ingesting.
+
 ## Agent Mode Discipline
 
 When using `--mode agent`, do not stop at the request artifact. Confirm that:
