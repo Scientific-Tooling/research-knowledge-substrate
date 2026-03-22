@@ -1409,7 +1409,7 @@ class ResearchOperations:
                     paper = None
                 if paper and paper.year:
                     year_key = str(paper.year)
-            except (KeyError, Exception):
+            except KeyError:
                 pass
 
             if year_key not in buckets:
@@ -1766,7 +1766,7 @@ class ResearchOperations:
                     member_entry["paper_id"] = claim.paper_id
                     member_entry["paper_title"] = paper.title
                     member_entry["paper_year"] = paper.year
-                except (KeyError, Exception):
+                except KeyError:
                     pass
                 enriched_members.append(member_entry)
             result.append({
@@ -1841,7 +1841,7 @@ class ResearchOperations:
                     "paper_title": paper.title,
                     "paper_year": paper.year,
                 })
-            except (KeyError, Exception):
+            except KeyError:
                 resolved_nodes.append({"id": cid})
 
         # Attach cluster membership if available
@@ -1923,7 +1923,7 @@ class ResearchOperations:
                             concept_controversy[cid] = latest.controversy_score or 0.0
                     if cid and cid in concept_controversy:
                         controversy = max(controversy, concept_controversy[cid])
-            except (KeyError, Exception):
+            except KeyError:
                 pass
 
             # Recency bonus
@@ -1935,7 +1935,7 @@ class ResearchOperations:
                     recency = 1.0
                 elif paper.year and paper.year >= 2022:
                     recency = 0.5
-            except (KeyError, Exception):
+            except KeyError:
                 pass
 
             # Conflict cluster membership bonus — claims in an active cluster
@@ -1954,7 +1954,7 @@ class ResearchOperations:
                                     break
                         if cluster_member:
                             break
-                except (KeyError, Exception):
+                except KeyError:
                     pass
 
             priority_score = (
