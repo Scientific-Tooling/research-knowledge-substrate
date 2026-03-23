@@ -99,7 +99,12 @@ class CliSmokeTest(unittest.TestCase):
             self.assertEqual(before_payload["quality"]["papers_with_zero_claim_count"], 1)
             self.assertIn("source_pdf", before_payload["artifacts"]["by_type"])
 
-            extract_claims_result = run_cli("extract", "claims", paper_id, cwd=tmp_path)
+            stats_claims_fixture = tmp_path / "stats_claims.json"
+            stats_claims_fixture.write_text(
+                json.dumps({"claims": [{"text": "Sparse attention improves long-context throughput.", "predicate": "improves", "object_text": "long-context throughput", "context": {"subject_text": "Sparse attention"}, "evidence": {"paper_id": paper_id}, "confidence": 0.9}]}),
+                encoding="utf-8",
+            )
+            extract_claims_result = run_cli("import", "claims", paper_id, str(stats_claims_fixture), cwd=tmp_path)
             self.assertEqual(extract_claims_result.returncode, 0, extract_claims_result.stderr)
 
             after_result = run_cli("stats", cwd=tmp_path)
@@ -370,10 +375,8 @@ class CliSmokeTest(unittest.TestCase):
             before_payload = json.loads(before_result.stdout)
             self.assertEqual(before_payload["version"], __version__)
             self.assertEqual(before_payload["overall_status"], "action_required")
-            self.assertIn("rks config init", before_payload["recommended_actions"])
             self.assertIn("rks init-db", before_payload["recommended_actions"])
 
-            self.assertEqual(run_cli("config", "init", cwd=tmp_path).returncode, 0)
             self.assertEqual(run_cli("init-db", cwd=tmp_path).returncode, 0)
 
             after_result = run_cli("doctor", cwd=tmp_path)
@@ -522,13 +525,40 @@ class CliSmokeTest(unittest.TestCase):
             self.assertEqual(len(show_project_payload["notes"]), 1)
             self.assertEqual(len(show_project_payload["papers"]), 1)
 
-            extract_claims_result = run_cli("extract", "claims", payload["id"], cwd=tmp_path)
-            self.assertEqual(extract_claims_result.returncode, 0, extract_claims_result.stderr)
-            extract_claims_payload = json.loads(extract_claims_result.stdout)
-            self.assertGreaterEqual(extract_claims_payload["claim_count"], 1)
+            claims_fixture_path = tmp_path / "ingest_test_claims.json"
+            claims_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Transformers improve translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Transformers"},
+                                "evidence": {"paper_id": payload["id"], "section": "abstract"},
+                                "confidence": 0.9,
+                            },
+                            {
+                                "text": "Diffusion models reduce image artifacts in generation.",
+                                "predicate": "improves",
+                                "object_text": "image generation",
+                                "context": {"subject_text": "Diffusion Model"},
+                                "evidence": {"paper_id": payload["id"], "section": "results"},
+                                "confidence": 0.85,
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            import_claims_result = run_cli("import", "claims", payload["id"], str(claims_fixture_path), cwd=tmp_path)
+            self.assertEqual(import_claims_result.returncode, 0, import_claims_result.stderr)
+            import_claims_payload = json.loads(import_claims_result.stdout)
+            self.assertGreaterEqual(import_claims_payload["claim_count"], 1)
 
-            rerun_claims_result = run_cli("extract", "claims", payload["id"], cwd=tmp_path)
-            self.assertEqual(rerun_claims_result.returncode, 0, rerun_claims_result.stderr)
+            # Re-import with same fixture to verify ID stability
+            rerun_import_result = run_cli("import", "claims", payload["id"], str(claims_fixture_path), cwd=tmp_path)
+            self.assertEqual(rerun_import_result.returncode, 0, rerun_import_result.stderr)
 
             claims_result = run_cli("claims", payload["id"], cwd=tmp_path)
             self.assertEqual(claims_result.returncode, 0, claims_result.stderr)
@@ -649,8 +679,6 @@ class CliSmokeTest(unittest.TestCase):
             final_show_payload = json.loads(final_show_result.stdout)
             final_artifact_types = [artifact["artifact_type"] for artifact in final_show_payload["artifacts"]]
             self.assertEqual(final_artifact_types.count("structured_claims"), 1)
-            self.assertEqual(final_artifact_types.count("claim_candidates"), 1)
-            self.assertEqual(final_artifact_types.count("normalized_claims"), 1)
             self.assertEqual(len(final_show_payload["notes"]), 1)
 
             final_project_result = run_cli("show", "project", project_payload["id"], cwd=tmp_path)
@@ -712,8 +740,42 @@ class CliSmokeTest(unittest.TestCase):
             )
             self.assertEqual(run_cli("import", "claims", paper_a_id, str(claims_a_path), cwd=tmp_path).returncode, 0)
             self.assertEqual(run_cli("import", "claims", paper_b_id, str(claims_b_path), cwd=tmp_path).returncode, 0)
-            self.assertEqual(run_cli("extract", "methods", paper_a_id, cwd=tmp_path).returncode, 0)
-            self.assertEqual(run_cli("extract", "datasets", paper_a_id, cwd=tmp_path).returncode, 0)
+
+            methods_fixture_path = tmp_path / "project-a-methods.json"
+            methods_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "methods": [
+                            {
+                                "name": "Sparse Attention",
+                                "description": "A sparse attention mechanism proposed in this paper.",
+                                "proposed_by_this_paper": True,
+                                "aliases": [],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "methods", paper_a_id, str(methods_fixture_path), cwd=tmp_path).returncode, 0)
+
+            datasets_fixture_path = tmp_path / "project-a-datasets.json"
+            datasets_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "datasets": [
+                            {
+                                "name": "WMT14",
+                                "description": "Machine translation benchmark.",
+                                "used_for": "eval",
+                                "source": None,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "datasets", paper_a_id, str(datasets_fixture_path), cwd=tmp_path).returncode, 0)
 
             claim_a_id = json.loads(run_cli("claims", paper_a_id, cwd=tmp_path).stdout)[0]["id"]
             claim_b_id = json.loads(run_cli("claims", paper_b_id, cwd=tmp_path).stdout)[0]["id"]

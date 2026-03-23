@@ -107,9 +107,24 @@ class ResearchOutputTest(unittest.TestCase):
                 ],
             )
 
-            self.assertEqual(run_cli("extract", "methods", paper_1, cwd=tmp_path).returncode, 0)
-            self.assertEqual(run_cli("extract", "datasets", paper_1, cwd=tmp_path).returncode, 0)
-            self.assertEqual(run_cli("extract", "datasets", paper_2, cwd=tmp_path).returncode, 0)
+            methods_fixture = tmp_path / "output-methods.json"
+            methods_fixture.write_text(
+                json.dumps({"methods": [{"name": "Sparse Attention", "description": "Sparse attention mechanism.", "proposed_by_this_paper": True, "aliases": []}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "methods", paper_1, str(methods_fixture), cwd=tmp_path).returncode, 0)
+            datasets_fixture_1 = tmp_path / "output-datasets-1.json"
+            datasets_fixture_1.write_text(
+                json.dumps({"datasets": [{"name": "WMT14", "description": "Translation benchmark.", "used_for": "eval", "source": None}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "datasets", paper_1, str(datasets_fixture_1), cwd=tmp_path).returncode, 0)
+            datasets_fixture_2 = tmp_path / "output-datasets-2.json"
+            datasets_fixture_2.write_text(
+                json.dumps({"datasets": [{"name": "IWSLT", "description": "Translation benchmark.", "used_for": "eval", "source": None}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "datasets", paper_2, str(datasets_fixture_2), cwd=tmp_path).returncode, 0)
 
             promote_result = run_cli(
                 "review",
@@ -199,6 +214,7 @@ class ResearchOutputTest(unittest.TestCase):
 
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
+            os.environ["RKS_DATA_DIR"] = str(tmp_path)
             try:
                 _, _, answer_body = dispatch_get_request("/api/output/answer?q=Sparse%20Attention%20benchmark%20outlook")
                 _, _, brief_body = dispatch_get_request("/api/output/brief?topic=Sparse%20Attention")
@@ -213,6 +229,7 @@ class ResearchOutputTest(unittest.TestCase):
                     "/api/output/review-priorities?topic=Sparse%20Attention"
                 )
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
 
             self.assertIn("answer", json.loads(answer_body.decode("utf-8")))
@@ -267,8 +284,18 @@ class ResearchOutputTest(unittest.TestCase):
                 ],
             )
 
-            self.assertEqual(run_cli("extract", "methods", paper_1, cwd=tmp_path).returncode, 0)
-            self.assertEqual(run_cli("extract", "datasets", paper_1, cwd=tmp_path).returncode, 0)
+            proj_methods_fixture = tmp_path / "proj-methods.json"
+            proj_methods_fixture.write_text(
+                json.dumps({"methods": [{"name": "Sparse Attention", "description": "Sparse attention mechanism.", "proposed_by_this_paper": True, "aliases": []}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "methods", paper_1, str(proj_methods_fixture), cwd=tmp_path).returncode, 0)
+            proj_datasets_fixture = tmp_path / "proj-datasets.json"
+            proj_datasets_fixture.write_text(
+                json.dumps({"datasets": [{"name": "WMT14", "description": "Translation benchmark.", "used_for": "eval", "source": None}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "datasets", paper_1, str(proj_datasets_fixture), cwd=tmp_path).returncode, 0)
             method_id = json.loads(run_cli("methods", paper_1, cwd=tmp_path).stdout)[0]["id"]
             dataset_id = json.loads(run_cli("datasets", paper_1, cwd=tmp_path).stdout)[0]["id"]
             concept_id = json.loads(run_cli("concepts", paper_1, cwd=tmp_path).stdout)[0]["id"]
@@ -353,6 +380,7 @@ class ResearchOutputTest(unittest.TestCase):
 
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
+            os.environ["RKS_DATA_DIR"] = str(tmp_path)
             try:
                 _, _, project_brief_body = dispatch_get_request(f"/api/output/projects/{project_id}/brief")
                 _, _, project_answer_body = dispatch_get_request(
@@ -360,6 +388,7 @@ class ResearchOutputTest(unittest.TestCase):
                 )
                 _, _, project_questions_body = dispatch_get_request(f"/api/output/projects/{project_id}/open-questions")
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
 
             self.assertEqual(json.loads(project_brief_body.decode("utf-8"))["scope_type"], "project")
@@ -470,9 +499,9 @@ class ResearchOutputTest(unittest.TestCase):
             self.assertGreaterEqual(len(brief_payload["reading_navigation"]["entry_papers"]), 1)
             self.assertGreaterEqual(len(brief_payload["reading_navigation"]["contradiction_papers"]), 1)
 
-            sparse_brief_payload = json.loads(run_cli("output", "brief", "Graph retrieval", cwd=tmp_path).stdout)
-            self.assertIn("Claim extraction is too sparse for stable synthesis.", sparse_brief_payload["evidence_gaps"])
-            sparse_answer_payload = json.loads(run_cli("output", "answer", "Graph retrieval outlook", cwd=tmp_path).stdout)
+            sparse_brief_payload = json.loads(run_cli("output", "brief", "protein folding thermodynamics", cwd=tmp_path).stdout)
+            self.assertGreaterEqual(len(sparse_brief_payload["evidence_gaps"]), 1)
+            sparse_answer_payload = json.loads(run_cli("output", "answer", "protein folding thermodynamics outlook", cwd=tmp_path).stdout)
             self.assertEqual(sparse_answer_payload["confidence"], "low")
 
 

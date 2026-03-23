@@ -55,7 +55,6 @@ rks summarize paper <paper_id>
 
 For `extract text`, `extract claims`, and `summarize paper`, always choose a mode explicitly when context matters:
 
-- `heuristic`: use for local fallback or tests
 - `llm-api`: use when the user provides or expects direct provider usage
 - `agent`: use when the surrounding agent should do the LLM work
 

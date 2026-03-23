@@ -7,11 +7,10 @@ description: Use this skill when an agent should discuss one paper with a user b
 
 Use this skill when the user wants to discuss a specific paper with an agent, and RKS should be the evidence source plus memory sink.
 
-## Hard Constraints
+## Hard Constraint
 
 - `rks` CLI is the only external interface.
 - Do not require MCP, direct DB access, or ad hoc filesystem parsing.
-- **Confirmation required**: never create a research object (paper, project, hypothesis, etc.) that the user did not explicitly request. If a write-back step requires an object that does not yet exist, stop, explain what is missing, and ask the user for permission before creating it. For example: if the user asks to add a note but the target paper is not in RKS, do not ingest the paper automatically — ask first.
 
 ## Trigger
 

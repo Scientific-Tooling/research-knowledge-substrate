@@ -137,10 +137,11 @@ class ReferenceIngestionTest(unittest.TestCase):
             self.assertTrue(Path(paper.pdf_path).exists())
 
             previous_cwd = Path.cwd()
-            os.chdir(root)
+            os.environ["RKS_DATA_DIR"] = str(root / "data")
             try:
                 _, _, status_body = dispatch_get_request(f"/api/status/{paper.id}")
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
             status_payload = json.loads(status_body.decode("utf-8"))
             self.assertTrue(status_payload["source_pdf"]["available"])
@@ -186,10 +187,11 @@ class ReferenceIngestionTest(unittest.TestCase):
             self.assertEqual(payload["status"], "skipped")
             self.assertFalse(repo.get_paper(paper.id).pdf_path)
             previous_cwd = Path.cwd()
-            os.chdir(root)
+            os.environ["RKS_DATA_DIR"] = str(root / "data")
             try:
                 _, _, status_body = dispatch_get_request(f"/api/status/{paper.id}")
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
             status_payload = json.loads(status_body.decode("utf-8"))
             self.assertEqual(status_payload["readiness"]["current_level"], "ingested")

@@ -125,7 +125,13 @@ class EvolutionPhase2Test(unittest.TestCase):
             r = run_cli("ingest", "pdf", str(pdf), cwd=tmp_path)
             self.assertEqual(r.returncode, 0, r.stderr)
             paper_id = json.loads(r.stdout)["id"]
-            self.assertEqual(run_cli("extract", "claims", paper_id, cwd=tmp_path).returncode, 0)
+
+            claims_fixture = tmp_path / "bucketed_claims.json"
+            claims_fixture.write_text(
+                json.dumps({"claims": [{"text": "Transformers improve accuracy.", "predicate": "improves", "object_text": "accuracy", "context": {"subject_text": "Transformer"}, "evidence": {"paper_id": paper_id}, "confidence": 0.9}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "claims", paper_id, str(claims_fixture), cwd=tmp_path).returncode, 0)
 
             concepts = json.loads(run_cli("concepts", paper_id, cwd=tmp_path).stdout)
             if not concepts:
@@ -228,7 +234,13 @@ class EvolutionPhase2Test(unittest.TestCase):
             r = run_cli("ingest", "pdf", str(pdf), cwd=tmp_path)
             self.assertEqual(r.returncode, 0, r.stderr)
             paper_id = json.loads(r.stdout)["id"]
-            self.assertEqual(run_cli("extract", "claims", paper_id, cwd=tmp_path).returncode, 0)
+
+            claims_fixture = tmp_path / "priorities_claims.json"
+            claims_fixture.write_text(
+                json.dumps({"claims": [{"text": "Attention mechanism improves NLP tasks.", "predicate": "improves", "object_text": "NLP tasks", "context": {"subject_text": "Attention"}, "evidence": {"paper_id": paper_id}, "confidence": 0.9}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "claims", paper_id, str(claims_fixture), cwd=tmp_path).returncode, 0)
 
             # Query review priorities (may be empty with no candidates)
             priorities_result = run_cli("query", "review-priorities", cwd=tmp_path)
@@ -254,7 +266,13 @@ class EvolutionPhase2Test(unittest.TestCase):
             r = run_cli("ingest", "pdf", str(pdf), cwd=tmp_path)
             self.assertEqual(r.returncode, 0, r.stderr)
             paper_id = json.loads(r.stdout)["id"]
-            self.assertEqual(run_cli("extract", "claims", paper_id, cwd=tmp_path).returncode, 0)
+
+            claims_fixture = tmp_path / "evolution_claims.json"
+            claims_fixture.write_text(
+                json.dumps({"claims": [{"text": "Deep learning predicts protein structures.", "predicate": "predicts", "object_text": "protein structures", "context": {"subject_text": "Deep learning"}, "evidence": {"paper_id": paper_id}, "confidence": 0.9}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "claims", paper_id, str(claims_fixture), cwd=tmp_path).returncode, 0)
 
             # Create project
             project_result = run_cli(
@@ -356,6 +374,7 @@ class EvolutionPhase2Test(unittest.TestCase):
 
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
+            os.environ["RKS_DATA_DIR"] = str(tmp_path)
             try:
                 # Test cluster-conflicts POST endpoint
                 _, _, cluster_body = dispatch_post_request(
@@ -435,6 +454,7 @@ class EvolutionPhase2Test(unittest.TestCase):
                 for entry in filtered_payload["concepts"]:
                     self.assertGreaterEqual(entry["controversy_score"], 0.5)
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
 
 
@@ -509,6 +529,7 @@ class EvolutionPhase2Test(unittest.TestCase):
             # HTTP conflict-graph
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
+            os.environ["RKS_DATA_DIR"] = str(tmp_path)
             try:
                 _, _, body = dispatch_get_request(f"/api/evolution/conflict-graph/{concept_id}")
                 payload = json.loads(body.decode("utf-8"))
@@ -516,6 +537,7 @@ class EvolutionPhase2Test(unittest.TestCase):
                 self.assertIn("edges", payload)
                 self.assertGreaterEqual(payload["node_count"], 2)
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
 
     def test_enriched_conflict_cluster_members(self) -> None:
@@ -617,12 +639,14 @@ class EvolutionPhase2Test(unittest.TestCase):
             # HTTP endpoint
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
+            os.environ["RKS_DATA_DIR"] = str(tmp_path)
             try:
                 _, _, body = dispatch_get_request(f"/api/evolution/hypothesis-bucketed/{hypothesis_id}")
                 http_payload = json.loads(body.decode("utf-8"))
                 self.assertIn("buckets", http_payload)
                 self.assertGreaterEqual(len(http_payload["buckets"]), 1)
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
 
     def test_project_evolution_timeline(self) -> None:
@@ -666,12 +690,14 @@ class EvolutionPhase2Test(unittest.TestCase):
             # HTTP endpoint
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
+            os.environ["RKS_DATA_DIR"] = str(tmp_path)
             try:
                 _, _, body = dispatch_get_request(f"/api/evolution/project-timeline/{project_id}")
                 http_payload = json.loads(body.decode("utf-8"))
                 self.assertIn("timeline", http_payload)
                 self.assertGreaterEqual(len(http_payload["timeline"]), 1)
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
 
     def test_open_questions_unsupported_hypothesis_signal(self) -> None:

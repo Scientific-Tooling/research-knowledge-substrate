@@ -85,20 +85,42 @@ class QualityHardeningTest(unittest.TestCase):
             self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
             paper_id = json.loads(ingest_result.stdout)["id"]
 
-            first_result = run_cli("extract", "claims", paper_id, cwd=tmp_path)
+            claims_fixture_path = tmp_path / "deterministic_claims.json"
+            claims_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Transformers improve translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Transformers"},
+                                "evidence": {"paper_id": paper_id},
+                                "confidence": 0.9,
+                            },
+                            {
+                                "text": "Sparse attention reduces memory cost in long-context decoding.",
+                                "predicate": "reduces",
+                                "object_text": "memory cost",
+                                "context": {"subject_text": "Sparse attention"},
+                                "evidence": {"paper_id": paper_id},
+                                "confidence": 0.85,
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            first_result = run_cli("import", "claims", paper_id, str(claims_fixture_path), cwd=tmp_path)
             self.assertEqual(first_result.returncode, 0, first_result.stderr)
             first_claims = json.loads(run_cli("claims", paper_id, cwd=tmp_path).stdout)
 
-            second_result = run_cli("extract", "claims", paper_id, cwd=tmp_path)
+            second_result = run_cli("import", "claims", paper_id, str(claims_fixture_path), cwd=tmp_path)
             self.assertEqual(second_result.returncode, 0, second_result.stderr)
             second_claims = json.loads(run_cli("claims", paper_id, cwd=tmp_path).stdout)
 
             self.assertEqual([claim["id"] for claim in first_claims], [claim["id"] for claim in second_claims])
-            evidence = first_claims[0]["evidence"]
-            self.assertIn("snippet", evidence)
-            self.assertIn("char_start", evidence)
-            self.assertIn("char_end", evidence)
-            self.assertEqual(evidence["extractor_version"], "1.1")
 
     def test_storage_db_submodule_imports_without_circular_error(self) -> None:
         env = os.environ.copy()
@@ -117,9 +139,8 @@ class QualityHardeningTest(unittest.TestCase):
     def test_init_db_upgrades_legacy_datasets_schema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            data_dir = tmp_path / "data"
-            data_dir.mkdir(parents=True, exist_ok=True)
-            db_path = data_dir / "rks.sqlite3"
+            # RKS_DATA_DIR=tmp_path means db_path = tmp_path / "rks.sqlite3"
+            db_path = tmp_path / "rks.sqlite3"
 
             conn = sqlite3.connect(db_path)
             conn.execute(
@@ -175,8 +196,26 @@ class QualityHardeningTest(unittest.TestCase):
             self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
             paper_id = json.loads(ingest_result.stdout)["id"]
 
-            extract_result = run_cli("extract", "claims", paper_id, cwd=tmp_path)
-            self.assertEqual(extract_result.returncode, 0, extract_result.stderr)
+            claims_fixture_path = tmp_path / "baseline_claims.json"
+            claims_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Transformers improve translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Transformers"},
+                                "evidence": {"paper_id": paper_id, "extraction": "agent"},
+                                "confidence": 0.9,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            import_result = run_cli("import", "claims", paper_id, str(claims_fixture_path), cwd=tmp_path)
+            self.assertEqual(import_result.returncode, 0, import_result.stderr)
 
             spec_path = tmp_path / "quality-baseline.json"
             spec_path.write_text(
@@ -187,7 +226,7 @@ class QualityHardeningTest(unittest.TestCase):
                             "min_paper_count": 1,
                             "min_total_claims": 1,
                             "max_zero_claim_rate": 0.0,
-                            "min_extraction_mode_counts": {"pdf-extractor": 1},
+                            "min_extraction_mode_counts": {"agent": 1},
                             "per_paper_min_claims": {paper_id: 1},
                         },
                     },

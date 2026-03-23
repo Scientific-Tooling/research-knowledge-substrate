@@ -67,14 +67,11 @@ class ProductizationTest(unittest.TestCase):
             pdf_path = source / "product-paper.pdf"
             pdf_path.write_bytes(b"%PDF-1.4\nTransformers improve translation accuracy on WMT14.\n")
 
-            config_init = run_cli("config", "init", cwd=source)
-            self.assertEqual(config_init.returncode, 0, config_init.stderr)
-            self.assertTrue((source / "rks.json").exists())
-
             config_show = run_cli("config", "show", cwd=source)
             self.assertEqual(config_show.returncode, 0, config_show.stderr)
             config_payload = json.loads(config_show.stdout)
-            self.assertTrue(config_payload["data_dir"].endswith("data"))
+            self.assertIn("global_config_path", config_payload)
+            self.assertIn("effective", config_payload)
 
             ingest_result = run_cli("ingest", "pdf", str(pdf_path), cwd=source)
             self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
@@ -105,7 +102,25 @@ class ProductizationTest(unittest.TestCase):
                 0,
             )
             self.assertEqual(run_cli("project", "add-paper", project_id, paper_id, cwd=source).returncode, 0)
-            self.assertEqual(run_cli("extract", "claims", paper_id, cwd=source).returncode, 0)
+            claims_fixture = source / "snapshot_claims.json"
+            claims_fixture.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Snapshot preserves graph state across export and import.",
+                                "predicate": "preserves",
+                                "object_text": "graph state",
+                                "context": {"subject_text": "Snapshot"},
+                                "evidence": {"paper_id": paper_id, "extraction": "agent"},
+                                "confidence": 0.9,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "claims", paper_id, str(claims_fixture), cwd=source).returncode, 0)
             claim_id = json.loads(run_cli("claims", paper_id, cwd=source).stdout)[0]["id"]
             create_hypothesis_result = run_cli(
                 "hypothesis",
@@ -225,6 +240,7 @@ class ProductizationTest(unittest.TestCase):
 
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
+            os.environ["RKS_DATA_DIR"] = str(tmp_path)
             try:
                 _, _, health_body = dispatch_get_request("/health")
                 self.assertEqual(json.loads(health_body.decode("utf-8"))["status"], "ok")
@@ -492,6 +508,7 @@ class ProductizationTest(unittest.TestCase):
                 _, _, ui_body = dispatch_get_request("/")
                 self.assertIn("RKS Workspace", ui_body.decode("utf-8"))
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
 
 

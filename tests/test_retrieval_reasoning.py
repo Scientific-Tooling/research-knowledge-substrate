@@ -162,7 +162,22 @@ class RetrievalReasoningTest(unittest.TestCase):
             self.assertEqual(len(evidence_payload["claims"]), 3)
             self.assertEqual(len(evidence_payload["papers"]), 3)
 
-            summary_result = run_cli("summarize", "paper", paper_1, cwd=tmp_path)
+            anchor_claim_data = json.loads(run_cli("claims", paper_1, cwd=tmp_path).stdout)
+            anchor_claim_id_for_summary = anchor_claim_data[0]["id"]
+            summary_fixture_path = tmp_path / "summary_fixture.json"
+            summary_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "summary": "Sparse Attention improves translation accuracy as shown in paper 1.",
+                        "evidence_claim_ids": [anchor_claim_id_for_summary],
+                        "evidence_paper_ids": [paper_1],
+                        "citations": [{"claim_id": anchor_claim_id_for_summary, "paper_id": paper_1}],
+                        "open_questions": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            summary_result = run_cli("import", "summary", paper_1, str(summary_fixture_path), cwd=tmp_path)
             self.assertEqual(summary_result.returncode, 0, summary_result.stderr)
             summary_payload = json.loads(summary_result.stdout)
             self.assertEqual(summary_payload["evidence_paper_ids"], [paper_1])

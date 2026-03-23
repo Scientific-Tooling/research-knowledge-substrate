@@ -70,10 +70,63 @@ class GraphExpansionTest(unittest.TestCase):
             self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
             paper_id = json.loads(ingest_result.stdout)["id"]
 
-            self.assertEqual(run_cli("extract", "claims", paper_id, cwd=tmp_path).returncode, 0)
-            methods_result = run_cli("extract", "methods", paper_id, cwd=tmp_path)
-            datasets_result = run_cli("extract", "datasets", paper_id, cwd=tmp_path)
+            # Import claims with context linking Sparse Attention to WMT14
+            claims_fixture_path = tmp_path / "graph_claims.json"
+            claims_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Sparse Attention improves translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Sparse Attention", "dataset": "WMT14"},
+                                "evidence": {"paper_id": paper_id},
+                                "confidence": 0.9,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(run_cli("import", "claims", paper_id, str(claims_fixture_path), cwd=tmp_path).returncode, 0)
+
+            methods_fixture_path = tmp_path / "graph_methods.json"
+            methods_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "methods": [
+                            {
+                                "name": "Sparse Attention",
+                                "description": "A sparse attention mechanism for transformers.",
+                                "proposed_by_this_paper": True,
+                                "aliases": [],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            methods_result = run_cli("import", "methods", paper_id, str(methods_fixture_path), cwd=tmp_path)
             self.assertEqual(methods_result.returncode, 0, methods_result.stderr)
+
+            datasets_fixture_path = tmp_path / "graph_datasets.json"
+            datasets_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "datasets": [
+                            {
+                                "name": "WMT14",
+                                "description": "Machine translation benchmark dataset.",
+                                "used_for": "eval",
+                                "source": None,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            datasets_result = run_cli("import", "datasets", paper_id, str(datasets_fixture_path), cwd=tmp_path)
             self.assertEqual(datasets_result.returncode, 0, datasets_result.stderr)
 
             methods_payload = json.loads(run_cli("methods", paper_id, cwd=tmp_path).stdout)
@@ -87,9 +140,10 @@ class GraphExpansionTest(unittest.TestCase):
             self.assertIn("evaluated_on", {edge["relation_type"] for edge in method_detail["edges"]})
             self.assertIn("uses", {edge["relation_type"] for edge in dataset_detail["edges"]})
 
-            search_payload = json.loads(run_cli("search", "Sparse Attention", cwd=tmp_path).stdout)
-            self.assertGreaterEqual(len(search_payload["methods"]), 1)
-            self.assertGreaterEqual(len(search_payload["datasets"]), 1)
+            method_search_payload = json.loads(run_cli("search", "Sparse Attention", cwd=tmp_path).stdout)
+            self.assertGreaterEqual(len(method_search_payload["methods"]), 1)
+            dataset_search_payload = json.loads(run_cli("search", "WMT14", cwd=tmp_path).stdout)
+            self.assertGreaterEqual(len(dataset_search_payload["datasets"]), 1)
 
     def test_citation_ingestion_and_concept_hierarchy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -55,8 +55,34 @@ class SectionArtifactTest(unittest.TestCase):
             self.assertIn("abstract", section_names)
             self.assertIn("experiments", section_names)
 
-            extract_claims_result = run_cli("extract", "claims", paper_id, cwd=tmp_path)
-            self.assertEqual(extract_claims_result.returncode, 0, extract_claims_result.stderr)
+            claims_fixture_path = tmp_path / "section_claims.json"
+            claims_fixture_path.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Transformers improve translation accuracy on WMT14.",
+                                "predicate": "improves",
+                                "object_text": "translation accuracy",
+                                "context": {"subject_text": "Transformers"},
+                                "evidence": {"paper_id": paper_id, "section": "abstract"},
+                                "confidence": 0.9,
+                            },
+                            {
+                                "text": "Diffusion models reduce image artifacts in generation.",
+                                "predicate": "reduces",
+                                "object_text": "image artifacts",
+                                "context": {"subject_text": "Diffusion Model"},
+                                "evidence": {"paper_id": paper_id, "section": "experiments"},
+                                "confidence": 0.85,
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            import_claims_result = run_cli("import", "claims", paper_id, str(claims_fixture_path), cwd=tmp_path)
+            self.assertEqual(import_claims_result.returncode, 0, import_claims_result.stderr)
 
             claims_result = run_cli("claims", paper_id, cwd=tmp_path)
             self.assertEqual(claims_result.returncode, 0, claims_result.stderr)

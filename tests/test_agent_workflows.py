@@ -103,12 +103,14 @@ class AgentWorkflowTest(unittest.TestCase):
 
             previous_cwd = Path.cwd()
             os.chdir(tmp_path)
+            os.environ["RKS_DATA_DIR"] = str(tmp_path)
             try:
                 _, _, prepare_body = dispatch_post_request(
                     f"/api/prepare/papers/{paper_id}/output",
                     json.dumps({"apply": False}).encode("utf-8"),
                 )
             finally:
+                os.environ.pop("RKS_DATA_DIR", None)
                 os.chdir(previous_cwd)
             prepare_http_payload = json.loads(prepare_body.decode("utf-8"))
             self.assertEqual(prepare_http_payload["goal"], "output")
