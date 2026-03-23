@@ -448,6 +448,64 @@ def _evaluate_baseline_metrics(metrics: dict, checks: dict) -> dict:
     }
 
 
+def _evaluate_claims_against_golden(
+    actual_texts: list[str],
+    golden_texts: list[str],
+    match_threshold: float = 0.3,
+) -> dict:
+    """Fuzzy precision/recall/F1 of actual claims against a golden set.
+
+    Uses token-set Jaccard similarity to decide if a golden claim is matched
+    by any actual claim.  A pair is counted as a true positive when their
+    Jaccard score meets *match_threshold*.
+    """
+    import re
+
+    def _tokens(text: str) -> set[str]:
+        return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+    def _jaccard(a: set[str], b: set[str]) -> float:
+        union = a | b
+        return len(a & b) / len(union) if union else 0.0
+
+    actual_token_sets = [_tokens(t) for t in actual_texts]
+    matched_pairs: list[dict] = []
+    true_positive_actual: set[int] = set()
+
+    for golden_text in golden_texts:
+        golden_tokens = _tokens(golden_text)
+        best_score = 0.0
+        best_idx = -1
+        for idx, actual_tokens in enumerate(actual_token_sets):
+            score = _jaccard(golden_tokens, actual_tokens)
+            if score > best_score:
+                best_score = score
+                best_idx = idx
+        matched = best_score >= match_threshold
+        matched_pairs.append(
+            {
+                "golden": golden_text,
+                "best_match": actual_texts[best_idx] if best_idx >= 0 else None,
+                "score": round(best_score, 4),
+                "matched": matched,
+            }
+        )
+        if matched and best_idx >= 0:
+            true_positive_actual.add(best_idx)
+
+    tp = sum(1 for p in matched_pairs if p["matched"])
+    precision = tp / len(actual_texts) if actual_texts else 0.0
+    recall = tp / len(golden_texts) if golden_texts else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+    return {
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1, 4),
+        "matched_pairs": matched_pairs,
+    }
+
+
 def _load_manifest(manifest_path: Path):
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(payload, list):

@@ -63,6 +63,21 @@ def register(subparsers) -> None:
     evaluate_baseline_parser.add_argument("spec_path", type=Path, help="Path to a baseline spec JSON file.")
     evaluate_baseline_parser.set_defaults(handler=handle_evaluate_baseline)
 
+    evaluate_claims_parser = evaluate_subparsers.add_parser(
+        "claims",
+        help="Evaluate extracted claims for a paper against a golden set using fuzzy text similarity.",
+    )
+    evaluate_claims_parser.add_argument("paper_id", help="Paper ID, e.g. p_000001.")
+    evaluate_claims_parser.add_argument(
+        "--golden", type=Path, required=True, metavar="PATH",
+        help="Path to a JSON file containing a list of expected claim text strings.",
+    )
+    evaluate_claims_parser.add_argument(
+        "--min-f1", type=float, default=None, metavar="THRESHOLD",
+        help="Exit 1 if the F1 score is below this threshold.",
+    )
+    evaluate_claims_parser.set_defaults(handler=handle_evaluate_claims)
+
     # config
     config_parser = subparsers.add_parser("config", help="Manage RKS configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
@@ -346,6 +361,36 @@ def handle_evaluate_baseline(args: argparse.Namespace) -> int:
     }
     print(json.dumps(payload, indent=2))
     return 0 if evaluation["passed"] else 1
+
+
+def handle_evaluate_claims(args: argparse.Namespace) -> int:
+    import sys
+    from rks.cli._context import _evaluate_claims_against_golden
+    golden_raw = json.loads(args.golden.read_text(encoding="utf-8"))
+    if not isinstance(golden_raw, list):
+        print(json.dumps({"error": "Golden file must be a JSON array of strings."}), file=sys.stderr)
+        return 1
+    golden_texts = [str(item) for item in golden_raw]
+    with _open_session() as session:
+        claims = session.claims.list_claims_for_paper(args.paper_id)
+    actual_texts = [c.text for c in claims]
+    result = _evaluate_claims_against_golden(actual_texts, golden_texts)
+    passed = True
+    if args.min_f1 is not None:
+        passed = result["f1"] >= args.min_f1
+    payload = {
+        "paper_id": args.paper_id,
+        "golden_count": len(golden_texts),
+        "actual_count": len(actual_texts),
+        "precision": result["precision"],
+        "recall": result["recall"],
+        "f1": result["f1"],
+        "min_f1": args.min_f1,
+        "passed": passed,
+        "matched_pairs": result["matched_pairs"],
+    }
+    print(json.dumps(payload, indent=2))
+    return 0 if passed else 1
 
 
 def handle_serve(args: argparse.Namespace) -> int:
