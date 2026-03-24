@@ -45,6 +45,19 @@ Agent mode is always two-step:
 1. create request artifact
 2. import result artifact
 
+### MUST: Read the paper directly as a multimodal AI
+
+**When operating in agent mode, you MUST read the source document yourself using your own multimodal reading capability. This is mandatory and non-negotiable.**
+
+- Use the Read tool (or equivalent) on the source PDF path (e.g. `data/papers/<paper_id>/source.pdf`).
+- Read all pages of the document directly as an AI agent.
+- Extract claims, text, and summaries from what you read.
+- **NEVER** use Python scripts, subprocess calls, or programmatic text extraction to read the paper content.
+- **NEVER** read from heuristic artifacts (e.g. `extracted_text.json`) as a substitute for direct document reading.
+- **NEVER** pipe the paper through any local text processing tool.
+
+The entire purpose of agent mode is that **the AI reads and reasons over the document directly**. Using heuristic extraction defeats the purpose and bypasses the AI's own reading capability. If you catch yourself writing a Python script to read the paper, stop immediately and use the Read tool on the PDF instead.
+
 Examples:
 
 ```bash
