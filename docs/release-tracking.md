@@ -10,8 +10,8 @@ This document tracks work since the latest release tag so it is clear when to cu
 
 ## Delta Since `v0.2.0`
 
-- Commit count: 0
-- Diff summary: no changes yet
+- Commit count: 3 (+ 1 pending commit)
+- Diff summary: 18 files changed, 620 insertions(+), 78 deletions(-) (pending additions not yet counted)
 
 ## Work Log
 
@@ -27,6 +27,10 @@ This document tracks work since the latest release tag so it is clear when to cu
 | 2026-03-21 | (unreleased) | fix+feature | Removed workspace-level `rks.json` / `RKS_ROOT` env var — `~/.rks/config.json` is now the single config location. Added `rks clear [--yes]` to wipe all papers, artifacts, and the database while preserving global config. Timestamps now display in local time with UTC offset instead of bare UTC. | Simplification + new maintenance command. |
 | 2026-03-21 | `0abd310` | docs | Added confirmation rule to agent skills: agents must never auto-create a research object (paper, project, hypothesis, etc.) as a side effect of another operation — they must stop and ask the user first. Rule added globally to exported `AGENTS.md`/`CLAUDE.md` and explicitly to `rks-paper-discussion`, `rks-codex-operator`, and `rks-agent-operations`. | Documentation/behavior constraint; no release required alone. |
 | 2026-03-22 | (unreleased) | fix+feature | Structured JSON errors from CLI (`config_error`, `internal_error` to stderr); added `rks tasks wait <task_id> [--timeout] [--interval]` to block until task completes instead of requiring agent polling loops. Updated agent-usage guide (EN/ZH) and skill bundle. | Agent-facing reliability improvement; no schema change. |
+| 2026-03-22 | `e871ad0` | feature | Added `rks evaluate claims <paper_id> --golden <path> [--min-f1 N]` command with token-set Jaccard precision/recall/F1. Added `tests/test_e2e_pipeline.py` covering full agent-mode pipeline: ingest → import text → import claims → query → output answer → evaluate claims. CI-safe (no API key required). | Roadmap Phase 1 P0 feature; strong signal toward `v0.3.0`. |
+| 2026-03-22 | `0db7317` | feature | Refined `rks evaluate claims` command and `_evaluate_claims_against_golden` in `cli/_context.py`; exit 0/1 based on F1 threshold for CI gate use. | Complements `e871ad0`; included in same release signal. |
+| 2026-03-23 | `af37789` | fix | Fixed 19 broken tests after heuristic extraction removal and global-config migration: replaced heuristic-mode calls with `import` + agent-mode fixtures; wrapped dispatch calls with `RKS_DATA_DIR` env isolation; updated stale assertions for doctor, datasets schema, and sparse output. | Test stability fix; no user-facing behavior change. |
+| 2026-03-23 | (unreleased) | feature | Added `tests/test_claim_quality_regression.py` — auto-discovers golden files in `tests/golden/`, sets up paper fixtures, and gates CI on F1 threshold per paper. Added `tests/golden/sample_transformer_paper.json` as the first golden entry (synthetic fixture, min_f1=0.5). Added `docs/evaluation-methodology.md` documenting the golden-set format, metrics, annotation workflow, and CI wiring. | Completes roadmap Phase 1 P0-1 (CI regression + methodology docs); included in `v0.3.0` signal. |
 
 ## Release Decision Rules
 
@@ -39,7 +43,7 @@ Use this quick rubric after each merge:
 
 ## Current Recommendation
 
-- No pending tag recommendation — baseline is current.
+- `v0.3.0` when Phase 1 P0 is complete (golden set annotated + CI regression wired). The `rks evaluate claims` command and E2E pipeline test from `e871ad0`/`0db7317` are user-facing features that qualify for a minor bump. The `af37789` test fix can be bundled in the same tag.
 
 ## How To Update This File
 

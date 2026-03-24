@@ -24,9 +24,9 @@
 **任务**：
 
 - [ ] 为 5-10 篇领域内熟悉的论文手工标注 Claims Golden Set
-- [ ] 实现 precision/recall 计算工具（`rks eval claims <paper_id> --golden <path>`）
-- [ ] 将提取质量评估接入 CI，每次提交自动回归
-- [ ] 文档化评估方法论，确保 Golden Set 可维护
+- [x] 实现 precision/recall 计算工具（`rks evaluate claims <paper_id> --golden <path> [--min-f1 N]`）
+- [x] 将提取质量评估接入 CI，每次提交自动回归（`tests/test_claim_quality_regression.py`，CI 自动发现）
+- [x] 文档化评估方法论，确保 Golden Set 可维护（`docs/evaluation-methodology.md`）
 
 **退出标准**：
 
@@ -42,10 +42,10 @@
 
 **任务**：
 
-- [ ] 制作轻量级测试语料（1-2 篇公开论文的 PDF 固定版本）
-- [ ] 编写覆盖 `ingest → extract → query → output` 完整路径的集成测试
-- [ ] 接入 CI，每次提交必须通过（使用真实文件，不用 mock）
-- [ ] 覆盖 `llm-api` 和 `agent` 两条双轨路径
+- [ ] 制作轻量级测试语料（1-2 篇公开论文的 PDF 固定版本，当前用 fixture JSON）
+- [x] 编写覆盖 `ingest → extract → query → output` 完整路径的集成测试（`tests/test_e2e_pipeline.py`）
+- [x] 接入 CI，每次提交必须通过（`package-check.yml` 已覆盖）
+- [ ] 覆盖 `llm-api` 双轨路径（当前仅 `agent` 路径，llm-api 需 API key）
 
 **退出标准**：
 

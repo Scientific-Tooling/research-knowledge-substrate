@@ -1,0 +1,9 @@
+{
+  "_comment": "Golden set for the synthetic transformer paper fixture used in tests/test_e2e_pipeline.py and tests/test_claim_quality_regression.py. Replace with real annotated golden sets once actual papers are available (roadmap Phase 1 P0-1).",
+  "paper_fixture": "sample_transformer_paper",
+  "min_f1": 0.5,
+  "claims": [
+    "Transformers improve translation accuracy on WMT14.",
+    "The attention mechanism allows the model to focus on relevant source tokens."
+  ]
+}
