@@ -14,6 +14,8 @@ from rks.ingestion.reference import (
     ingest_pmid_reference,
     ingest_url_reference,
     resolve_reference_url,
+    update_doi_metadata,
+    update_arxiv_metadata,
 )
 from rks.providers import PubmedMetadataProvider
 from rks.service import dispatch_get_request
@@ -528,6 +530,180 @@ class ReferenceIngestionTest(unittest.TestCase):
             )
             self.assertEqual(paper.title, "10.1000/notitle")
             self.assertIsNone(paper.year)
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+
+class DuplicateGuardTest(unittest.TestCase):
+    def _make_repo(self) -> tuple[Path, AppPaths, object, PaperRepository]:
+        tmp_dir = tempfile.TemporaryDirectory()
+        root = Path(tmp_dir.name)
+        paths = AppPaths(
+            root=root,
+            data_dir=root / "data",
+            papers_dir=root / "data" / "papers",
+            artifacts_dir=root / "data" / "artifacts",
+            db_path=root / "data" / "rks.sqlite3",
+        )
+        paths.data_dir.mkdir(parents=True, exist_ok=True)
+        conn = connect_db(paths.db_path)
+        initialize_db(conn)
+        return root, paths, tmp_dir, PaperRepository(conn)
+
+    def _fake_doi_metadata(self, doi: str) -> dict:
+        return {
+            "title": "Test Paper",
+            "abstract": "An abstract.",
+            "authors": ["Author A"],
+            "year": 2024,
+            "venue": "Test Journal",
+            "doi": doi,
+            "arxiv_id": None,
+            "references": [],
+            "pdf_candidates": [],
+            "raw": {},
+        }
+
+    def test_ingest_doi_raises_on_duplicate_doi(self) -> None:
+        _root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            provider = _FakeProvider(self._fake_doi_metadata("10.1000/dup"))
+            ingest_doi_reference(repo=repo, paths=paths, doi="10.1000/dup", provider=provider, acquire_pdf=False)
+            with self.assertRaises(ValueError) as ctx:
+                ingest_doi_reference(repo=repo, paths=paths, doi="10.1000/dup", provider=provider, acquire_pdf=False)
+            self.assertIn("already exists", str(ctx.exception))
+            self.assertIn("update-metadata", str(ctx.exception))
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+    def test_ingest_arxiv_raises_on_duplicate_arxiv_id(self) -> None:
+        _root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            metadata = {
+                "title": "Arxiv Paper",
+                "abstract": None,
+                "authors": [],
+                "year": 2023,
+                "venue": None,
+                "doi": None,
+                "arxiv_id": "1234.56789",
+                "references": [],
+                "pdf_candidates": [],
+                "raw": {},
+            }
+            provider = _FakeProvider(metadata)
+            ingest_arxiv_reference(repo=repo, paths=paths, arxiv_id="1234.56789", provider=provider, acquire_pdf=False)
+            with self.assertRaises(ValueError) as ctx:
+                ingest_arxiv_reference(repo=repo, paths=paths, arxiv_id="1234.56789", provider=provider, acquire_pdf=False)
+            self.assertIn("already exists", str(ctx.exception))
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+    def test_ingest_pmid_raises_on_duplicate_source_ref_when_no_doi(self) -> None:
+        """PMID records that carry no DOI are caught by the source_ref fallback."""
+        _root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            metadata = {
+                "title": "PubMed Paper Without DOI",
+                "abstract": None,
+                "authors": [],
+                "year": 2022,
+                "venue": None,
+                "doi": None,
+                "arxiv_id": None,
+                "references": [],
+                "pdf_candidates": [],
+                "raw": {},
+            }
+            provider = _FakeProvider(metadata)
+            ingest_pmid_reference(repo=repo, paths=paths, pmid="99999999", provider=provider, acquire_pdf=False)
+            with self.assertRaises(ValueError) as ctx:
+                ingest_pmid_reference(repo=repo, paths=paths, pmid="99999999", provider=provider, acquire_pdf=False)
+            self.assertIn("already exists", str(ctx.exception))
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+
+class UpdateMetadataTest(unittest.TestCase):
+    def _make_repo(self) -> tuple[Path, AppPaths, object, PaperRepository]:
+        tmp_dir = tempfile.TemporaryDirectory()
+        root = Path(tmp_dir.name)
+        paths = AppPaths(
+            root=root,
+            data_dir=root / "data",
+            papers_dir=root / "data" / "papers",
+            artifacts_dir=root / "data" / "artifacts",
+            db_path=root / "data" / "rks.sqlite3",
+        )
+        paths.data_dir.mkdir(parents=True, exist_ok=True)
+        conn = connect_db(paths.db_path)
+        initialize_db(conn)
+        return root, paths, tmp_dir, PaperRepository(conn)
+
+    def test_update_doi_metadata_patches_existing_paper(self) -> None:
+        _root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            # Simulate a PDF-ingested paper with sparse metadata
+            from rks.ingestion.pdf import ingest_pdf
+            pdf_path = paths.papers_dir / "dummy.pdf"
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            pdf_path.write_bytes(b"%PDF-1.4 fake")
+            paper = ingest_pdf(repo=repo, paths=paths, pdf_path=pdf_path)
+            self.assertIsNone(paper.doi)
+            self.assertIsNone(paper.year)
+
+            # Apply DOI metadata
+            rich_metadata = {
+                "title": "A Real Title",
+                "abstract": "A real abstract.",
+                "authors": ["Jane Doe"],
+                "year": 2021,
+                "venue": "Nature",
+                "doi": "10.1000/real",
+                "arxiv_id": None,
+                "references": [],
+                "pdf_candidates": [],
+                "raw": {},
+            }
+            updated = update_doi_metadata(
+                repo=repo, paths=paths, paper_id=paper.id,
+                doi="10.1000/real", provider=_FakeProvider(rich_metadata),
+            )
+            self.assertEqual(updated.title, "A Real Title")
+            self.assertEqual(updated.year, 2021)
+            self.assertEqual(updated.doi, "10.1000/real")
+            self.assertEqual(updated.venue, "Nature")
+
+            # Metadata artifact must be present
+            artifact_types = {a.artifact_type for a in repo.get_artifacts_for_paper(paper.id)}
+            self.assertIn("metadata", artifact_types)
+        finally:
+            repo.conn.close()
+            tmp_dir.cleanup()
+
+    def test_update_metadata_does_not_create_new_paper(self) -> None:
+        _root, paths, tmp_dir, repo = self._make_repo()
+        try:
+            from rks.ingestion.pdf import ingest_pdf
+            pdf_path = paths.papers_dir / "dummy.pdf"
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            pdf_path.write_bytes(b"%PDF-1.4 fake")
+            paper = ingest_pdf(repo=repo, paths=paths, pdf_path=pdf_path)
+            paper_count_before = len(repo.list_recent_papers(limit=100))
+
+            update_doi_metadata(
+                repo=repo, paths=paths, paper_id=paper.id,
+                doi="10.1000/x", provider=_FakeProvider({
+                    "title": "T", "abstract": None, "authors": [], "year": None,
+                    "venue": None, "doi": "10.1000/x", "arxiv_id": None,
+                    "references": [], "pdf_candidates": [], "raw": {},
+                }),
+            )
+            self.assertEqual(len(repo.list_recent_papers(limit=100)), paper_count_before)
         finally:
             repo.conn.close()
             tmp_dir.cleanup()

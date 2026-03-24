@@ -4,6 +4,9 @@ from rks.ingestion.reference import (
     ingest_doi_reference,
     ingest_pmid_reference,
     ingest_url_reference,
+    update_arxiv_metadata,
+    update_doi_metadata,
+    update_pmid_metadata,
 )
 
 __all__ = [
@@ -13,4 +16,7 @@ __all__ = [
     "ingest_pdf_url",
     "ingest_pmid_reference",
     "ingest_url_reference",
+    "update_arxiv_metadata",
+    "update_doi_metadata",
+    "update_pmid_metadata",
 ]

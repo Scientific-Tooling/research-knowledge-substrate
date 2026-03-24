@@ -138,6 +138,28 @@ def _ingest_reference(
     acquire_pdf: bool,
     downloader,
 ):
+    doi = metadata.get("doi")
+    arxiv_id = metadata.get("arxiv_id")
+    if doi:
+        existing = repo.find_by_doi(doi)
+        if existing:
+            raise ValueError(
+                f"A paper with DOI {doi!r} already exists ({existing.id}). "
+                f"Use `rks papers update-metadata {existing.id} --doi {doi}` to refresh its metadata."
+            )
+    if arxiv_id:
+        existing = repo.find_by_arxiv_id(arxiv_id)
+        if existing:
+            raise ValueError(
+                f"A paper with arXiv ID {arxiv_id!r} already exists ({existing.id}). "
+                f"Use `rks papers update-metadata {existing.id} --arxiv {arxiv_id}` to refresh its metadata."
+            )
+    existing = repo.find_by_source_ref(source_type, source_ref)
+    if existing:
+        raise ValueError(
+            f"A paper with {source_type} reference {source_ref!r} already exists ({existing.id}). "
+            f"Use `rks papers update-metadata {existing.id}` to refresh its metadata."
+        )
     paper = repo.create_paper_from_reference(
         title=metadata.get("title") or source_ref,
         abstract=metadata.get("abstract"),
@@ -356,3 +378,97 @@ def _extract_pmid_from_url(host: str, path: str) -> str | None:
         match = re.match(r"^/pubmed/(\d+)/?$", path)
         return match.group(1) if match else None
     return None
+
+
+# ---------------------------------------------------------------------------
+# In-place metadata update
+# ---------------------------------------------------------------------------
+
+
+def _update_metadata_from_reference(
+    repo: PaperRepository,
+    paths: AppPaths,
+    paper_id: str,
+    source_type: str,
+    source_ref: str,
+    metadata: dict,
+    metadata_format: str,
+    metadata_payload,
+) -> object:
+    """Fetch fresh metadata and apply it to an existing paper without creating a new record."""
+    paper = repo.get_paper(paper_id)
+    if paper is None:
+        raise ValueError(f"Paper {paper_id!r} not found.")
+
+    repo.update_paper_metadata(
+        paper_id=paper_id,
+        title=metadata.get("title") or None,
+        abstract=metadata.get("abstract") or None,
+        authors=metadata.get("authors") or None,
+        year=metadata.get("year") or None,
+        venue=metadata.get("venue") or None,
+        doi=metadata.get("doi") or None,
+        arxiv_id=metadata.get("arxiv_id") or None,
+    )
+
+    paper_dir = ensure_dir(paths.papers_dir / paper_id)
+    if metadata_format == "xml":
+        metadata_path = paper_dir / "metadata.xml"
+        metadata_path.write_text(str(metadata_payload), encoding="utf-8")
+    else:
+        metadata_path = paper_dir / "metadata.json"
+        metadata_path.write_text(json.dumps(metadata_payload, indent=2), encoding="utf-8")
+
+    existing_types = {a.artifact_type for a in repo.get_artifacts_for_paper(paper_id)}
+    if "metadata" not in existing_types:
+        repo.create_artifact(
+            paper_id=paper_id,
+            artifact_type="metadata",
+            path=metadata_path,
+            format_name=metadata_format,
+            metadata={"source_type": source_type, "source_ref": source_ref},
+        )
+
+    return repo.get_paper(paper_id)
+
+
+def update_doi_metadata(repo: PaperRepository, paths: AppPaths, paper_id: str, doi: str, provider) -> object:
+    metadata = provider.fetch(doi)
+    return _update_metadata_from_reference(
+        repo=repo,
+        paths=paths,
+        paper_id=paper_id,
+        source_type="doi",
+        source_ref=doi,
+        metadata=metadata,
+        metadata_format="json",
+        metadata_payload=metadata.get("raw", metadata),
+    )
+
+
+def update_arxiv_metadata(repo: PaperRepository, paths: AppPaths, paper_id: str, arxiv_id: str, provider) -> object:
+    metadata = provider.fetch(arxiv_id)
+    return _update_metadata_from_reference(
+        repo=repo,
+        paths=paths,
+        paper_id=paper_id,
+        source_type="arxiv",
+        source_ref=arxiv_id,
+        metadata=metadata,
+        metadata_format="xml" if isinstance(metadata.get("raw"), str) else "json",
+        metadata_payload=metadata.get("raw", metadata),
+    )
+
+
+def update_pmid_metadata(repo: PaperRepository, paths: AppPaths, paper_id: str, pmid: str, provider) -> object:
+    metadata = provider.fetch(pmid)
+    return _update_metadata_from_reference(
+        repo=repo,
+        paths=paths,
+        paper_id=paper_id,
+        source_type="pmid",
+        source_ref=pmid,
+        metadata=metadata,
+        metadata_format="json",
+        metadata_payload=metadata.get("raw", metadata),
+    )

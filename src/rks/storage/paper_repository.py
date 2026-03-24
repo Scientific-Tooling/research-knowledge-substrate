@@ -126,6 +126,13 @@ class PaperRepository:
         ).fetchone()
         return PaperRecord(**dict(row)) if row is not None else None
 
+    def find_by_source_ref(self, source_type: str, source_ref: str) -> PaperRecord | None:
+        row = self.conn.execute(
+            "SELECT * FROM papers WHERE source_type = ? AND source_ref = ? ORDER BY created_at ASC LIMIT 1",
+            (source_type, source_ref),
+        ).fetchone()
+        return PaperRecord(**dict(row)) if row is not None else None
+
     def find_by_title(self, title: str) -> PaperRecord | None:
         row = self.conn.execute(
             "SELECT * FROM papers WHERE title = ? ORDER BY created_at ASC LIMIT 1",
@@ -184,6 +191,58 @@ class PaperRepository:
             )
         self.conn.commit()
         return self.get_artifact(artifact_id)
+
+    def update_paper_metadata(
+        self,
+        paper_id: str,
+        title: str | None = None,
+        abstract: str | None = None,
+        authors: list[str] | None = None,
+        year: int | None = None,
+        venue: str | None = None,
+        doi: str | None = None,
+        arxiv_id: str | None = None,
+    ) -> PaperRecord:
+        """Update bibliographic fields on an existing paper in-place.
+
+        Only non-None arguments are applied; omitted arguments leave the existing
+        value unchanged.
+        """
+        timestamp = utc_now()
+        updates: list[str] = []
+        values: list = []
+        if title is not None:
+            updates.append("title = ?")
+            values.append(title)
+        if abstract is not None:
+            updates.append("abstract = ?")
+            values.append(abstract)
+        if authors is not None:
+            updates.append("authors_json = ?")
+            values.append(json.dumps(authors, sort_keys=True))
+        if year is not None:
+            updates.append("year = ?")
+            values.append(year)
+        if venue is not None:
+            updates.append("venue = ?")
+            values.append(venue)
+        if doi is not None:
+            updates.append("doi = ?")
+            values.append(doi)
+        if arxiv_id is not None:
+            updates.append("arxiv_id = ?")
+            values.append(arxiv_id)
+        if not updates:
+            return self.get_paper(paper_id)
+        updates.append("updated_at = ?")
+        values.append(timestamp)
+        values.append(paper_id)
+        self.conn.execute(
+            f"UPDATE papers SET {', '.join(updates)} WHERE id = ?",
+            values,
+        )
+        self.conn.commit()
+        return self.get_paper(paper_id)
 
     def set_text_artifact(self, paper_id: str, artifact_id: str) -> None:
         timestamp = utc_now()

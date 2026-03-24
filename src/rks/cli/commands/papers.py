@@ -9,6 +9,9 @@ from rks.cli._context import (
     _paper_to_payload,
     _paper_with_tags_payload,
 )
+from rks.config import load_paths
+from rks.ingestion import update_arxiv_metadata, update_doi_metadata, update_pmid_metadata
+from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, PubmedMetadataProvider
 
 
 def register(subparsers) -> None:
@@ -100,6 +103,17 @@ def register(subparsers) -> None:
         help="When both papers have the same field or artifact type, prefer target or source.",
     )
     papers_merge_parser.set_defaults(handler=handle_papers_merge)
+
+    papers_update_metadata_parser = papers_subparsers.add_parser(
+        "update-metadata",
+        help="Fetch and apply bibliographic metadata to an existing paper from DOI, arXiv, or PMID.",
+    )
+    papers_update_metadata_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    source_group = papers_update_metadata_parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--doi", help="DOI to fetch metadata from, for example 10.3322/caac.21660.")
+    source_group.add_argument("--arxiv", help="arXiv identifier to fetch metadata from, for example 1706.03762.")
+    source_group.add_argument("--pmid", help="PubMed PMID to fetch metadata from.")
+    papers_update_metadata_parser.set_defaults(handler=handle_papers_update_metadata)
 
 
 def handle_papers_list(args: argparse.Namespace) -> int:
@@ -211,5 +225,19 @@ def handle_papers_merge(args: argparse.Namespace) -> int:
             args.source_paper_id,
             prefer=args.prefer,
         )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def handle_papers_update_metadata(args: argparse.Namespace) -> int:
+    paths = load_paths()
+    with _open_session() as session:
+        if args.doi:
+            paper = update_doi_metadata(session.papers, paths, args.paper_id, args.doi, CrossrefMetadataProvider())
+        elif args.arxiv:
+            paper = update_arxiv_metadata(session.papers, paths, args.paper_id, args.arxiv, ArxivMetadataProvider())
+        else:
+            paper = update_pmid_metadata(session.papers, paths, args.paper_id, args.pmid, PubmedMetadataProvider())
+    payload = _paper_to_payload(paper)
     print(json.dumps(payload, indent=2))
     return 0
