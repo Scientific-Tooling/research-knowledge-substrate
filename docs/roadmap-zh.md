@@ -23,7 +23,7 @@
 
 **任务**：
 
-- [ ] 为 5-10 篇领域内熟悉的论文手工标注 Claims Golden Set
+- [ ] 为 5-10 篇领域内熟悉的论文手工标注 Claims Golden Set（已完成 1 篇：GLOBOCAN 2020，F1=0.788）
 - [x] 实现 precision/recall 计算工具（`rks evaluate claims <paper_id> --golden <path> [--min-f1 N]`）
 - [x] 将提取质量评估接入 CI，每次提交自动回归（`tests/test_claim_quality_regression.py`，CI 自动发现）
 - [x] 文档化评估方法论，确保 Golden Set 可维护（`docs/evaluation-methodology.md`）

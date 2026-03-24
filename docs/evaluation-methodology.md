@@ -113,8 +113,9 @@ The CI workflow (`package-check.yml`) runs `python -m unittest discover -s tests
 
 ## Current Baseline Status
 
-The current golden set is synthetic (based on the fixture paper used in `test_e2e_pipeline.py`). Replace with real annotated golden files once actual papers are available (roadmap Phase 1 P0-1: manual annotation of 5–10 domain papers).
+The golden set now includes one real domain paper (GLOBOCAN 2020) with 13 annotated claims. Expand to 5–10 papers to complete roadmap Phase 1 P0-1.
 
 | Golden file | Paper | `min_f1` | Status |
 |-------------|-------|----------|--------|
 | `sample_transformer_paper.json` | Synthetic fixture — demonstrates format | 0.5 | Active in CI |
+| `globocan_2020.json` | Sung et al. 2021 — Global Cancer Statistics 2020 (GLOBOCAN), CA Cancer J Clin 71:209-249. 13 annotated claims covering abstract, results, discussion. Baseline F1 = 0.788 (precision 0.65, recall 1.0) using agent-mode extraction. | 0.75 | Active in CI |

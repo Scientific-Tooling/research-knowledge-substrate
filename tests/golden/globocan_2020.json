@@ -1,0 +1,20 @@
+{
+  "_comment": "Golden set for Sung et al. 2021 — Global Cancer Statistics 2020 (GLOBOCAN). Claims annotated by reading the source PDF directly. Covers abstract, results, and discussion sections. Paper ingested as p_000001.",
+  "paper_fixture": "globocan_2020",
+  "min_f1": 0.75,
+  "claims": [
+    "Worldwide, an estimated 19.3 million new cancer cases and almost 10.0 million cancer deaths occurred in 2020.",
+    "Female breast cancer has surpassed lung cancer as the most commonly diagnosed cancer globally in 2020, with an estimated 2.3 million new cases (11.7%).",
+    "Lung cancer remained the leading cause of cancer death globally in 2020, with an estimated 1.8 million deaths (18%).",
+    "The global cancer burden is expected to reach 28.4 million cases in 2040, a 47% rise from 2020.",
+    "Cancer is the first or second leading cause of premature death before age 70 in 112 of 183 countries.",
+    "Overall cancer incidence was 2-fold to 3-fold higher in transitioned versus transitioning countries for both sexes.",
+    "Asia accounted for approximately 49.3% of all cancer cases and 58.3% of cancer deaths globally in 2020.",
+    "One in 5 men or women will develop cancer in their lifetime, and 1 in 8 men and 1 in 11 women will die from it.",
+    "Approximately two-thirds of lung cancer deaths worldwide are attributable to smoking.",
+    "HBV infection and HCV infection account for 56% and 20% of liver cancer deaths worldwide, respectively.",
+    "Cervical cancer incidence rates remain disproportionately high in transitioning versus transitioned countries (18.8 vs 11.3 per 100,000).",
+    "As of May 2020, less than 30% of LMICs had implemented national HPV vaccination programs, compared with over 80% of high-income countries.",
+    "Low HDI countries are projected to see a 95% increase in cancer cases by 2040, and medium HDI countries a 64% increase."
+  ]
+}
