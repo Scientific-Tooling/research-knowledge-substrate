@@ -93,7 +93,9 @@
       "Bash(timeout 20 .venv/bin/python3 -m pytest tests/test_agent_workflows.py::AgentWorkflowTest::test_task_queue_status_and_agent_schema_tracking -q --tb=long 2>&1)",
       "Bash(timeout 55 .venv/bin/python3 -m pytest tests/test_agent_workflows.py -q --tb=short 2>&1)",
       "Bash(timeout 60 .venv/bin/python3 -m pytest tests/test_agent_modes.py tests/test_extraction_units.py tests/test_llm_provider.py tests/test_query_units.py tests/test_summary_modes.py -q --tb=short 2>&1)",
-      "Bash(timeout 60 .venv/bin/python3 -m pytest tests/test_agent_workflows.py tests/test_agent_modes.py tests/test_extraction_units.py tests/test_llm_provider.py tests/test_summary_modes.py tests/test_query_units.py -q --tb=short 2>&1)"
+      "Bash(timeout 60 .venv/bin/python3 -m pytest tests/test_agent_workflows.py tests/test_agent_modes.py tests/test_extraction_units.py tests/test_llm_provider.py tests/test_summary_modes.py tests/test_query_units.py -q --tb=short 2>&1)",
+      "Bash(.venv/bin/python3 -m pytest tests/ -x --tb=short)",
+      "Bash(.venv/bin/python3 -c \"from rks.operations.service import ResearchOperations, describe_claim_schema; print\\('import OK'\\)\")"
     ]
   }
 }
