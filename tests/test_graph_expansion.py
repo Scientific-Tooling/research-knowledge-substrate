@@ -8,13 +8,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._path import ROOT
 from rks.config import AppPaths
 from rks.concepts.normalize import canonicalize_term
 from rks.ingestion.reference import ingest_doi_reference
 from rks.storage import ConceptRepository, EdgeRepository, PaperRepository, connect_db, initialize_db
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:

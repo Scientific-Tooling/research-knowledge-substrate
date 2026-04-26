@@ -88,20 +88,22 @@
 
 ---
 
-### P-1：拆分 `ResearchOperations` God Object
+### P-1：继续收敛 Operations 层复杂度
 
-**背景**：`operations/service.py` 有 3,313 行、126+ 方法，承担了从摄入到推理的全部高层逻辑。这是技术债务，会减慢每一次后续修改。
+**背景**：`operations/service.py` 已拆成薄 facade，并委托给 `_project.py`、`_paper.py`、`_review.py`、`_output.py`、`_evolution.py` 等子服务。原 3000+ 行 god object 风险已缓解，但 `_paper.py`、`_evolution.py`、`reasoning/output.py` 仍各自接近或超过 1000 行，后续修改仍容易出现局部复杂度堆积。
 
 **任务**：
 
-- [ ] 将 `ResearchOperations` 按职责拆分为 3-5 个更小的 service 类
-  - 建议拆分：IngestionOps、ExtractionOps、QueryOps、ReviewOps、OutputOps
-- [ ] 保持对外 API 不变（CLI 和 HTTP 层不需修改）
-- [ ] 拆分后每个子 service 不超过 800 行
+- [x] 将 `ResearchOperations` 拆为薄 facade + focused sub-services，并保持 CLI/HTTP 对外 API 不变
+- [ ] 继续拆分 `_paper.py` 中的 merge、status、quality-report 逻辑
+- [ ] 继续拆分 `_evolution.py` 中的 timeline、conflict、review-priority/open-question 逻辑
+- [ ] 将 `reasoning/output.py` 的 output builders 与 ranking/composition helpers 分离
+- [ ] 拆分后每个核心模块尽量不超过 800 行
 
 **退出标准**：
 
-- `ResearchOperations` 不再是单一 3000+ 行文件
+- Operations facade 继续保持薄层委托
+- `_paper.py`、`_evolution.py`、`reasoning/output.py` 不再是 1000+ 行集中模块
 - 所有现有测试通过
 
 ---

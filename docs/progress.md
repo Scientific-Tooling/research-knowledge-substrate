@@ -74,6 +74,8 @@ The repository now has a hardened post-MVP base for extraction quality:
 - `rks concept merge <source_id> <target_id>` command to consolidate fragmented concept nodes, re-homing all claims and edges and absorbing source aliases into target
 - `concept_aliases` optional field in `claims.v3` schema — agents can return canonical-to-synonym mappings alongside claims; import applies them before concept resolution to prevent fragmentation at ingest time
 - portable workspace archive (`rks export workspace` / `rks import workspace`) — bundles all DB tables and referenced files into a single `.tar.gz` with relative paths, with path rewriting on import so the archive is machine-independent
+- packaged agent skills are kept in sync with repository skill docs through productization tests
+- test modules that import `rks` directly now share a local `src` path bootstrap so plain `unittest` discovery and editable-install runs behave consistently
 
 ## Implemented Milestones
 

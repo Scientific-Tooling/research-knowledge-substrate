@@ -58,7 +58,7 @@ For `extract text`, `extract claims`, and `summarize paper`, always choose a mod
 - `llm-api`: use when the user provides or expects direct provider usage
 - `agent`: use when the surrounding agent should do the LLM work
 
-When using `agent` mode, do not invent your own format. Follow the request/import loop exactly:
+When using `agent` mode, **you MUST read the source PDF directly as a multimodal AI** — use the Read tool on `data/papers/<paper_id>/source.pdf`. Do NOT use Python scripts, heuristic text extraction, or local artifact files as a substitute. Do not invent your own format. Follow the request/import loop exactly:
 
 ```bash
 rks extract text <paper_id> --mode agent

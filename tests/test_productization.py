@@ -8,11 +8,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._path import ROOT
 from rks.service import dispatch_get_request, dispatch_post_request
 from rks.agent_skills import list_bundled_skills
 from rks.storage.db import _packaged_migration_files
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:

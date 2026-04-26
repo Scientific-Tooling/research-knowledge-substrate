@@ -8,12 +8,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._path import ROOT
 from rks import __version__
 from rks.agent_skills import SKILL_BUNDLE_VERSION
 from rks.cli.main import build_parser
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:

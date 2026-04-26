@@ -196,6 +196,20 @@ curl -s -X POST "http://127.0.0.1:8765/api/evolution/build-timeline/<concept_id>
 
 ## Agent Mode Discipline
 
+### MUST: Read the paper directly as a multimodal AI
+
+**This is a hard constraint. When operating in agent mode, you MUST read the source document yourself using your own multimodal reading capability.**
+
+- Locate the source PDF via `rks status paper <paper_id>` or directly at `data/papers/<paper_id>/source.pdf`.
+- Read the PDF directly using the Read tool — all pages, as an AI agent.
+- **NEVER** extract or process the paper text using Python scripts, subprocess calls, or shell commands.
+- **NEVER** use heuristic artifacts (e.g. `extracted_text.json`) as a substitute for direct reading.
+- **NEVER** pipe paper content through any local text processing tool.
+
+Agent mode exists so the AI reasons over the document itself. Any programmatic text extraction defeats this purpose entirely.
+
+### Task lifecycle
+
 When using `--mode agent`, do not stop at the request artifact. Confirm that:
 
 1. the returned payload includes a `task_id`

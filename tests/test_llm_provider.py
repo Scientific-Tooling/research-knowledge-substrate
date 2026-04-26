@@ -4,6 +4,7 @@ import io
 import json
 import unittest
 
+from tests._path import ROOT as _ROOT
 from rks.config import LlmConfig
 from rks.providers.llm import OpenAICompatibleLlmProvider
 

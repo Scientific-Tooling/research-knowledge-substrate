@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._path import ROOT as _ROOT
 from rks.config import AppPaths
 from rks.ingestion.reference import (
     ingest_arxiv_reference,
