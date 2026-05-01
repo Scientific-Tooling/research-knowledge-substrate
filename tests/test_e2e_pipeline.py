@@ -15,14 +15,11 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-
-ROOT = Path(__file__).resolve().parents[1]
+from tests._run_cli import run_cli
 
 _PAPER_TEXT = (
     "Transformers improve translation accuracy on WMT14. "
@@ -68,20 +65,6 @@ _AGENT_CLAIMS_RESULT = {
 _GOLDEN_CLAIMS = [
     "Transformers improve translation accuracy on WMT14.",
 ]
-
-
-def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
-    env["RKS_DATA_DIR"] = str(cwd)
-    return subprocess.run(
-        [sys.executable, "-m", "rks", *args],
-        cwd=cwd,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
 
 
 class E2EPipelineTest(unittest.TestCase):

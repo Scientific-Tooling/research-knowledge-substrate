@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,20 +10,7 @@ from tests._path import ROOT
 from rks.service import dispatch_get_request, dispatch_post_request
 from rks.agent_skills import list_bundled_skills
 from rks.storage.db import _packaged_migration_files
-
-
-def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
-    env["RKS_DATA_DIR"] = str(cwd)
-    return subprocess.run(
-        [sys.executable, "-m", "rks", *args],
-        cwd=cwd,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+from tests._run_cli import run_cli
 
 
 class ProductizationTest(unittest.TestCase):
