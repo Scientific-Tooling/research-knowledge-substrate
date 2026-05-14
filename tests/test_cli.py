@@ -366,6 +366,47 @@ class CliSmokeTest(unittest.TestCase):
             after_payload = json.loads(after_result.stdout)
             self.assertEqual(after_payload["overall_status"], "ok")
             self.assertEqual(after_payload["checks"]["bundled_skills"]["bundle_version"], SKILL_BUNDLE_VERSION)
+            self.assertTrue(after_payload["checks"]["database_integrity"]["ok"])
+
+    def test_doctor_reports_database_integrity_issues(self) -> None:
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            self.assertEqual(run_cli("init-db", cwd=tmp_path).returncode, 0)
+
+            conn = sqlite3.connect(tmp_path / "rks.sqlite3")
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO claims(
+                        id, paper_id, text, predicate, status, created_by, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "c_orphan",
+                        "p_missing",
+                        "Orphan claim references a missing paper.",
+                        "supports",
+                        "active",
+                        "test",
+                        "2026-01-01T00:00:00Z",
+                        "2026-01-01T00:00:00Z",
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            result = run_cli("doctor", cwd=tmp_path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["overall_status"], "action_required")
+            integrity = payload["checks"]["database_integrity"]
+            self.assertFalse(integrity["ok"])
+            self.assertEqual(integrity["total_orphan_count"], 1)
+            self.assertEqual(integrity["orphan_counts"]["claims_paper_id"], 1)
+            self.assertIn("orphaned database rows", " ".join(payload["recommended_actions"]))
 
     def test_init_db_and_ingest_pdf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

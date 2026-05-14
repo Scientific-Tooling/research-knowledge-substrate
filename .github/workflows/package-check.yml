@@ -41,5 +41,6 @@ jobs:
           rks skills list
           mkdir -p /tmp/rks-package-smoke
           cd /tmp/rks-package-smoke
+          rks init /tmp/rks-package-smoke
           rks init-db
           rks doctor

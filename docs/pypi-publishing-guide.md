@@ -58,7 +58,7 @@ Expected output:
 - a source distribution under `dist/`
 - a wheel under `dist/`
 - `twine check` succeeds without rendering or metadata errors
-- the built wheel can be smoke-tested with `rks --help`, `rks skills list`, `rks init <path>`, and `rks doctor`
+- the built wheel can be smoke-tested with `rks --help`, `rks skills list`, `rks init <path>`, `rks init-db`, and `rks doctor`
 
 ## 4. Versioning
 

@@ -18,6 +18,12 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def connect_db_readonly(db_path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def initialize_db(conn: sqlite3.Connection, migrations_dir: Path | None = None) -> None:
     apply_migrations(conn, migrations_dir=migrations_dir)
     conn.executescript(SCHEMA_SQL)
@@ -89,6 +95,113 @@ def current_schema_version(conn: sqlite3.Connection) -> str | None:
     return row["version"] if row is not None else None
 
 
+def audit_referential_integrity(conn: sqlite3.Connection) -> dict:
+    """Return orphan-reference counts for the FK-less SQLite graph schema."""
+    checks = {
+        "papers_text_artifact_id": _orphan_count(
+            conn,
+            "papers",
+            "text_artifact_id IS NOT NULL AND text_artifact_id NOT IN (SELECT id FROM artifacts)",
+        ),
+        "artifacts_paper_id": _orphan_count(
+            conn,
+            "artifacts",
+            "paper_id IS NOT NULL AND paper_id NOT IN (SELECT id FROM papers)",
+        ),
+        "claims_paper_id": _orphan_count(
+            conn,
+            "claims",
+            "paper_id NOT IN (SELECT id FROM papers)",
+        ),
+        "claims_subject_concept_id": _orphan_count(
+            conn,
+            "claims",
+            "subject_concept_id IS NOT NULL AND subject_concept_id NOT IN (SELECT id FROM concepts)",
+        ),
+        "claims_object_concept_id": _orphan_count(
+            conn,
+            "claims",
+            "object_concept_id IS NOT NULL AND object_concept_id NOT IN (SELECT id FROM concepts)",
+        ),
+        "methods_paper_id": _orphan_count(
+            conn,
+            "methods",
+            "paper_id NOT IN (SELECT id FROM papers)",
+        ),
+        "datasets_paper_id": _orphan_count(
+            conn,
+            "datasets",
+            "paper_id NOT IN (SELECT id FROM papers)",
+        ),
+        "paper_tags_paper_id": _orphan_count(
+            conn,
+            "paper_tags",
+            "paper_id NOT IN (SELECT id FROM papers)",
+        ),
+        "tasks_paper_id": _orphan_count(
+            conn,
+            "tasks",
+            "paper_id NOT IN (SELECT id FROM papers)",
+        ),
+        "edges_evidence_paper_id": _orphan_count(
+            conn,
+            "edges",
+            "evidence_paper_id IS NOT NULL AND evidence_paper_id NOT IN (SELECT id FROM papers)",
+        ),
+        "project_links_project_id": _orphan_count(
+            conn,
+            "project_links",
+            "project_id NOT IN (SELECT id FROM research_projects)",
+        ),
+        "hypotheses_project_id": _orphan_count(
+            conn,
+            "hypotheses",
+            "project_id NOT IN (SELECT id FROM research_projects)",
+        ),
+        "hypothesis_evidence_links_hypothesis_id": _orphan_count(
+            conn,
+            "hypothesis_evidence_links",
+            "hypothesis_id NOT IN (SELECT id FROM hypotheses)",
+        ),
+        "claim_relation_candidates_source_claim_id": _orphan_count(
+            conn,
+            "claim_relation_candidates",
+            "source_claim_id NOT IN (SELECT id FROM claims)",
+        ),
+        "claim_relation_candidates_target_claim_id": _orphan_count(
+            conn,
+            "claim_relation_candidates",
+            "target_claim_id NOT IN (SELECT id FROM claims)",
+        ),
+        "concept_timeline_snapshots_concept_id": _orphan_count(
+            conn,
+            "concept_timeline_snapshots",
+            "concept_id NOT IN (SELECT id FROM concepts)",
+        ),
+        "claim_conflict_clusters_anchor_concept_id": _orphan_count(
+            conn,
+            "claim_conflict_clusters",
+            "anchor_concept_id NOT IN (SELECT id FROM concepts)",
+        ),
+        "claim_conflict_cluster_members_cluster_id": _orphan_count(
+            conn,
+            "claim_conflict_cluster_members",
+            "cluster_id NOT IN (SELECT id FROM claim_conflict_clusters)",
+        ),
+        "claim_conflict_cluster_members_claim_id": _orphan_count(
+            conn,
+            "claim_conflict_cluster_members",
+            "claim_id NOT IN (SELECT id FROM claims)",
+        ),
+    }
+    total = sum(checks.values())
+    return {
+        "ok": total == 0,
+        "total_orphan_count": total,
+        "orphan_counts": checks,
+    }
+
+
 def _packaged_migration_files() -> list[Any]:
     directory = resources.files("rks.migrations")
     return sorted(
@@ -149,6 +262,16 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
         (table,),
     ).fetchone()
     return row is not None
+
+
+def _orphan_count(conn: sqlite3.Connection, table: str, predicate: str) -> int:
+    if not _table_exists(conn, table):
+        return 0
+    try:
+        row = conn.execute(f"SELECT COUNT(*) AS count FROM {table} WHERE {predicate}").fetchone()
+    except sqlite3.OperationalError:
+        return 0
+    return int(row["count"] if row is not None else 0)
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:

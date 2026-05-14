@@ -3,7 +3,7 @@ from rks.storage.claim_repository import ClaimRepository
 from rks.storage.conflict_cluster_repository import ConflictClusterRepository
 from rks.storage.concept_repository import ConceptRepository
 from rks.storage.dataset_repository import DatasetRepository
-from rks.storage.db import connect_db, initialize_db
+from rks.storage.db import audit_referential_integrity, connect_db, connect_db_readonly, initialize_db
 from rks.storage.embedding_repository import EmbeddingRepository
 from rks.storage.edge_repository import EdgeRepository
 from rks.storage.evolution_repository import EvolutionRepository
@@ -28,6 +28,8 @@ __all__ = [
     "MethodRepository",
     "NoteRepository",
     "connect_db",
+    "connect_db_readonly",
+    "audit_referential_integrity",
     "initialize_db",
     "PaperRepository",
     "ProjectRepository",

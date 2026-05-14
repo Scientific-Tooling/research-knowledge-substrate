@@ -76,6 +76,9 @@ The repository now has a hardened post-MVP base for extraction quality:
 - portable workspace archive (`rks export workspace` / `rks import workspace`) — bundles all DB tables and referenced files into a single `.tar.gz` with relative paths, with path rewriting on import so the archive is machine-independent
 - packaged agent skills are kept in sync with repository skill docs through productization tests
 - test modules that import `rks` directly now share a local `src` path bootstrap so plain `unittest` discovery and editable-install runs behave consistently
+- package wheel smoke checks initialize a real data directory before running `rks init-db` and `rks doctor`
+- plain `pytest` from the repository root is configured to discover tests with `src` on the import path
+- `rks doctor` now includes a read-only database integrity audit for common orphaned graph references while SQLite foreign-key enforcement remains disabled for migration compatibility
 
 ## Implemented Milestones
 

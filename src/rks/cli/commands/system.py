@@ -15,7 +15,13 @@ from rks.config import (
     write_global_config,
 )
 from rks.storage import connect_db, initialize_db
-from rks.storage.db import apply_migrations, current_schema_version, list_migration_files
+from rks.storage.db import (
+    apply_migrations,
+    audit_referential_integrity,
+    connect_db_readonly,
+    current_schema_version,
+    list_migration_files,
+)
 from rks.cli._context import _open_repository, _doctor_recommended_actions, _open_session, _operations
 
 
@@ -267,11 +273,20 @@ def handle_doctor(args: argparse.Namespace) -> int:
         db_exists = paths.db_path.exists()
         data_dir_str = str(paths.data_dir)
         db_path_str = str(paths.db_path)
+        if db_exists:
+            conn = connect_db_readonly(paths.db_path)
+            try:
+                integrity = audit_referential_integrity(conn)
+            finally:
+                conn.close()
+        else:
+            integrity = {"ok": False, "total_orphan_count": None, "orphan_counts": {}}
     except ConfigError:
         data_dir_exists = False
         db_exists = False
         data_dir_str = None
         db_path_str = None
+        integrity = {"ok": False, "total_orphan_count": None, "orphan_counts": {}}
 
     checks = {
         "global_config": {
@@ -286,6 +301,7 @@ def handle_doctor(args: argparse.Namespace) -> int:
             "ok": db_exists,
             "path": db_path_str,
         },
+        "database_integrity": integrity,
         "migrations": {
             "ok": True,
             "count": len(list_migration_files()),

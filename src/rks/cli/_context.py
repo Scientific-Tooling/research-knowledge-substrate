@@ -719,6 +719,8 @@ def _doctor_recommended_actions(checks: dict) -> list[str]:
         actions.append("rks init <path>  # set your data directory")
     elif not checks["data_dir"]["ok"] or not checks["database"]["ok"]:
         actions.append("rks init-db")
+    elif "database_integrity" in checks and not checks["database_integrity"]["ok"]:
+        actions.append("inspect or repair orphaned database rows reported by `rks doctor`")
     if not actions:
         actions.append("rks --help")
     return actions

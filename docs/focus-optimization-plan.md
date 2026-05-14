@@ -89,7 +89,7 @@ Work items:
 - [x] export `AGENTS.md`, `CLAUDE.md`, and `skills-index.json`
 - [x] verify bundled skills match repository skill docs
 - [x] add bundle versioning for exported skills
-- [x] add install smoke checks for `rks --help`, `rks skills list`, and `rks init-db`
+- [x] add install smoke checks for `rks --help`, `rks skills list`, `rks init <path>`, `rks init-db`, and `rks doctor`
 - [x] add a `doctor` or `self-check` command
 - [x] harden the published-package smoke test in CI
 
