@@ -9,6 +9,7 @@ from __future__ import annotations
 from rks.providers import LocalHashEmbeddingProvider
 from rks.query import QueryService
 
+from rks.operations._concept import ConceptOps
 from rks.operations._evolution import EvolutionOps
 from rks.operations._output import OutputOps
 from rks.operations._paper import PaperOps
@@ -73,7 +74,10 @@ class ResearchOperations:
         self._paper = PaperOps(
             papers=papers, claims=claims, concepts=concepts, notes=notes,
             edges=edges, methods=methods, datasets=datasets, tasks=tasks,
-            evolution=evolution, query=self.query,
+            query=self.query,
+        )
+        self._concept = ConceptOps(
+            concepts=concepts, evolution=evolution,
         )
         self._evolution = EvolutionOps(
             papers=papers, projects=projects, hypotheses=hypotheses,
@@ -125,9 +129,9 @@ class ResearchOperations:
     def add_paper_note(self, *a, **kw): return self._paper.add_paper_note(*a, **kw)
     def find_duplicate_papers(self, **kw): return self._paper.find_duplicate_papers(**kw)
     def merge_papers(self, *a, **kw): return self._paper.merge_papers(*a, **kw)
-    def add_concept_alias(self, *a, **kw): return self._paper.add_concept_alias(*a, **kw)
-    def merge_concepts(self, *a, **kw): return self._paper.merge_concepts(*a, **kw)
-    def find_duplicate_concepts(self, *a, **kw): return self._paper.find_duplicate_concepts(*a, **kw)
+    def add_concept_alias(self, *a, **kw): return self._concept.add_concept_alias(*a, **kw)
+    def merge_concepts(self, *a, **kw): return self._concept.merge_concepts(*a, **kw)
+    def find_duplicate_concepts(self, *a, **kw): return self._concept.find_duplicate_concepts(*a, **kw)
     def prepare_paper_for_output(self, *a, **kw): return self._paper.prepare_paper_for_output(*a, **kw)
     def workspace_stats(self): return self._paper.workspace_stats()
     def extraction_quality_report(self): return self._paper.extraction_quality_report()

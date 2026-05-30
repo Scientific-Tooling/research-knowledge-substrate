@@ -95,7 +95,11 @@
       "Bash(timeout 60 .venv/bin/python3 -m pytest tests/test_agent_modes.py tests/test_extraction_units.py tests/test_llm_provider.py tests/test_query_units.py tests/test_summary_modes.py -q --tb=short 2>&1)",
       "Bash(timeout 60 .venv/bin/python3 -m pytest tests/test_agent_workflows.py tests/test_agent_modes.py tests/test_extraction_units.py tests/test_llm_provider.py tests/test_summary_modes.py tests/test_query_units.py -q --tb=short 2>&1)",
       "Bash(.venv/bin/python3 -m pytest tests/ -x --tb=short)",
-      "Bash(.venv/bin/python3 -c \"from rks.operations.service import ResearchOperations, describe_claim_schema; print\\('import OK'\\)\")"
+      "Bash(.venv/bin/python3 -c \"from rks.operations.service import ResearchOperations, describe_claim_schema; print\\('import OK'\\)\")",
+      "Bash(.venv/bin/python3 -m pytest tests/ --tb=no -q)",
+      "Bash(.venv/bin/python3 -m pytest tests/ --tb=no -q --timeout=60)",
+      "Bash(.venv/bin/python3 *)",
+      "Bash(RKS_DATA_DIR=/home/mingzhang/.rks/data .venv/bin/python3 *)"
     ]
   }
 }
