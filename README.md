@@ -102,6 +102,7 @@ Inspect the graph:
 
 ```bash
 rks papers list --limit 20
+rks papers source p_000001  # read-only local PDF path, SHA-256, and byte count
 rks papers mark p_000001 --tag read_later
 rks papers mark p_000001 --tag survey
 rks papers list --tag survey

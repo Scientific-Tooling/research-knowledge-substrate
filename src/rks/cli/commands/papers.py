@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from contextlib import closing
 
 from rks.cli._context import (
     _open_session,
@@ -12,11 +13,18 @@ from rks.cli._context import (
 from rks.config import load_paths
 from rks.ingestion import update_arxiv_metadata, update_doi_metadata, update_pmid_metadata
 from rks.providers import ArxivMetadataProvider, CrossrefMetadataProvider, PubmedMetadataProvider
+from rks.operations.paper_source import describe_paper_source
+from rks.storage.db import connect_db_readonly
+from rks.storage.paper_repository import PaperRepository
 
 
 def register(subparsers) -> None:
     papers_parser = subparsers.add_parser("papers", help="List and manage tracked papers.")
     papers_subparsers = papers_parser.add_subparsers(dest="papers_command", required=True)
+
+    source_parser = papers_subparsers.add_parser("source", help="Identify a paper's local PDF without changing RKS.")
+    source_parser.add_argument("paper_id", help="Paper ID, for example p_000001.")
+    source_parser.set_defaults(handler=handle_papers_source)
 
     papers_list_parser = papers_subparsers.add_parser("list", help="List tracked papers.")
     papers_list_parser.add_argument("--limit", type=int, default=20, help="Maximum papers to return.")
@@ -114,6 +122,17 @@ def register(subparsers) -> None:
     source_group.add_argument("--arxiv", help="arXiv identifier to fetch metadata from, for example 1706.03762.")
     source_group.add_argument("--pmid", help="PubMed PMID to fetch metadata from.")
     papers_update_metadata_parser.set_defaults(handler=handle_papers_update_metadata)
+
+
+def handle_papers_source(args: argparse.Namespace) -> int:
+    paths = load_paths()
+    if not paths.db_path.is_file():
+        raise FileNotFoundError("RKS database not found; run rks init-db before requesting a paper source.")
+    # Reads must not initialize the database, apply migrations, or update timestamps.
+    with closing(connect_db_readonly(paths.db_path)) as conn:
+        paper = PaperRepository(conn).get_paper(args.paper_id)
+    print(json.dumps(describe_paper_source(paper), indent=2))
+    return 0
 
 
 def handle_papers_list(args: argparse.Namespace) -> int:
