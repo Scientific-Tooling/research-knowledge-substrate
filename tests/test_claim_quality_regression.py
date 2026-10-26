@@ -1,24 +1,21 @@
-"""Claim extraction quality regression tests (roadmap Phase 1 P0-1).
+"""Separate prepared-import contract checks from heuristic extraction checks.
 
-Each test corresponds to one golden file in tests/golden/.  The test ingests
-the matching paper fixture, imports pre-seeded claims via the agent path, then
-runs ``rks evaluate claims`` against the golden set and asserts the F1 score
-meets the threshold recorded in the golden file.
+Each golden file exercises two paths: importing prepared agent claims and
+running the heuristic extractor on fixture text. Neither path invokes a live
+agent or API model. The import path validates storage and scoring contracts;
+only the heuristic path measures actual extraction from these text fixtures.
 
 Purpose
 -------
-This test file is the CI quality gate for extraction quality.  A failing test
-means extraction quality has regressed below the annotated baseline for that
-paper.  Raise the threshold in the golden file when quality genuinely improves,
-not as a workaround.
+Thresholds preserve measured fixture baselines. They are not scientific
+release criteria or evidence of live model quality.
 
 Adding a new paper
 ------------------
 1. Annotate claims for your paper in a new ``tests/golden/<paper_slug>.json``
    following the schema below.
-2. Add a corresponding ``_load_fixture`` block in ``_FIXTURES`` at the bottom
-   of this file that pairs the golden slug to its paper text and agent-claims
-   result.
+2. Add a corresponding entry in ``_FIXTURES`` that pairs the golden slug to
+   its paper text and prepared agent-claims result.
 3. Run locally with ``python -m pytest tests/test_claim_quality_regression.py -v``
    and confirm the baseline passes before merging.
 
@@ -27,6 +24,7 @@ Golden file schema
 {
   "paper_fixture": "<slug matching a key in _FIXTURES>",
   "min_f1":        <float threshold, 0.0–1.0>,
+  "heuristic_min_f1": <measured heuristic regression threshold>,
   "claims":        ["<golden claim text>", ...]
 }
 """
@@ -40,6 +38,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from rks.cli._context import _open_session
+from rks.config import load_paths
+from rks.extraction.claims import extract_claims_for_paper
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -247,8 +250,8 @@ def _load_golden_files() -> list[Path]:
     return sorted(GOLDEN_DIR.glob("*.json"))
 
 
-def _setup_paper(tmp: Path, fixture: dict) -> str:
-    """Ingest + import text + import claims for a fixture; return paper_id."""
+def _setup_paper(tmp: Path, fixture: dict, mode: str = "prepared-import") -> str:
+    """Import source text, then extract or import claims; return paper_id."""
     pdf_path = tmp / "paper.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n" + fixture["paper_text"].encode() + b"\n")
 
@@ -267,7 +270,17 @@ def _setup_paper(tmp: Path, fixture: dict) -> str:
     import_text = _run_cli("import", "text", paper_id, str(text_result_path), cwd=tmp)
     assert import_text.returncode == 0, import_text.stderr
 
-    # Import claims via agent fixture.
+    if mode == "heuristic":
+        # The CLI exposes agent/API modes; exercise the deterministic library
+        # extractor directly, then score its persisted output through the CLI.
+        with patch.dict(os.environ, {"RKS_DATA_DIR": str(tmp)}), _open_session() as session:
+            extract_claims_for_paper(
+                paths=load_paths(), paper_repo=session.papers, claim_repo=session.claims,
+                concept_repo=session.concepts, edge_repo=session.edges, paper_id=paper_id,
+            )
+        return paper_id
+
+    # Prepared claims validate import behavior, not a live agent's extraction.
     _run_cli("extract", "claims", paper_id, "--mode", "agent", cwd=tmp)
 
     claims_result = json.loads(json.dumps(fixture["agent_claims_result"]))
@@ -288,21 +301,22 @@ def _setup_paper(tmp: Path, fixture: dict) -> str:
 # Test generation: one test method per golden file
 # ---------------------------------------------------------------------------
 
-def _make_regression_test(golden_path: Path):
+def _make_regression_test(golden_path: Path, mode: str):
     def test_method(self: unittest.TestCase) -> None:
         golden = json.loads(golden_path.read_text(encoding="utf-8"))
         slug = golden["paper_fixture"]
-        min_f1 = float(golden["min_f1"])
+        threshold_key = "heuristic_min_f1" if mode == "heuristic" else "min_f1"
+        min_f1 = float(golden[threshold_key])
 
         if slug not in _FIXTURES:
-            self.skipTest(
+            self.fail(
                 f"No fixture registered for '{slug}' — add it to _FIXTURES in "
                 "tests/test_claim_quality_regression.py"
             )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
-            paper_id = _setup_paper(tmp, _FIXTURES[slug])
+            paper_id = _setup_paper(tmp, _FIXTURES[slug], mode=mode)
 
             golden_file = tmp / "golden.json"
             golden_file.write_text(
@@ -328,9 +342,11 @@ def _make_regression_test(golden_path: Path):
                 f"F1 {payload.get('f1', 0.0):.3f} is below threshold {min_f1} "
                 f"for golden set '{golden_path.name}'.",
             )
+            self.assertLessEqual(payload["f1"], 1.0)
+            self.assertEqual(payload["matching_policy"], "one-to-one-max-cardinality-v1")
 
-    test_method.__name__ = f"test_quality_regression_{golden_path.stem}"
-    test_method.__doc__ = f"Claim quality regression: {golden_path.name} (min_f1={json.loads(golden_path.read_text())['min_f1']})"
+    test_method.__name__ = f"test_{mode.replace('-', '_')}_{golden_path.stem}"
+    test_method.__doc__ = f"{mode} fixture regression: {golden_path.name}"
     return test_method
 
 
@@ -339,8 +355,9 @@ class ClaimQualityRegressionTests(unittest.TestCase):
 
 
 for _golden_path in _load_golden_files():
-    _test_fn = _make_regression_test(_golden_path)
-    setattr(ClaimQualityRegressionTests, _test_fn.__name__, _test_fn)
+    for _mode in ("prepared-import", "heuristic"):
+        _test_fn = _make_regression_test(_golden_path, _mode)
+        setattr(ClaimQualityRegressionTests, _test_fn.__name__, _test_fn)
 
 
 if __name__ == "__main__":

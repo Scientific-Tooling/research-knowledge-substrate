@@ -453,13 +453,18 @@ def _evaluate_claims_against_golden(
     golden_texts: list[str],
     match_threshold: float = 0.3,
 ) -> dict:
-    """Fuzzy precision/recall/F1 of actual claims against a golden set.
+    """Score a maximum one-to-one matching of claims above the Jaccard threshold.
 
-    Uses token-set Jaccard similarity to decide if a golden claim is matched
-    by any actual claim.  A pair is counted as a true positive when their
-    Jaccard score meets *match_threshold*.
+    Each actual and reference claim can contribute at most one true positive.
+    Augmenting paths avoid undercounting when an early match can be reassigned.
+    Candidate traversal prefers higher similarity, with stable index tie breaks.
+    This measures lexical overlap, not scientific correctness or entailment.
     """
+    from collections import deque
     import re
+
+    if not 0 < match_threshold <= 1:
+        raise ValueError("match_threshold must be greater than zero and at most one")
 
     def _tokens(text: str) -> set[str]:
         return set(re.findall(r"[a-z0-9]+", text.lower()))
@@ -469,36 +474,66 @@ def _evaluate_claims_against_golden(
         return len(a & b) / len(union) if union else 0.0
 
     actual_token_sets = [_tokens(t) for t in actual_texts]
-    matched_pairs: list[dict] = []
-    true_positive_actual: set[int] = set()
-
+    scores: list[list[float]] = []
     for golden_text in golden_texts:
         golden_tokens = _tokens(golden_text)
-        best_score = 0.0
-        best_idx = -1
-        for idx, actual_tokens in enumerate(actual_token_sets):
-            score = _jaccard(golden_tokens, actual_tokens)
-            if score > best_score:
-                best_score = score
-                best_idx = idx
-        matched = best_score >= match_threshold
+        scores.append([_jaccard(golden_tokens, tokens) for tokens in actual_token_sets])
+    candidates = [
+        sorted(
+            (idx for idx, score in enumerate(row) if score >= match_threshold),
+            key=lambda idx: (-row[idx], idx),
+        )
+        for row in scores
+    ]
+    actual_matches: dict[int, int] = {}
+    golden_matches: dict[int, int] = {}
+    for start in range(len(golden_texts)):
+        parents: dict[int, int | None] = {start: None}
+        queue = deque([start])
+        seen_actual: set[int] = set()
+        augmented = False
+        while queue and not augmented:
+            golden_idx = queue.popleft()
+            for actual_idx in candidates[golden_idx]:
+                if actual_idx in seen_actual:
+                    continue
+                seen_actual.add(actual_idx)
+                owner = actual_matches.get(actual_idx)
+                if owner is None:
+                    # Flip the alternating path, preserving earlier matches.
+                    while golden_idx is not None:
+                        previous_actual = golden_matches.get(golden_idx)
+                        actual_matches[actual_idx] = golden_idx
+                        golden_matches[golden_idx] = actual_idx
+                        golden_idx = parents[golden_idx]
+                        actual_idx = previous_actual
+                    augmented = True
+                    break
+                if owner not in parents:
+                    parents[owner] = golden_idx
+                    queue.append(owner)
+
+    matched_pairs: list[dict] = []
+    for golden_idx, golden_text in enumerate(golden_texts):
+        actual_idx = golden_matches.get(golden_idx)
         matched_pairs.append(
             {
                 "golden": golden_text,
-                "best_match": actual_texts[best_idx] if best_idx >= 0 else None,
-                "score": round(best_score, 4),
-                "matched": matched,
+                "best_match": actual_texts[actual_idx] if actual_idx is not None else None,
+                "actual_index": actual_idx,
+                "score": round(scores[golden_idx][actual_idx], 4) if actual_idx is not None else 0.0,
+                "matched": actual_idx is not None,
             }
         )
-        if matched and best_idx >= 0:
-            true_positive_actual.add(best_idx)
 
-    tp = sum(1 for p in matched_pairs if p["matched"])
+    tp = len(golden_matches)
     precision = tp / len(actual_texts) if actual_texts else 0.0
     recall = tp / len(golden_texts) if golden_texts else 0.0
     f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
 
     return {
+        "matching_policy": "one-to-one-max-cardinality-v1",
+        "true_positives": tp,
         "precision": round(precision, 4),
         "recall": round(recall, 4),
         "f1": round(f1, 4),
@@ -715,11 +750,12 @@ def _artifact_id_for_type(repo: PaperRepository, paper_id: str, artifact_type: s
 
 def _doctor_recommended_actions(checks: dict) -> list[str]:
     actions = []
-    if not checks["global_config"]["ok"]:
+    if not checks["configuration"]["ok"]:
         actions.append("rks init <path>  # set your data directory")
-    elif not checks["data_dir"]["ok"] or not checks["database"]["ok"]:
+        return actions
+    if not checks["data_dir"]["ok"] or not checks["database"]["ok"]:
         actions.append("rks init-db")
-    elif "database_integrity" in checks and not checks["database_integrity"]["ok"]:
+    if checks["database"]["ok"] and not checks["database_integrity"]["ok"]:
         actions.append("inspect or repair orphaned database rows reported by `rks doctor`")
     if not actions:
         actions.append("rks --help")

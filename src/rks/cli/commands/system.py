@@ -263,12 +263,11 @@ def handle_skills_export(args: argparse.Namespace) -> int:
 def handle_doctor(args: argparse.Namespace) -> int:
     del args
     gcfg_path = global_config_path()
-    global_cfg_exists = gcfg_path.exists()
-    global_cfg_has_data_dir = "data_dir" in load_global_config()
 
     try:
         app_config = load_app_config()
-        paths = load_paths()
+        paths = load_paths(app_config)
+        config_source = app_config.data_dir_source
         data_dir_exists = paths.data_dir.exists()
         db_exists = paths.db_path.exists()
         data_dir_str = str(paths.data_dir)
@@ -282,6 +281,7 @@ def handle_doctor(args: argparse.Namespace) -> int:
         else:
             integrity = {"ok": False, "total_orphan_count": None, "orphan_counts": {}}
     except ConfigError:
+        config_source = None
         data_dir_exists = False
         db_exists = False
         data_dir_str = None
@@ -289,8 +289,14 @@ def handle_doctor(args: argparse.Namespace) -> int:
         integrity = {"ok": False, "total_orphan_count": None, "orphan_counts": {}}
 
     checks = {
+        "configuration": {
+            "ok": config_source is not None,
+            "source": config_source,
+            "path": str(gcfg_path),
+        },
         "global_config": {
-            "ok": global_cfg_has_data_dir,
+            "ok": config_source == "global_config",
+            "required": config_source != "environment",
             "path": str(gcfg_path),
         },
         "data_dir": {
@@ -312,7 +318,9 @@ def handle_doctor(args: argparse.Namespace) -> int:
             "skill_count": len(list_bundled_skills()),
         },
     }
-    overall_status = "ok" if all(item["ok"] for item in checks.values()) else "action_required"
+    overall_status = "ok" if all(
+        item["ok"] for item in checks.values() if item.get("required", True)
+    ) else "action_required"
     payload = {
         "version": __version__,
         "overall_status": overall_status,
@@ -398,6 +406,8 @@ def handle_evaluate_claims(args: argparse.Namespace) -> int:
         "paper_id": args.paper_id,
         "golden_count": len(golden_texts),
         "actual_count": len(actual_texts),
+        "matching_policy": result["matching_policy"],
+        "true_positives": result["true_positives"],
         "precision": result["precision"],
         "recall": result["recall"],
         "f1": result["f1"],

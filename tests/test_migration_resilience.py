@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +35,7 @@ class MigrationResilienceTest(unittest.TestCase):
             self.assertEqual(first_migrate_result.returncode, 0, first_migrate_result.stderr)
 
             db_path = workspace / "rks.sqlite3"
-            with sqlite3.connect(db_path) as conn:
+            with closing(sqlite3.connect(db_path)) as conn, conn:
                 conn.execute(
                     "DELETE FROM schema_migrations WHERE version IN (?, ?)",
                     ("0008_paper_reading_status.sql", "0009_paper_tags.sql"),

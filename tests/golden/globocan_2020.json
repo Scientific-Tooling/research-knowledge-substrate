@@ -2,6 +2,7 @@
   "_comment": "Golden set for Sung et al. 2021 — Global Cancer Statistics 2020 (GLOBOCAN). Claims annotated by reading the source PDF directly. Covers abstract, results, and discussion sections. Paper ingested as p_000001.",
   "paper_fixture": "globocan_2020",
   "min_f1": 0.75,
+  "heuristic_min_f1": 0.25,
   "claims": [
     "Worldwide, an estimated 19.3 million new cancer cases and almost 10.0 million cancer deaths occurred in 2020.",
     "Female breast cancer has surpassed lung cancer as the most commonly diagnosed cancer globally in 2020, with an estimated 2.3 million new cases (11.7%).",

@@ -235,6 +235,25 @@ RKS should not grow into a general web crawler or landing-page scraper. If an in
 
 For the broader architectural boundaries that should remain stable as RKS evolves, see [docs/system-constraints.md](docs/system-constraints.md).
 
+## Development Checks
+
+Install the test extra, then run the complete suite with pytest:
+
+```bash
+python -m pip install -e '.[dev]'
+python -m pytest -q
+```
+
+CI runs these tests on Windows and Linux with Python 3.10–3.12. Use pytest
+rather than unittest discovery: the suite includes both unittest and pytest-style
+tests. See [evaluation methodology](docs/evaluation-methodology.md) for the
+distinction between prepared-import checks and actual heuristic extraction.
+
+`rks doctor` reports the effective configuration source under
+`checks.configuration.source`. A valid `RKS_DATA_DIR` override does not require
+a global configuration file; `checks.global_config.required` is then false.
+Only required checks determine `overall_status`.
+
 ## Design Docs
 
 - [docs/README.md](docs/README.md)

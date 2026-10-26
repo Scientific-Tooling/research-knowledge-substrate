@@ -28,6 +28,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+dev = [
+  "pytest>=8",
+]
 release = [
   "build>=1.2.2",
   "twine>=6.1.0",

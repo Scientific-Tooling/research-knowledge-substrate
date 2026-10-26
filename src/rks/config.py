@@ -39,6 +39,7 @@ class AppConfig:
     llm_base_url: str
     llm_model: str
     llm_api_key_env: list[str]
+    data_dir_source: str
 
 
 DEFAULT_CONFIG = {
@@ -85,10 +86,12 @@ def load_app_config() -> AppConfig:
     # 3. ConfigError — ask user to run `rks init <path>`
     if "RKS_DATA_DIR" in os.environ:
         data_dir = Path(os.environ["RKS_DATA_DIR"]).expanduser().resolve()
+        data_dir_source = "environment"
     else:
         global_cfg = load_global_config()
         if "data_dir" in global_cfg:
             data_dir = Path(global_cfg["data_dir"]).expanduser().resolve()
+            data_dir_source = "global_config"
             payload["reference_pdf_acquisition"] = global_cfg.get(
                 "reference_pdf_acquisition", payload["reference_pdf_acquisition"]
             )
@@ -116,11 +119,13 @@ def load_app_config() -> AppConfig:
         llm_base_url=os.environ.get("RKS_LLM_BASE_URL", payload["llm"]["base_url"]),
         llm_model=os.environ.get("RKS_LLM_MODEL", payload["llm"]["model"]),
         llm_api_key_env=list(payload["llm"].get("api_key_env", ["RKS_LLM_API_KEY", "OPENAI_API_KEY"])),
+        data_dir_source=data_dir_source,
     )
 
 
-def load_paths() -> AppPaths:
-    app_config = load_app_config()
+def load_paths(app_config: AppConfig | None = None) -> AppPaths:
+    if app_config is None:
+        app_config = load_app_config()
     return AppPaths(
         root=app_config.root,
         data_dir=app_config.data_dir,
