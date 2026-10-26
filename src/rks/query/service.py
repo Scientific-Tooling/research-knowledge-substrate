@@ -5,6 +5,7 @@ import math
 
 from rks.concepts.normalize import canonicalize_term
 from rks.providers import LocalHashEmbeddingProvider
+from rks.storage.text_search import search_metadata
 from rks.storage import (
     ClaimRepository,
     ConceptRepository,
@@ -73,15 +74,19 @@ class QueryService:
         return [{"id": concept.id, "name": concept.name} for concept in concepts]
 
     def search(self, query: str, mode: str = "hybrid") -> dict:
-        papers = self.papers.search_papers(query)
-        claims = self.claims.search_claims(query)
-        concepts = self.concepts.search_concepts(query)
-        methods = self.methods.search_methods(query) if self.methods is not None else []
-        datasets = self.datasets.search_datasets(query) if self.datasets is not None else []
+        if mode not in {"lexical", "phrase", "semantic", "hybrid"}:
+            raise ValueError(f"Unsupported search mode: {mode}")
+        lexical_mode = "phrase" if mode == "phrase" else "lexical"
+        papers = self.papers.search_papers(query, mode=lexical_mode)
+        claims = self.claims.search_claims(query, mode=lexical_mode)
+        concepts = self.concepts.search_concepts(query, mode=lexical_mode)
+        methods = self.methods.search_methods(query, mode=lexical_mode) if self.methods is not None else []
+        datasets = self.datasets.search_datasets(query, mode=lexical_mode) if self.datasets is not None else []
         semantic = self._semantic_matches(query) if mode in {"semantic", "hybrid"} else {}
         return {
             "query": query,
             "mode": mode,
+            "lexical_retrieval": search_metadata(lexical_mode),
             "papers": [
                 {**self._paper_payload(paper), **semantic.get(("paper", paper.id), {})}
                 for paper in papers
@@ -366,7 +371,7 @@ class QueryService:
             matches[(row["object_type"], row["object_id"])] = {"semantic_score": round(score, 4)}
 
         if self.methods is not None:
-            for method in self.methods.search_methods(query):
+            for method in self.methods.search_methods(query, mode="phrase"):
                 score = self.embedding_provider.cosine_similarity(
                     vector, self.embedding_provider.embed(" ".join(part for part in (method.name, method.description or "") if part))
                 )
@@ -374,7 +379,7 @@ class QueryService:
                     matches[("method", method.id)] = {"semantic_score": round(score, 4)}
 
         if self.datasets is not None:
-            for dataset in self.datasets.search_datasets(query):
+            for dataset in self.datasets.search_datasets(query, mode="phrase"):
                 score = self.embedding_provider.cosine_similarity(
                     vector, self.embedding_provider.embed(" ".join(part for part in (dataset.name, dataset.description or "") if part))
                 )

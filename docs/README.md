@@ -11,6 +11,7 @@ These documents describe the current product, architecture direction, operations
 - `usage-manual.md`
 - `usage-manual-zh.md`
 - `system-constraints.md`
+- `search.md`
 - `progress.md`
 - `product-priorities.md`
 - `design-implementation-comparison.md`

@@ -247,6 +247,8 @@ def dispatch_get_request(path: str) -> tuple[int, str, bytes]:
         params = parse_qs(parsed.query)
         query = params.get("q", [""])[0]
         mode = params.get("mode", ["hybrid"])[0]
+        if mode not in {"lexical", "phrase", "semantic", "hybrid"}:
+            return 400, "application/json", json.dumps({"error": "invalid_search_mode", "mode": mode}).encode("utf-8")
         with _open_query_service() as query_service:
             payload = query_service.search(query, mode=mode)
         return 200, "application/json", json.dumps(payload).encode("utf-8")

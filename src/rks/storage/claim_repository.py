@@ -6,6 +6,7 @@ import sqlite3
 
 from rks.domain.models import ClaimRecord
 from rks.ids import next_id
+from rks.storage.text_search import search_records
 from rks.utils import utc_now
 
 
@@ -130,15 +131,22 @@ class ClaimRepository:
             raise KeyError(f"Claim not found: {claim_id}")
         return ClaimRecord(**dict(row))
 
-    def search_claims(self, query: str) -> list[ClaimRecord]:
-        like = f"%{query}%"
-        rows = self.conn.execute(
-            """
-            SELECT *
-            FROM claims
-            WHERE text LIKE ? OR object_text LIKE ? OR context_json LIKE ?
-            ORDER BY updated_at DESC, id DESC
-            """,
-            (like, like, like),
-        ).fetchall()
-        return [ClaimRecord(**dict(row)) for row in rows]
+    def search_claims(self, query: str, *, mode: str = "lexical") -> list[ClaimRecord]:
+        records = [ClaimRecord(**dict(row)) for row in self.conn.execute("SELECT * FROM claims")]
+        concept_fields = {
+            row["id"]: [row["name"], row["canonical_abbrev"], *json.loads(row["aliases_json"] or "[]")]
+            for row in self.conn.execute("SELECT id, name, canonical_abbrev, aliases_json FROM concepts")
+        }
+        return search_records(
+            records, query,
+            lambda claim: [*_search_fields(claim), *concept_fields.get(claim.subject_concept_id, []),
+                           *concept_fields.get(claim.object_concept_id, [])],
+            mode=mode,
+        )
+
+
+def _search_fields(claim: ClaimRecord) -> list[str | None]:
+    context = json.loads(claim.context_json or "{}")
+    # Search scholarly context, not JSON keys, workflow IDs or evaluation labels.
+    context_values = [context.get(key) for key in ("subject_text", "dataset", "metric", "task", "section")]
+    return [claim.text, claim.object_text, *(value for value in context_values if isinstance(value, str))]

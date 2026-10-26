@@ -137,6 +137,8 @@ Run deterministic queries:
 ```bash
 rks index embeddings
 rks search Transformer
+rks search "How does donor replication affect variance?" --mode lexical
+rks search "donor replication" --mode phrase
 rks search "translation quality benchmark" --mode semantic
 rks query claims-about Transformer
 rks query papers-supporting c_000001
@@ -145,6 +147,13 @@ rks query claim-relations c_000001
 rks review promote-claim-relation c_000001 supports c_000014 --reviewed-by agent:review
 rks review retract-claim-relation c_000001 supports c_000014
 ```
+
+Lexical search ranks individual query terms with BM25 across papers, claims,
+concepts, methods and datasets. Phrase mode matches a literal substring, including
+punctuation. The default hybrid mode returns ranked lexical groups and a separate
+local-hash semantic list. Results identify the lexical method and parameters;
+ranking is not a scientific confidence score. See [search behavior](docs/search.md)
+for searchable fields, compatibility changes and limits.
 
 Run a quality baseline check:
 

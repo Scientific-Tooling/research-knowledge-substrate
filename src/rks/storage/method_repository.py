@@ -6,6 +6,7 @@ import sqlite3
 
 from rks.domain.models import MethodRecord
 from rks.ids import next_id
+from rks.storage.text_search import search_records
 from rks.utils import utc_now
 
 
@@ -59,18 +60,9 @@ class MethodRepository:
             raise KeyError(f"Method not found: {method_id}")
         return MethodRecord(**dict(row))
 
-    def search_methods(self, query: str) -> list[MethodRecord]:
-        like = f"%{query}%"
-        rows = self.conn.execute(
-            """
-            SELECT *
-            FROM methods
-            WHERE name LIKE ? OR description LIKE ?
-            ORDER BY updated_at DESC, id DESC
-            """,
-            (like, like),
-        ).fetchall()
-        return [MethodRecord(**dict(row)) for row in rows]
+    def search_methods(self, query: str, *, mode: str = "lexical") -> list[MethodRecord]:
+        records = [MethodRecord(**dict(row)) for row in self.conn.execute("SELECT * FROM methods")]
+        return search_records(records, query, lambda method: (method.name, method.description), mode=mode)
 
     def _existing_methods_by_fingerprint(self, paper_id: str) -> dict[str, list[MethodRecord]]:
         records: dict[str, list[MethodRecord]] = {}

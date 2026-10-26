@@ -6,6 +6,7 @@ import sqlite3
 from rks.concepts.normalize import alias_candidates, canonicalize_term, extract_abbreviation
 from rks.domain.models import ConceptRecord
 from rks.ids import next_id
+from rks.storage.text_search import search_records
 from rks.utils import utc_now
 
 
@@ -127,17 +128,13 @@ class ConceptRepository:
         ).fetchall()
         return [ConceptRecord(**dict(row)) for row in rows]
 
-    def search_concepts(self, query: str) -> list[ConceptRecord]:
-        canonical = canonicalize_term(query)
-        rows = self.conn.execute("SELECT * FROM concepts ORDER BY updated_at DESC, id DESC").fetchall()
-        matches = []
-        for row in rows:
-            record = ConceptRecord(**dict(row))
-            aliases = json.loads(record.aliases_json or "[]")
-            haystacks = [record.name, record.canonical_abbrev, *aliases]
-            if any(canonical.lower() in value.lower() for value in haystacks if value):
-                matches.append(record)
-        return matches
+    def search_concepts(self, query: str, *, mode: str = "lexical") -> list[ConceptRecord]:
+        records = [ConceptRecord(**dict(row)) for row in self.conn.execute("SELECT * FROM concepts")]
+        return search_records(
+            records, query,
+            lambda concept: (concept.name, concept.canonical_abbrev, *json.loads(concept.aliases_json or "[]")),
+            mode=mode,
+        )
 
     def add_aliases(self, concept_id: str, new_aliases: list[str]) -> ConceptRecord:
         concept = self.get_concept(concept_id)

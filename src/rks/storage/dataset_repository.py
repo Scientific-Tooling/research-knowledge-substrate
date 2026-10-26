@@ -6,6 +6,7 @@ import sqlite3
 
 from rks.domain.models import DatasetRecord
 from rks.ids import next_id
+from rks.storage.text_search import search_records
 from rks.utils import utc_now
 
 
@@ -59,18 +60,9 @@ class DatasetRepository:
             raise KeyError(f"Dataset not found: {dataset_id}")
         return DatasetRecord(**dict(row))
 
-    def search_datasets(self, query: str) -> list[DatasetRecord]:
-        like = f"%{query}%"
-        rows = self.conn.execute(
-            """
-            SELECT *
-            FROM datasets
-            WHERE name LIKE ? OR description LIKE ? OR source LIKE ?
-            ORDER BY updated_at DESC, id DESC
-            """,
-            (like, like, like),
-        ).fetchall()
-        return [DatasetRecord(**dict(row)) for row in rows]
+    def search_datasets(self, query: str, *, mode: str = "lexical") -> list[DatasetRecord]:
+        records = [DatasetRecord(**dict(row)) for row in self.conn.execute("SELECT * FROM datasets")]
+        return search_records(records, query, lambda dataset: (dataset.name, dataset.description, dataset.source), mode=mode)
 
     def _existing_datasets_by_fingerprint(self, paper_id: str) -> dict[str, list[DatasetRecord]]:
         records: dict[str, list[DatasetRecord]] = {}

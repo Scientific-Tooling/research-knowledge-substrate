@@ -69,9 +69,9 @@ def register(subparsers) -> None:
     search_parser.add_argument("query", help="Search query text.")
     search_parser.add_argument(
         "--mode",
-        choices=("lexical", "semantic", "hybrid"),
+        choices=("lexical", "phrase", "semantic", "hybrid"),
         default="hybrid",
-        help="Search mode. Hybrid combines lexical and local semantic retrieval.",
+        help="Lexical ranks query terms with BM25; phrase matches a literal substring. Hybrid also returns local semantic matches.",
     )
     search_parser.set_defaults(handler=handle_search)
 

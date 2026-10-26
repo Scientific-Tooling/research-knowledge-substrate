@@ -8,6 +8,7 @@ from typing import Optional
 
 from rks.domain.models import ArtifactRecord, PaperRecord
 from rks.ids import next_id
+from rks.storage.text_search import search_records
 from rks.utils import utc_now
 
 PAPER_READING_STATUSES = ("unread", "read_later", "reading", "read")
@@ -299,18 +300,10 @@ class PaperRepository:
             raise KeyError(f"Artifact not found: {artifact_id}")
         return ArtifactRecord(**dict(row))
 
-    def search_papers(self, query: str) -> list[PaperRecord]:
-        like = f"%{query}%"
-        rows = self.conn.execute(
-            """
-            SELECT *
-            FROM papers
-            WHERE title LIKE ? OR abstract LIKE ? OR source_ref LIKE ?
-            ORDER BY updated_at DESC, id DESC
-            """,
-            (like, like, like),
-        ).fetchall()
-        return [PaperRecord(**dict(row)) for row in rows]
+    def search_papers(self, query: str, *, mode: str = "lexical") -> list[PaperRecord]:
+        return search_records(
+            self.list_papers(), query, lambda paper: (paper.title, paper.abstract, paper.source_ref), mode=mode
+        )
 
     def list_papers(self) -> list[PaperRecord]:
         rows = self.conn.execute("SELECT * FROM papers ORDER BY created_at ASC, id ASC").fetchall()
