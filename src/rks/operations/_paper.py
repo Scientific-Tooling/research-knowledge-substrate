@@ -240,6 +240,11 @@ class PaperOps:
         source = self.papers.get_paper(source_paper_id)
         timestamp = utc_now()
 
+        conn.execute(
+            "INSERT INTO paper_redirects(source_id, target_id, merged_at) VALUES (?, ?, ?)",
+            (source_paper_id, target_paper_id, timestamp),
+        )
+
         moved_claims = conn.execute(
             "UPDATE claims SET paper_id = ?, updated_at = ? WHERE paper_id = ?",
             (target_paper_id, timestamp, source_paper_id),

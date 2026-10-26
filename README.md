@@ -257,6 +257,9 @@ Only required checks determine `overall_status`.
 
 ## Design Docs
 
+- [Selected evidence import](docs/evidence-import.md): preview and transactionally
+  import APW annotations/notes with review provenance and replay protection.
+
 - [docs/README.md](docs/README.md)
 - [docs/product-introduction.md](docs/product-introduction.md)
 - [docs/product-introduction-zh.md](docs/product-introduction-zh.md)
