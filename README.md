@@ -44,6 +44,10 @@ Progress is tracked in [docs/progress.md](docs/progress.md).
 
 ## Quick Start
 
+For RKS together with Agent PDF Workbench, follow the
+[Windows/PowerShell walkthrough](https://scientifictooling.org/guides/rks-apw-windows/):
+install, read a PDF, import selected annotations, and generate a source-linked brief.
+
 Create a virtual environment and install the package in editable mode:
 
 ```bash
