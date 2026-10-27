@@ -7,7 +7,7 @@ name = "research-knowledge-substrate"
 dynamic = ["version"]
 description = "Agent-first research knowledge substrate for structured paper ingestion and research graph construction."
 readme = {file = "README-PYPI.md", content-type = "text/markdown"}
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = []
 authors = [
   {name = "Scientific Tooling"}
@@ -20,9 +20,10 @@ classifiers = [
   "Intended Audience :: Developers",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
   "Topic :: Scientific/Engineering :: Information Analysis",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]

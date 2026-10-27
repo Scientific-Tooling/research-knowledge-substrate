@@ -4,6 +4,9 @@ Research Knowledge Substrate (RKS) is an agent-first local research graph system
 
 The repository is now packaged for formal PyPI distribution, including a PyPI-specific README, packaged schema migrations, and GitHub Actions workflows for package validation and publishing.
 
+Python 3.12 or newer is required; **Python 3.14 is recommended**.
+The repository default is recorded in `.python-version`.
+
 ## Current Capabilities
 
 The current implementation supports:
@@ -259,7 +262,7 @@ python -m pip install -e '.[dev]'
 python -m pytest -q
 ```
 
-CI runs these tests on Windows and Linux with Python 3.10–3.12. Use pytest
+CI runs these tests on Windows and Linux with Python 3.12–3.15. Use pytest
 rather than unittest discovery: the suite includes both unittest and pytest-style
 tests. See [evaluation methodology](docs/evaluation-methodology.md) for the
 distinction between prepared-import checks and actual heuristic extraction.

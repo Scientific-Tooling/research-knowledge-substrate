@@ -5,7 +5,7 @@ It is intended for daily usage in local research workflows.
 
 ## 1. Prerequisites
 
-- Python 3.10+ available in shell
+- Python 3.12+ (3.14 recommended) available in shell
 - Access to this repository
 - Local filesystem write permission for workspace data
 

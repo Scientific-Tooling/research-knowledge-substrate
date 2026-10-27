@@ -11,6 +11,9 @@ RKS is designed for local, inspectable workflows:
 - expose the same operations through CLI and local HTTP endpoints
 - support both direct `llm-api` execution and external agent execution
 
+Python 3.12 or newer is required; **Python 3.14 is recommended**.
+The repository default is recorded in `.python-version`.
+
 ## Installation
 
 ```bash

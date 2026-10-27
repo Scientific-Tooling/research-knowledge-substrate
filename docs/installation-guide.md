@@ -24,7 +24,7 @@ Homebrew and standalone desktop installers are still out of scope.
 
 Make sure the machine has:
 
-- Python `>=3.10`
+- Python `>=3.12` (3.14 recommended)
 - `python3`
 - `pip`
 - optional: `uv`
@@ -268,7 +268,7 @@ uv pip install -e .
 
 ### 9.2 Python version too old
 
-Upgrade to Python `3.10` or newer.
+Upgrade to Python `3.12` or newer.
 
 ### 9.3 No database file after initialization
 

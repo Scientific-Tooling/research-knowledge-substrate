@@ -82,7 +82,7 @@ For scoring and fixture checks alone:
 python -m pytest tests/test_claim_evaluation.py tests/test_claim_quality_regression.py -v
 ```
 
-CI uses pytest on Windows and Linux with Python 3.10–3.12. The earlier unittest
+CI uses pytest on Windows and Linux with Python 3.12–3.15. The earlier unittest
 discovery command did not collect pytest-style tests already in this repository.
 Package validation and installed-wheel smoke checks follow the test jobs.
 
