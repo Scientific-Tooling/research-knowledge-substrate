@@ -44,12 +44,12 @@ Progress is tracked in [docs/progress.md](docs/progress.md).
 
 ## Quick Start
 
-For RKS together with Agent PDF Workbench, follow the
-[Windows/PowerShell walkthrough](https://scientifictooling.org/guides/rks-apw-windows/)
-or [Linux/macOS walkthrough](https://scientifictooling.org/guides/rks-apw-linux-macos/):
-install, read a PDF, import selected annotations, and generate a source-linked brief.
+For RKS together with Agent PDF Workbench, use the
+[PDF-to-brief quick start](https://scientifictooling.org/guides/paper-to-brief/).
+The `sci` CLI handles setup, reading and selected evidence import on Windows,
+Linux and macOS, with an optional agent skill to coordinate the workflow.
 
-Create a virtual environment and install the package in editable mode:
+To use RKS on its own, create a virtual environment and install it in editable mode:
 
 ```bash
 python3 -m venv .venv
