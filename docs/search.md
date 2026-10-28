@@ -1,5 +1,9 @@
 # Local search behavior
 
+For scoped retrieval of imported APW quotations and commentary, use the separate
+[`rks note search-evidence` contract](evidence-import.md#search-current-imported-evidence).
+The general search groups below do not imply evidence import or review.
+
 `rks search "How does donor replication affect variance?" --mode lexical` ranks
 records containing any complete query term. A stored passage no longer has to
 contain the entire question as a continuous substring. The CLI, HTTP

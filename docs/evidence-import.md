@@ -5,6 +5,31 @@ It does not promote annotations or machine interpretations into claims or review
 graph relations. The public boundary is the CLI; product behavior lives in
 `operations/evidence_import.py`, and persistence in `storage/evidence_repository.py`.
 
+## Search current imported evidence
+
+The unreleased `rks note search-evidence QUERY --workspace-id NAME --source-id NAME
+--paper-source PAPER_ID:SHA256` command searches current imported quotes, annotation
+comments and note titles/bodies. Repeat `--paper-source` for each exact source.
+Optional filters are `--review all|reviewed|unreviewed`, `--mode lexical|phrase`,
+`--limit 1..100` (default 20), and `--offset` (default 0). The explicit source scope
+is required; omitting it never searches every paper.
+
+The `rks.evidence-search.v1` response contains the scope, retrieval metadata,
+`total`, pagination, `outcome`, results and `unavailable_evidence`. Results retain
+the original evidence record, canonical paper ID, note ID and revision, plus
+matched fields labeled `source` or `commentary`. Ranking reuses the shared lexical
+ranker over scoped current records; phrase mode matches within individual fields.
+Metadata is not searched. Blank queries return no matches. Text duplicates keep
+separate identities; replay does not duplicate a current result. Merged papers
+retain the original paper/source identity alongside the canonical target.
+
+This command uses a read-only connection and consistent transaction. It does not
+initialize a missing workspace, migrate, ingest or bind a namespace. It validates
+the imported record/review revisions and excludes locally changed or retargeted
+notes with explicit reasons. PDF/annotation availability is checked by the sci/APW
+consumer; unavailable sources do not erase imported text. This search neither
+searches complete PDFs nor promotes interpretations into scientific conclusions.
+
 ## Preview and apply
 
 Set `RKS_DATA_DIR` to the intended workspace. Upgrade an older database explicitly

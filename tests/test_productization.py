@@ -40,6 +40,7 @@ class ProductizationTest(unittest.TestCase):
             "0012_normalize_edge_directions.sql",
             "0013_merge_hypothesis_evidence_into_edges.sql",
             "0014_external_evidence.sql",
+            "0015_comparisons.sql",
         ])
         self.assertIn("CREATE TABLE IF NOT EXISTS papers", packaged[0].read_text(encoding="utf-8"))
         self.assertIn("CREATE TABLE IF NOT EXISTS research_projects", packaged[1].read_text(encoding="utf-8"))
@@ -131,7 +132,7 @@ class ProductizationTest(unittest.TestCase):
             migrate_result = run_cli("migrate", cwd=source)
             self.assertEqual(migrate_result.returncode, 0, migrate_result.stderr)
             migrate_payload = json.loads(migrate_result.stdout)
-            self.assertEqual(migrate_payload["current_version"], "0014_external_evidence.sql")
+            self.assertEqual(migrate_payload["current_version"], "0015_comparisons.sql")
 
             snapshot_path = source / "snapshot.json"
             export_result = run_cli("export", "graph", str(snapshot_path), cwd=source)

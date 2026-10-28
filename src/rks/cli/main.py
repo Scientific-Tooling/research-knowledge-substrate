@@ -23,6 +23,7 @@ from rks.cli.commands import (
     query,
     output,
     schema,
+    comparison,
 )
 
 
@@ -47,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     query.register(subparsers)
     output.register(subparsers)
     schema.register(subparsers)
+    comparison.register(subparsers)
 
     return parser
 

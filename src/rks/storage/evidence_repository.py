@@ -15,6 +15,13 @@ class EvidenceRepository:
     def get(self, source_key: str):
         return self.conn.execute("SELECT * FROM external_evidence WHERE source_key = ?", (source_key,)).fetchone()
 
+    def current_records(self):
+        """Read current imports with their note state; never expand revision history."""
+        return self.conn.execute(
+            """SELECT e.*, n.target_id AS paper_id, n.target_type, n.content AS note_content, n.created_by
+               FROM external_evidence e LEFT JOIN notes n ON n.id = e.note_id ORDER BY e.source_key"""
+        )
+
     def save(self, *, source_key: str, record: dict, paper_id: str, content: str) -> str:
         if not self.conn.in_transaction:
             raise RuntimeError("Evidence writes require a caller-owned transaction")

@@ -9,6 +9,7 @@ from pathlib import Path
 from rks.cli._context import _open_session, _operations
 from rks.config import load_paths
 from rks.operations.evidence_import import import_evidence, require_schema, resolve_paper
+from rks.operations.evidence_search import search_evidence
 from rks.storage.db import connect_db_readonly
 from rks.storage.evidence_repository import EvidenceRepository
 
@@ -27,6 +28,17 @@ def register(subparsers) -> None:
     evidence_list = note_subparsers.add_parser("evidence", help="Read imported evidence and its revision history.")
     evidence_list.add_argument("paper_id")
     evidence_list.set_defaults(handler=handle_evidence_list)
+
+    search = note_subparsers.add_parser("search-evidence", help="Search current imported evidence within exact paper sources.")
+    search.add_argument("query")
+    search.add_argument("--workspace-id", required=True)
+    search.add_argument("--source-id", required=True)
+    search.add_argument("--paper-source", action="append", required=True, help="paper_id:document_sha256; repeat for each source.")
+    search.add_argument("--review", choices=("all", "reviewed", "unreviewed"), default="all")
+    search.add_argument("--mode", choices=("lexical", "phrase"), default="lexical")
+    search.add_argument("--limit", type=int, default=20)
+    search.add_argument("--offset", type=int, default=0)
+    search.set_defaults(handler=handle_evidence_search)
 
     note_add_parser = note_subparsers.add_parser("add", help="Add a note to a stored object.")
     note_add_subparsers = note_add_parser.add_subparsers(dest="note_target", required=True)
@@ -82,6 +94,16 @@ def handle_evidence_list(args: argparse.Namespace) -> int:
         paper_id = resolve_paper(conn, args.paper_id)
         records = EvidenceRepository(conn).list_for_paper(paper_id)
     print(json.dumps({"paper_id": paper_id, "evidence": records}, indent=2))
+    return 0
+
+
+def handle_evidence_search(args: argparse.Namespace) -> int:
+    with closing(connect_db_readonly(load_paths().db_path)) as conn:
+        conn.execute("BEGIN")
+        payload = search_evidence(conn, args.query, workspace_id=args.workspace_id, source_id=args.source_id,
+                                  paper_sources=args.paper_source, review=args.review, mode=args.mode,
+                                  limit=args.limit, offset=args.offset)
+    print(json.dumps(payload, indent=2))
     return 0
 
 
